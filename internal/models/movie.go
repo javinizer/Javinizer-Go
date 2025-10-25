@@ -120,3 +120,22 @@ func (Actress) TableName() string {
 func (Genre) TableName() string {
 	return "genres"
 }
+
+// History represents a log of file organization operations
+type History struct {
+	ID               uint      `json:"id" gorm:"primaryKey"`
+	MovieID          string    `json:"movie_id" gorm:"index"`          // Foreign key to movies.id
+	Operation        string    `json:"operation"`                       // "scrape", "organize", "download", "nfo"
+	OriginalPath     string    `json:"original_path"`                   // Source file path
+	NewPath          string    `json:"new_path"`                        // Destination file path
+	Status           string    `json:"status"`                          // "success", "failed", "reverted"
+	ErrorMessage     string    `json:"error_message" gorm:"type:text"`  // Error details if failed
+	Metadata         string    `json:"metadata" gorm:"type:json"`       // Additional metadata (JSON)
+	DryRun           bool      `json:"dry_run"`                         // Whether this was a dry run
+	CreatedAt        time.Time `json:"created_at" gorm:"index"`
+}
+
+// TableName specifies the table name for History
+func (History) TableName() string {
+	return "history"
+}

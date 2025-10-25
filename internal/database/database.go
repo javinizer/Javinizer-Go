@@ -55,6 +55,7 @@ func (db *DB) AutoMigrate() error {
 		&models.Actress{},
 		&models.Genre{},
 		&models.GenreReplacement{},
+		&models.History{},
 	)
 }
 
@@ -328,4 +329,115 @@ func (r *GenreReplacementRepository) GetReplacementMap() (map[string]string, err
 		result[r.Original] = r.Replacement
 	}
 	return result, nil
+}
+
+// HistoryRepository provides database operations for operation history
+type HistoryRepository struct {
+	db *DB
+}
+
+// NewHistoryRepository creates a new history repository
+func NewHistoryRepository(db *DB) *HistoryRepository {
+	return &HistoryRepository{db: db}
+}
+
+// Create adds a new history record
+func (r *HistoryRepository) Create(history *models.History) error {
+	return r.db.Create(history).Error
+}
+
+// FindByID finds a history record by ID
+func (r *HistoryRepository) FindByID(id uint) (*models.History, error) {
+	var history models.History
+	err := r.db.First(&history, id).Error
+	if err != nil {
+		return nil, err
+	}
+	return &history, nil
+}
+
+// FindByMovieID finds all history records for a specific movie
+func (r *HistoryRepository) FindByMovieID(movieID string) ([]models.History, error) {
+	var history []models.History
+	err := r.db.Where("movie_id = ?", movieID).Order("created_at DESC").Find(&history).Error
+	return history, err
+}
+
+// FindByOperation finds all history records for a specific operation type
+func (r *HistoryRepository) FindByOperation(operation string, limit int) ([]models.History, error) {
+	var history []models.History
+	query := r.db.Where("operation = ?", operation).Order("created_at DESC")
+	if limit > 0 {
+		query = query.Limit(limit)
+	}
+	err := query.Find(&history).Error
+	return history, err
+}
+
+// FindByStatus finds all history records with a specific status
+func (r *HistoryRepository) FindByStatus(status string, limit int) ([]models.History, error) {
+	var history []models.History
+	query := r.db.Where("status = ?", status).Order("created_at DESC")
+	if limit > 0 {
+		query = query.Limit(limit)
+	}
+	err := query.Find(&history).Error
+	return history, err
+}
+
+// FindRecent finds the most recent history records
+func (r *HistoryRepository) FindRecent(limit int) ([]models.History, error) {
+	var history []models.History
+	err := r.db.Order("created_at DESC").Limit(limit).Find(&history).Error
+	return history, err
+}
+
+// FindByDateRange finds history records within a date range
+func (r *HistoryRepository) FindByDateRange(start, end time.Time) ([]models.History, error) {
+	var history []models.History
+	err := r.db.Where("created_at BETWEEN ? AND ?", start, end).Order("created_at DESC").Find(&history).Error
+	return history, err
+}
+
+// Count returns the total number of history records
+func (r *HistoryRepository) Count() (int64, error) {
+	var count int64
+	err := r.db.Model(&models.History{}).Count(&count).Error
+	return count, err
+}
+
+// CountByStatus returns the count of records with a specific status
+func (r *HistoryRepository) CountByStatus(status string) (int64, error) {
+	var count int64
+	err := r.db.Model(&models.History{}).Where("status = ?", status).Count(&count).Error
+	return count, err
+}
+
+// CountByOperation returns the count of records for a specific operation
+func (r *HistoryRepository) CountByOperation(operation string) (int64, error) {
+	var count int64
+	err := r.db.Model(&models.History{}).Where("operation = ?", operation).Count(&count).Error
+	return count, err
+}
+
+// Delete removes a history record
+func (r *HistoryRepository) Delete(id uint) error {
+	return r.db.Delete(&models.History{}, id).Error
+}
+
+// DeleteByMovieID removes all history records for a specific movie
+func (r *HistoryRepository) DeleteByMovieID(movieID string) error {
+	return r.db.Where("movie_id = ?", movieID).Delete(&models.History{}).Error
+}
+
+// DeleteOlderThan removes history records older than the specified date
+func (r *HistoryRepository) DeleteOlderThan(date time.Time) error {
+	return r.db.Where("created_at < ?", date).Delete(&models.History{}).Error
+}
+
+// List returns a paginated list of history records
+func (r *HistoryRepository) List(limit, offset int) ([]models.History, error) {
+	var history []models.History
+	err := r.db.Order("created_at DESC").Limit(limit).Offset(offset).Find(&history).Error
+	return history, err
 }
