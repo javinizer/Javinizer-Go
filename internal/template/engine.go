@@ -11,6 +11,8 @@ import (
 type Engine struct {
 	// Tag pattern matches: <TAG>, <TAG:modifier>, <TAG:value>
 	tagPattern *regexp.Regexp
+	// Conditional pattern matches: <IF:TAG>content</IF>
+	conditionalPattern *regexp.Regexp
 }
 
 // NewEngine creates a new template engine
@@ -18,6 +20,8 @@ func NewEngine() *Engine {
 	return &Engine{
 		// Matches: <ID>, <TITLE:50>, <RELEASEDATE:YYYY-MM-DD>, etc.
 		tagPattern: regexp.MustCompile(`<([A-Z_]+)(?::([^>]+))?>`),
+		// Matches: <IF:TAG>content</IF> or <IF:TAG>true<ELSE>false</IF>
+		conditionalPattern: regexp.MustCompile(`<IF:([A-Z_]+)>(.*?)(?:<ELSE>(.*?))?</IF>`),
 	}
 }
 
@@ -29,8 +33,11 @@ func (e *Engine) Execute(template string, ctx *Context) (string, error) {
 
 	result := template
 
-	// Find all tags in the template
-	matches := e.tagPattern.FindAllStringSubmatch(template, -1)
+	// Step 1: Process conditional blocks first
+	result = e.processConditionals(result, ctx)
+
+	// Step 2: Process regular tags
+	matches := e.tagPattern.FindAllStringSubmatch(result, -1)
 
 	for _, match := range matches {
 		fullTag := match[0]     // e.g., "<TITLE:50>"
@@ -56,6 +63,41 @@ func (e *Engine) Execute(template string, ctx *Context) (string, error) {
 	// which need to preserve slashes
 
 	return result, nil
+}
+
+// processConditionals processes conditional blocks in the template
+func (e *Engine) processConditionals(template string, ctx *Context) string {
+	result := template
+
+	// Find all conditional blocks
+	matches := e.conditionalPattern.FindAllStringSubmatch(result, -1)
+
+	for _, match := range matches {
+		fullBlock := match[0]      // e.g., "<IF:SERIES>Series: <SERIES></IF>"
+		tagName := match[1]        // e.g., "SERIES"
+		trueContent := match[2]    // e.g., "Series: <SERIES>"
+		falseContent := ""
+		if len(match) > 3 {
+			falseContent = match[3] // Content after <ELSE>
+		}
+
+		// Check if the tag has a value
+		value, _ := e.resolveTag(tagName, "", ctx)
+		hasValue := value != ""
+
+		// Choose which content to use
+		replacement := ""
+		if hasValue {
+			replacement = trueContent
+		} else {
+			replacement = falseContent
+		}
+
+		// Replace the entire conditional block
+		result = strings.Replace(result, fullBlock, replacement, 1)
+	}
+
+	return result
 }
 
 // resolveTag resolves a tag to its value

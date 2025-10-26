@@ -7,6 +7,7 @@ Javinizer Go uses a flexible template system for customizing folder and file nam
 - [Template Syntax](#template-syntax)
 - [Available Tags](#available-tags)
 - [Modifiers](#modifiers)
+- [Conditional Logic](#conditional-logic)
 - [Examples](#examples)
 - [Advanced Usage](#advanced-usage)
 - [Special Characters](#special-characters)
@@ -167,6 +168,81 @@ Result:
 ```
 IPX-535 [Solowork, Beautiful Girl, Slender]
 ```
+
+## Conditional Logic
+
+Conditional blocks allow you to show or hide content based on whether a tag has a value.
+
+### Basic Syntax
+
+```
+<IF:TAG>content</IF>
+```
+
+Shows `content` only if `TAG` has a value.
+
+### With ELSE Clause
+
+```
+<IF:TAG>true_content<ELSE>false_content</IF>
+```
+
+Shows `true_content` if `TAG` has a value, otherwise shows `false_content`.
+
+### Examples
+
+**Show series only if it exists:**
+
+```yaml
+output:
+  folder_format: "<ID> - <TITLE><IF:SERIES> [<SERIES>]</IF>"
+```
+
+Results:
+- With series: `IPX-535 - Beautiful Day [Tsubomi Series]`
+- Without series: `IPX-535 - Beautiful Day`
+
+**Show director or studio:**
+
+```yaml
+output:
+  folder_format: "<IF:DIRECTOR>Director: <DIRECTOR><ELSE>Studio: <STUDIO></IF>"
+```
+
+Results:
+- With director: `Director: John Smith`
+- Without director: `Studio: Idea Pocket`
+
+**Multiple conditionals:**
+
+```yaml
+output:
+  folder_format: "<ID> - <TITLE><IF:YEAR> (<YEAR>)</IF><IF:LABEL> [<LABEL>]</IF>"
+```
+
+Results:
+- All fields: `IPX-535 - Beautiful Day (2020) [Premium]`
+- No year: `IPX-535 - Beautiful Day [Premium]`
+- No label: `IPX-535 - Beautiful Day (2020)`
+- Neither: `IPX-535 - Beautiful Day`
+
+**Check for actresses:**
+
+```yaml
+output:
+  folder_format: "<ID><IF:ACTRESSES> starring <ACTRESSES></IF>"
+```
+
+Results:
+- With actresses: `IPX-535 starring Momo Sakura, Yua Mikami`
+- Without actresses: `IPX-535`
+
+### Use Cases
+
+1. **Optional metadata**: Show fields only when available
+2. **Fallback values**: Use ELSE for default text
+3. **Clean formatting**: Avoid empty brackets or parentheses
+4. **Dynamic structure**: Adjust format based on data availability
 
 ## Examples
 

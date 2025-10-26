@@ -232,3 +232,139 @@ func TestTemplateEngine_IndexFormatting(t *testing.T) {
 		})
 	}
 }
+
+func TestTemplateEngine_Conditionals(t *testing.T) {
+	engine := NewEngine()
+	releaseDate := time.Date(2020, 9, 13, 0, 0, 0, 0, time.UTC)
+
+	tests := []struct {
+		name     string
+		template string
+		ctx      *Context
+		want     string
+	}{
+		{
+			name:     "Simple conditional with value",
+			template: "<ID><IF:SERIES> - <SERIES></IF>",
+			ctx: &Context{
+				ID:     "IPX-535",
+				Series: "Test Series",
+			},
+			want: "IPX-535 - Test Series",
+		},
+		{
+			name:     "Simple conditional without value",
+			template: "<ID><IF:SERIES> - <SERIES></IF>",
+			ctx: &Context{
+				ID:     "IPX-535",
+				Series: "",
+			},
+			want: "IPX-535",
+		},
+		{
+			name:     "Conditional with ELSE - true branch",
+			template: "<ID><IF:DIRECTOR> by <DIRECTOR><ELSE> (No Director)</IF>",
+			ctx: &Context{
+				ID:       "IPX-535",
+				Director: "Test Director",
+			},
+			want: "IPX-535 by Test Director",
+		},
+		{
+			name:     "Conditional with ELSE - false branch",
+			template: "<ID><IF:DIRECTOR> by <DIRECTOR><ELSE> (No Director)</IF>",
+			ctx: &Context{
+				ID:       "IPX-535",
+				Director: "",
+			},
+			want: "IPX-535 (No Director)",
+		},
+		{
+			name:     "Multiple conditionals",
+			template: "<ID><IF:SERIES> - <SERIES></IF><IF:LABEL> [<LABEL>]</IF>",
+			ctx: &Context{
+				ID:     "IPX-535",
+				Series: "Test Series",
+				Label:  "Test Label",
+			},
+			want: "IPX-535 - Test Series [Test Label]",
+		},
+		{
+			name:     "Multiple conditionals - partial values",
+			template: "<ID><IF:SERIES> - <SERIES></IF><IF:LABEL> [<LABEL>]</IF>",
+			ctx: &Context{
+				ID:     "IPX-535",
+				Series: "Test Series",
+				Label:  "",
+			},
+			want: "IPX-535 - Test Series",
+		},
+		{
+			name:     "Conditional with year",
+			template: "<ID><IF:YEAR> (<YEAR>)</IF>",
+			ctx: &Context{
+				ID:          "IPX-535",
+				ReleaseDate: &releaseDate,
+			},
+			want: "IPX-535 (2020)",
+		},
+		{
+			name:     "Conditional with year - no date",
+			template: "<ID><IF:YEAR> (<YEAR>)</IF>",
+			ctx: &Context{
+				ID:          "IPX-535",
+				ReleaseDate: nil,
+			},
+			want: "IPX-535",
+		},
+		{
+			name:     "Complex conditional with multiple tags",
+			template: "<IF:DIRECTOR>Director: <DIRECTOR> | Studio: <STUDIO><ELSE>Studio: <STUDIO></IF>",
+			ctx: &Context{
+				Director: "John Doe",
+				Maker:    "Test Studio",
+			},
+			want: "Director: John Doe | Studio: Test Studio",
+		},
+		{
+			name:     "Complex conditional - false branch",
+			template: "<IF:DIRECTOR>Director: <DIRECTOR> | Studio: <STUDIO><ELSE>Studio: <STUDIO></IF>",
+			ctx: &Context{
+				Director: "",
+				Maker:    "Test Studio",
+			},
+			want: "Studio: Test Studio",
+		},
+		{
+			name:     "Array conditional - actresses",
+			template: "<ID><IF:ACTRESSES> starring <ACTRESSES></IF>",
+			ctx: &Context{
+				ID:        "IPX-535",
+				Actresses: []string{"Actress 1", "Actress 2"},
+			},
+			want: "IPX-535 starring Actress 1, Actress 2",
+		},
+		{
+			name:     "Array conditional - empty",
+			template: "<ID><IF:ACTRESSES> starring <ACTRESSES></IF>",
+			ctx: &Context{
+				ID:        "IPX-535",
+				Actresses: []string{},
+			},
+			want: "IPX-535",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := engine.Execute(tt.template, tt.ctx)
+			if err != nil {
+				t.Errorf("Execute() error = %v", err)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("Execute() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
