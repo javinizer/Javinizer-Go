@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,6 +12,7 @@ import (
 	"github.com/javinizer/javinizer-go/internal/database"
 	"github.com/javinizer/javinizer-go/internal/downloader"
 	"github.com/javinizer/javinizer-go/internal/history"
+	"github.com/javinizer/javinizer-go/internal/logging"
 	"github.com/javinizer/javinizer-go/internal/matcher"
 	"github.com/javinizer/javinizer-go/internal/models"
 	"github.com/javinizer/javinizer-go/internal/nfo"
@@ -27,6 +27,7 @@ var (
 	cfgFile      string
 	cfg          *config.Config
 	scrapersFlag []string
+	verboseFlag  bool
 )
 
 func main() {
@@ -37,6 +38,7 @@ func main() {
 	}
 
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "configs/config.yaml", "config file path")
+	rootCmd.PersistentFlags().BoolVarP(&verboseFlag, "verbose", "v", false, "enable debug logging")
 
 	// Scrape command
 	scrapeCmd := &cobra.Command{
@@ -157,6 +159,24 @@ func loadConfig() error {
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
+
+	// Initialize logger
+	logCfg := &logging.Config{
+		Level:  cfg.Logging.Level,
+		Format: cfg.Logging.Format,
+		Output: cfg.Logging.Output,
+	}
+
+	// Override level to debug if --verbose flag is set
+	if verboseFlag {
+		logCfg.Level = "debug"
+	}
+
+	if err := logging.InitLogger(logCfg); err != nil {
+		return fmt.Errorf("failed to initialize logger: %w", err)
+	}
+
+	logging.Debugf("Loaded configuration from: %s", cfgFile)
 	return nil
 }
 
@@ -164,18 +184,18 @@ func runScrape(cmd *cobra.Command, args []string) {
 	id := args[0]
 
 	if err := loadConfig(); err != nil {
-		log.Fatal(err)
+		logging.Fatal(err)
 	}
 
 	// Initialize database
 	db, err := database.New(cfg)
 	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
+		logging.Fatalf("Failed to connect to database: %v", err)
 	}
 	defer db.Close()
 
 	if err := db.AutoMigrate(); err != nil {
-		log.Fatalf("Failed to run migrations: %v", err)
+		logging.Fatalf("Failed to run migrations: %v", err)
 	}
 
 	// Initialize scrapers
@@ -189,20 +209,20 @@ func runScrape(cmd *cobra.Command, args []string) {
 	// Initialize aggregator with database support
 	agg := aggregator.NewWithDatabase(cfg, db)
 
-	fmt.Printf("Scraping metadata for: %s\n\n", id)
+	logging.Infof("Scraping metadata for: %s", id)
 
 	// Determine which scrapers to use: CLI flag overrides config
 	scrapersToUse := cfg.Scrapers.Priority
 	usingCustomScrapers := len(scrapersFlag) > 0
 	if usingCustomScrapers {
 		scrapersToUse = scrapersFlag
-		fmt.Printf("Using scrapers from CLI flag: %v\n\n", scrapersFlag)
+		logging.Infof("Using scrapers from CLI flag: %v", scrapersFlag)
 	}
 
 	// Check cache first (skip cache if user specified custom scrapers)
 	if !usingCustomScrapers {
 		if movie, err := movieRepo.FindByID(id); err == nil {
-			fmt.Println("✅ Found in cache!")
+			logging.Info("✅ Found in cache!")
 			printMovie(movie)
 			return
 		}
@@ -212,34 +232,34 @@ func runScrape(cmd *cobra.Command, args []string) {
 	results := []*models.ScraperResult{}
 
 	for _, scraper := range registry.GetByPriority(scrapersToUse) {
-		fmt.Printf("Scraping %s... ", scraper.Name())
+		logging.Infof("Scraping %s...", scraper.Name())
 		result, err := scraper.Search(id)
 		if err != nil {
-			fmt.Printf("❌ %v\n", err)
+			logging.Warnf("❌ %s: %v", scraper.Name(), err)
 			continue
 		}
-		fmt.Printf("✅\n")
+		logging.Info("✅")
 		results = append(results, result)
 	}
 
 	if len(results) == 0 {
-		fmt.Println("\n❌ No results found from any scraper")
+		logging.Error("❌ No results found from any scraper")
 		return
 	}
 
-	fmt.Printf("\n✅ Found %d source(s)\n\n", len(results))
+	logging.Infof("✅ Found %d source(s)", len(results))
 
 	// Aggregate results
 	movie, err := agg.Aggregate(results)
 	if err != nil {
-		log.Fatalf("Failed to aggregate: %v", err)
+		logging.Fatalf("Failed to aggregate: %v", err)
 	}
 
 	movie.OriginalFileName = id
 
 	// Save to database (upsert: create or update)
 	if err := movieRepo.Upsert(movie); err != nil {
-		log.Printf("Warning: Failed to save to database: %v", err)
+		logging.Warnf("Failed to save to database: %v", err)
 	} else {
 		fmt.Println("💾 Saved to database")
 	}
@@ -249,7 +269,7 @@ func runScrape(cmd *cobra.Command, args []string) {
 
 func runInfo(cmd *cobra.Command, args []string) {
 	if err := loadConfig(); err != nil {
-		log.Fatal(err)
+		logging.Fatal(err)
 	}
 
 	fmt.Println("=== Javinizer Configuration ===")
@@ -271,7 +291,7 @@ func runInfo(cmd *cobra.Command, args []string) {
 
 func runInit(cmd *cobra.Command, args []string) {
 	if err := loadConfig(); err != nil {
-		log.Fatal(err)
+		logging.Fatal(err)
 	}
 
 	fmt.Println("Initializing Javinizer...")
@@ -279,25 +299,25 @@ func runInit(cmd *cobra.Command, args []string) {
 	// Create data directory
 	dataDir := filepath.Dir(cfg.Database.DSN)
 	if err := os.MkdirAll(dataDir, 0755); err != nil {
-		log.Fatalf("Failed to create data directory: %v", err)
+		logging.Fatalf("Failed to create data directory: %v", err)
 	}
 	fmt.Printf("✅ Created data directory: %s\n", dataDir)
 
 	// Initialize database
 	db, err := database.New(cfg)
 	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
+		logging.Fatalf("Failed to connect to database: %v", err)
 	}
 	defer db.Close()
 
 	if err := db.AutoMigrate(); err != nil {
-		log.Fatalf("Failed to run migrations: %v", err)
+		logging.Fatalf("Failed to run migrations: %v", err)
 	}
 	fmt.Printf("✅ Initialized database: %s\n", cfg.Database.DSN)
 
 	// Save config if it was just created
 	if err := config.Save(cfg, cfgFile); err != nil {
-		log.Fatalf("Failed to save config: %v", err)
+		logging.Fatalf("Failed to save config: %v", err)
 	}
 	fmt.Printf("✅ Saved configuration: %s\n", cfgFile)
 
@@ -388,18 +408,18 @@ func runSort(cmd *cobra.Command, args []string) {
 	}
 
 	if err := loadConfig(); err != nil {
-		log.Fatal(err)
+		logging.Fatal(err)
 	}
 
 	// Initialize database
 	db, err := database.New(cfg)
 	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
+		logging.Fatalf("Failed to connect to database: %v", err)
 	}
 	defer db.Close()
 
 	if err := db.AutoMigrate(); err != nil {
-		log.Fatalf("Failed to run migrations: %v", err)
+		logging.Fatalf("Failed to run migrations: %v", err)
 	}
 
 	// Initialize components
@@ -413,7 +433,7 @@ func runSort(cmd *cobra.Command, args []string) {
 	fileScanner := scanner.NewScanner(&cfg.Matching)
 	fileMatcher, err := matcher.NewMatcher(&cfg.Matching)
 	if err != nil {
-		log.Fatalf("Failed to create matcher: %v", err)
+		logging.Fatalf("Failed to create matcher: %v", err)
 	}
 
 	fileOrganizer := organizer.NewOrganizer(&cfg.Output)
@@ -438,7 +458,7 @@ func runSort(cmd *cobra.Command, args []string) {
 		scanResult, err = fileScanner.ScanSingle(sourcePath)
 	}
 	if err != nil {
-		log.Fatalf("Scan failed: %v", err)
+		logging.Fatalf("Scan failed: %v", err)
 	}
 
 	fmt.Printf("   Found %d video file(s)\n", len(scanResult.Files))
@@ -506,7 +526,7 @@ func runSort(cmd *cobra.Command, args []string) {
 		}
 
 		if err := movieRepo.Upsert(movie); err != nil {
-			log.Printf("Warning: Failed to save %s to database: %v", id, err)
+			logging.Infof("Warning: Failed to save %s to database: %v", id, err)
 		}
 
 		movies[id] = movie
@@ -530,7 +550,7 @@ func runSort(cmd *cobra.Command, args []string) {
 			// Create destination folder for this movie
 			plan, err := fileOrganizer.Plan(matches[0], movie, destPath) // Use first match for folder planning
 			if err != nil {
-				log.Printf("Failed to plan for %s: %v", id, err)
+				logging.Infof("Failed to plan for %s: %v", id, err)
 				continue
 			}
 
@@ -538,7 +558,7 @@ func runSort(cmd *cobra.Command, args []string) {
 				fmt.Printf("   %s.nfo (would generate)\n", id)
 			} else {
 				if err := nfoGenerator.Generate(movie, plan.TargetDir); err != nil {
-					log.Printf("Failed to generate NFO for %s: %v", id, err)
+					logging.Infof("Failed to generate NFO for %s: %v", id, err)
 				} else {
 					nfoCount++
 					fmt.Printf("   %s.nfo ✅\n", id)
@@ -585,7 +605,7 @@ func runSort(cmd *cobra.Command, args []string) {
 			} else {
 				results, err := mediaDownloader.DownloadAll(movie, plan.TargetDir)
 				if err != nil {
-					log.Printf("Download error for %s: %v", id, err)
+					logging.Infof("Download error for %s: %v", id, err)
 				}
 
 				downloaded := 0
@@ -618,7 +638,7 @@ func runSort(cmd *cobra.Command, args []string) {
 
 		plan, err := fileOrganizer.Plan(match, movie, destPath)
 		if err != nil {
-			log.Printf("Failed to plan %s: %v", match.File.Name, err)
+			logging.Infof("Failed to plan %s: %v", match.File.Name, err)
 			continue
 		}
 
@@ -675,12 +695,12 @@ func runSort(cmd *cobra.Command, args []string) {
 
 func runGenreAdd(cmd *cobra.Command, args []string) {
 	if err := loadConfig(); err != nil {
-		log.Fatal(err)
+		logging.Fatal(err)
 	}
 
 	db, err := database.New(cfg)
 	if err != nil {
-		log.Fatalf("Failed to initialize database: %v", err)
+		logging.Fatalf("Failed to initialize database: %v", err)
 	}
 	defer db.Close()
 
@@ -695,7 +715,7 @@ func runGenreAdd(cmd *cobra.Command, args []string) {
 	}
 
 	if err := repo.Upsert(genreReplacement); err != nil {
-		log.Fatalf("Failed to add genre replacement: %v", err)
+		logging.Fatalf("Failed to add genre replacement: %v", err)
 	}
 
 	fmt.Printf("✅ Genre replacement added: '%s' → '%s'\n", original, replacement)
@@ -703,12 +723,12 @@ func runGenreAdd(cmd *cobra.Command, args []string) {
 
 func runGenreList(cmd *cobra.Command, args []string) {
 	if err := loadConfig(); err != nil {
-		log.Fatal(err)
+		logging.Fatal(err)
 	}
 
 	db, err := database.New(cfg)
 	if err != nil {
-		log.Fatalf("Failed to initialize database: %v", err)
+		logging.Fatalf("Failed to initialize database: %v", err)
 	}
 	defer db.Close()
 
@@ -716,7 +736,7 @@ func runGenreList(cmd *cobra.Command, args []string) {
 
 	replacements, err := repo.List()
 	if err != nil {
-		log.Fatalf("Failed to list genre replacements: %v", err)
+		logging.Fatalf("Failed to list genre replacements: %v", err)
 	}
 
 	if len(replacements) == 0 {
@@ -737,12 +757,12 @@ func runGenreList(cmd *cobra.Command, args []string) {
 
 func runGenreRemove(cmd *cobra.Command, args []string) {
 	if err := loadConfig(); err != nil {
-		log.Fatal(err)
+		logging.Fatal(err)
 	}
 
 	db, err := database.New(cfg)
 	if err != nil {
-		log.Fatalf("Failed to initialize database: %v", err)
+		logging.Fatalf("Failed to initialize database: %v", err)
 	}
 	defer db.Close()
 
@@ -751,7 +771,7 @@ func runGenreRemove(cmd *cobra.Command, args []string) {
 	repo := database.NewGenreReplacementRepository(db)
 
 	if err := repo.Delete(original); err != nil {
-		log.Fatalf("Failed to remove genre replacement: %v", err)
+		logging.Fatalf("Failed to remove genre replacement: %v", err)
 	}
 
 	fmt.Printf("✅ Genre replacement removed: '%s'\n", original)
@@ -759,12 +779,12 @@ func runGenreRemove(cmd *cobra.Command, args []string) {
 
 func runHistoryList(cmd *cobra.Command, args []string) {
 	if err := loadConfig(); err != nil {
-		log.Fatal(err)
+		logging.Fatal(err)
 	}
 
 	db, err := database.New(cfg)
 	if err != nil {
-		log.Fatalf("Failed to initialize database: %v", err)
+		logging.Fatalf("Failed to initialize database: %v", err)
 	}
 	defer db.Close()
 
@@ -787,7 +807,7 @@ func runHistoryList(cmd *cobra.Command, args []string) {
 	}
 
 	if err != nil {
-		log.Fatalf("Failed to retrieve history: %v", err)
+		logging.Fatalf("Failed to retrieve history: %v", err)
 	}
 
 	if len(records) == 0 {
@@ -844,12 +864,12 @@ func runHistoryList(cmd *cobra.Command, args []string) {
 
 func runHistoryStats(cmd *cobra.Command, args []string) {
 	if err := loadConfig(); err != nil {
-		log.Fatal(err)
+		logging.Fatal(err)
 	}
 
 	db, err := database.New(cfg)
 	if err != nil {
-		log.Fatalf("Failed to initialize database: %v", err)
+		logging.Fatalf("Failed to initialize database: %v", err)
 	}
 	defer db.Close()
 
@@ -857,7 +877,7 @@ func runHistoryStats(cmd *cobra.Command, args []string) {
 
 	stats, err := logger.GetStats()
 	if err != nil {
-		log.Fatalf("Failed to retrieve stats: %v", err)
+		logging.Fatalf("Failed to retrieve stats: %v", err)
 	}
 
 	fmt.Println("=== History Statistics ===")
@@ -879,12 +899,12 @@ func runHistoryMovie(cmd *cobra.Command, args []string) {
 	movieID := args[0]
 
 	if err := loadConfig(); err != nil {
-		log.Fatal(err)
+		logging.Fatal(err)
 	}
 
 	db, err := database.New(cfg)
 	if err != nil {
-		log.Fatalf("Failed to initialize database: %v", err)
+		logging.Fatalf("Failed to initialize database: %v", err)
 	}
 	defer db.Close()
 
@@ -892,7 +912,7 @@ func runHistoryMovie(cmd *cobra.Command, args []string) {
 
 	records, err := logger.GetByMovieID(movieID)
 	if err != nil {
-		log.Fatalf("Failed to retrieve history: %v", err)
+		logging.Fatalf("Failed to retrieve history: %v", err)
 	}
 
 	if len(records) == 0 {
@@ -940,12 +960,12 @@ func runHistoryMovie(cmd *cobra.Command, args []string) {
 
 func runHistoryClean(cmd *cobra.Command, args []string) {
 	if err := loadConfig(); err != nil {
-		log.Fatal(err)
+		logging.Fatal(err)
 	}
 
 	db, err := database.New(cfg)
 	if err != nil {
-		log.Fatalf("Failed to initialize database: %v", err)
+		logging.Fatalf("Failed to initialize database: %v", err)
 	}
 	defer db.Close()
 
@@ -956,18 +976,18 @@ func runHistoryClean(cmd *cobra.Command, args []string) {
 	// Get count before deletion
 	totalBefore, err := logger.GetRecent(0) // Get all
 	if err != nil {
-		log.Fatalf("Failed to count records: %v", err)
+		logging.Fatalf("Failed to count records: %v", err)
 	}
 
 	// Perform cleanup
 	if err := logger.CleanupOldRecords(time.Duration(days) * 24 * time.Hour); err != nil {
-		log.Fatalf("Failed to clean up history: %v", err)
+		logging.Fatalf("Failed to clean up history: %v", err)
 	}
 
 	// Get count after deletion
 	totalAfter, err := logger.GetRecent(0)
 	if err != nil {
-		log.Fatalf("Failed to count records: %v", err)
+		logging.Fatalf("Failed to count records: %v", err)
 	}
 
 	deleted := len(totalBefore) - len(totalAfter)

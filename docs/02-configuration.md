@@ -462,7 +462,7 @@ See [Database Schema](./06-database-schema.md) for table structure.
 
 ## Logging
 
-Configure logging output.
+Configure logging output to track operations, debug issues, and maintain audit trails.
 
 ```yaml
 logging:
@@ -471,20 +471,114 @@ logging:
   output: stdout     # Output: stdout, stderr, or file path
 ```
 
+### Field Details
+
 **level**: Minimum log level to display:
-- `debug`: All messages including debug info
-- `info`: Informational messages and above
+- `debug`: All messages including debug info (verbose)
+- `info`: Informational messages and above (default)
 - `warn`: Warnings and errors only
 - `error`: Errors only
 
 **format**:
-- `text`: Human-readable format
-- `json`: Structured JSON (for log aggregation)
+- `text`: Human-readable format with timestamps (default)
+- `json`: Structured JSON for log aggregation tools (Elasticsearch, Splunk, etc.)
 
 **output**:
-- `stdout`: Standard output
-- `stderr`: Standard error
-- `/path/to/file.log`: Write to file
+- `stdout`: Standard output (console)
+- `stderr`: Standard error (console)
+- `/path/to/file.log`: Write to file (creates directory if needed)
+- Multiple outputs: `stdout,/path/to/file.log` (comma-separated for dual output)
+
+### Examples
+
+**Console output only (default):**
+```yaml
+logging:
+  level: info
+  format: text
+  output: stdout
+```
+
+**File logging for support:**
+```yaml
+logging:
+  level: info
+  format: text
+  output: data/logs/javinizer.log
+```
+
+**Dual output (console + file):**
+```yaml
+logging:
+  level: info
+  format: text
+  output: "stdout,data/logs/javinizer.log"
+```
+
+**JSON logs for analysis:**
+```yaml
+logging:
+  level: debug
+  format: json
+  output: /var/log/javinizer/operations.json
+```
+
+**Debug mode:**
+```yaml
+logging:
+  level: debug
+  format: text
+  output: stdout
+```
+
+### CLI Override
+
+Use the `--verbose` or `-v` flag to enable debug logging regardless of config:
+
+```bash
+javinizer -v scrape IPX-535
+javinizer --verbose sort ~/Videos
+```
+
+This temporarily sets the log level to `debug` for that command.
+
+### Log Rotation
+
+Javinizer appends to log files. For log rotation, use external tools like:
+
+**Linux/macOS (logrotate):**
+```
+/path/to/data/logs/javinizer.log {
+    daily
+    rotate 7
+    compress
+    missingok
+    notifempty
+}
+```
+
+**Manual cleanup:**
+```bash
+# Keep last 30 days
+find data/logs/ -name "*.log" -mtime +30 -delete
+```
+
+### Troubleshooting
+
+**Logs not appearing in file:**
+- Check file permissions
+- Verify directory exists (Javinizer creates it automatically)
+- Check disk space
+
+**Too many logs:**
+- Change level from `debug` to `info` or `warn`
+- Implement log rotation
+
+**Need logs for support:**
+1. Set output to file: `output: data/logs/support.log`
+2. Set level to `debug`
+3. Reproduce issue
+4. Share the log file
 
 ## Configuration Examples
 

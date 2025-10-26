@@ -21,6 +21,7 @@ These flags work with all commands:
 
 ```bash
 --config string   # Path to config file (default "configs/config.yaml")
+--verbose, -v     # Enable debug logging
 --help, -h        # Show help for any command
 ```
 
@@ -29,6 +30,17 @@ These flags work with all commands:
 ```bash
 javinizer --config ~/my-config.yaml scrape IPX-535
 ```
+
+### Verbose Logging
+
+Enable debug-level logging to troubleshoot issues:
+
+```bash
+javinizer -v scrape IPX-535
+javinizer --verbose sort ~/Videos
+```
+
+The `--verbose` flag overrides the `logging.level` setting in your config file and sets it to `debug` for that command only.
 
 ## Commands
 
