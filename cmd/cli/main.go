@@ -6,11 +6,13 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/javinizer/javinizer-go/internal/aggregator"
 	"github.com/javinizer/javinizer-go/internal/config"
 	"github.com/javinizer/javinizer-go/internal/database"
 	"github.com/javinizer/javinizer-go/internal/downloader"
+	"github.com/javinizer/javinizer-go/internal/history"
 	"github.com/javinizer/javinizer-go/internal/matcher"
 	"github.com/javinizer/javinizer-go/internal/models"
 	"github.com/javinizer/javinizer-go/internal/nfo"
@@ -103,7 +105,45 @@ func main() {
 
 	genreCmd.AddCommand(genreAddCmd, genreListCmd, genreRemoveCmd)
 
-	rootCmd.AddCommand(scrapeCmd, infoCmd, initCmd, sortCmd, genreCmd)
+	// History command with subcommands
+	historyCmd := &cobra.Command{
+		Use:   "history",
+		Short: "View operation history",
+		Long:  `View and manage the history of scrape, organize, download, and NFO operations`,
+	}
+
+	historyListCmd := &cobra.Command{
+		Use:   "list",
+		Short: "List recent operations",
+		Run:   runHistoryList,
+	}
+	historyListCmd.Flags().IntP("limit", "n", 20, "Number of records to show")
+	historyListCmd.Flags().StringP("operation", "o", "", "Filter by operation type (scrape, organize, download, nfo)")
+	historyListCmd.Flags().StringP("status", "s", "", "Filter by status (success, failed, reverted)")
+
+	historyStatsCmd := &cobra.Command{
+		Use:   "stats",
+		Short: "Show operation statistics",
+		Run:   runHistoryStats,
+	}
+
+	historyMovieCmd := &cobra.Command{
+		Use:   "movie <id>",
+		Short: "Show history for a specific movie",
+		Args:  cobra.ExactArgs(1),
+		Run:   runHistoryMovie,
+	}
+
+	historyCleanCmd := &cobra.Command{
+		Use:   "clean",
+		Short: "Clean up old history records",
+		Run:   runHistoryClean,
+	}
+	historyCleanCmd.Flags().IntP("days", "d", 30, "Delete records older than this many days")
+
+	historyCmd.AddCommand(historyListCmd, historyStatsCmd, historyMovieCmd, historyCleanCmd)
+
+	rootCmd.AddCommand(scrapeCmd, infoCmd, initCmd, sortCmd, genreCmd, historyCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)
@@ -715,4 +755,234 @@ func runGenreRemove(cmd *cobra.Command, args []string) {
 	}
 
 	fmt.Printf("✅ Genre replacement removed: '%s'\n", original)
+}
+
+func runHistoryList(cmd *cobra.Command, args []string) {
+	if err := loadConfig(); err != nil {
+		log.Fatal(err)
+	}
+
+	db, err := database.New(cfg)
+	if err != nil {
+		log.Fatalf("Failed to initialize database: %v", err)
+	}
+	defer db.Close()
+
+	logger := history.NewLogger(db)
+
+	// Get flags
+	limit, _ := cmd.Flags().GetInt("limit")
+	operation, _ := cmd.Flags().GetString("operation")
+	status, _ := cmd.Flags().GetString("status")
+
+	var records []models.History
+
+	// Apply filters
+	if operation != "" {
+		records, err = logger.GetByOperation(operation, limit)
+	} else if status != "" {
+		records, err = logger.GetByStatus(status, limit)
+	} else {
+		records, err = logger.GetRecent(limit)
+	}
+
+	if err != nil {
+		log.Fatalf("Failed to retrieve history: %v", err)
+	}
+
+	if len(records) == 0 {
+		fmt.Println("No history records found")
+		return
+	}
+
+	fmt.Println("=== Operation History ===")
+	fmt.Printf("%-6s %-10s %-12s %-10s %-8s %-20s %s\n",
+		"ID", "Operation", "Movie ID", "Status", "Dry Run", "Time", "Path")
+	fmt.Println(strings.Repeat("-", 120))
+
+	for _, record := range records {
+		dryRunStr := " "
+		if record.DryRun {
+			dryRunStr = "✓"
+		}
+
+		path := record.NewPath
+		if path == "" {
+			path = record.OriginalPath
+		}
+		if len(path) > 40 {
+			path = "..." + path[len(path)-37:]
+		}
+
+		timeStr := record.CreatedAt.Format("2006-01-02 15:04:05")
+
+		statusIcon := "✅"
+		if record.Status == "failed" {
+			statusIcon = "❌"
+		} else if record.Status == "reverted" {
+			statusIcon = "↩️"
+		}
+
+		fmt.Printf("%-6d %-10s %-12s %s %-9s %-8s %-20s %s\n",
+			record.ID,
+			record.Operation,
+			record.MovieID,
+			statusIcon,
+			record.Status,
+			dryRunStr,
+			timeStr,
+			path,
+		)
+
+		if record.ErrorMessage != "" {
+			fmt.Printf("       Error: %s\n", record.ErrorMessage)
+		}
+	}
+
+	fmt.Printf("\nShowing %d record(s)\n", len(records))
+}
+
+func runHistoryStats(cmd *cobra.Command, args []string) {
+	if err := loadConfig(); err != nil {
+		log.Fatal(err)
+	}
+
+	db, err := database.New(cfg)
+	if err != nil {
+		log.Fatalf("Failed to initialize database: %v", err)
+	}
+	defer db.Close()
+
+	logger := history.NewLogger(db)
+
+	stats, err := logger.GetStats()
+	if err != nil {
+		log.Fatalf("Failed to retrieve stats: %v", err)
+	}
+
+	fmt.Println("=== History Statistics ===")
+	fmt.Printf("\nTotal Operations: %d\n", stats.Total)
+
+	fmt.Println("\nBy Status:")
+	fmt.Printf("  ✅ Success:  %d (%.1f%%)\n", stats.Success, percentage(stats.Success, stats.Total))
+	fmt.Printf("  ❌ Failed:   %d (%.1f%%)\n", stats.Failed, percentage(stats.Failed, stats.Total))
+	fmt.Printf("  ↩️  Reverted: %d (%.1f%%)\n", stats.Reverted, percentage(stats.Reverted, stats.Total))
+
+	fmt.Println("\nBy Operation:")
+	fmt.Printf("  🌐 Scrape:   %d (%.1f%%)\n", stats.Scrape, percentage(stats.Scrape, stats.Total))
+	fmt.Printf("  📦 Organize: %d (%.1f%%)\n", stats.Organize, percentage(stats.Organize, stats.Total))
+	fmt.Printf("  📥 Download: %d (%.1f%%)\n", stats.Download, percentage(stats.Download, stats.Total))
+	fmt.Printf("  📝 NFO:      %d (%.1f%%)\n", stats.NFO, percentage(stats.NFO, stats.Total))
+}
+
+func runHistoryMovie(cmd *cobra.Command, args []string) {
+	movieID := args[0]
+
+	if err := loadConfig(); err != nil {
+		log.Fatal(err)
+	}
+
+	db, err := database.New(cfg)
+	if err != nil {
+		log.Fatalf("Failed to initialize database: %v", err)
+	}
+	defer db.Close()
+
+	logger := history.NewLogger(db)
+
+	records, err := logger.GetByMovieID(movieID)
+	if err != nil {
+		log.Fatalf("Failed to retrieve history: %v", err)
+	}
+
+	if len(records) == 0 {
+		fmt.Printf("No history found for movie: %s\n", movieID)
+		return
+	}
+
+	fmt.Printf("=== History for %s ===\n\n", movieID)
+
+	for _, record := range records {
+		statusIcon := "✅"
+		if record.Status == "failed" {
+			statusIcon = "❌"
+		} else if record.Status == "reverted" {
+			statusIcon = "↩️"
+		}
+
+		fmt.Printf("%s %s - %s (%s)\n",
+			statusIcon,
+			record.CreatedAt.Format("2006-01-02 15:04:05"),
+			record.Operation,
+			record.Status,
+		)
+
+		if record.OriginalPath != "" {
+			fmt.Printf("   From: %s\n", record.OriginalPath)
+		}
+		if record.NewPath != "" {
+			fmt.Printf("   To:   %s\n", record.NewPath)
+		}
+		if record.DryRun {
+			fmt.Println("   (Dry Run)")
+		}
+		if record.ErrorMessage != "" {
+			fmt.Printf("   Error: %s\n", record.ErrorMessage)
+		}
+		if record.Metadata != "" && record.Metadata != "{}" {
+			fmt.Printf("   Metadata: %s\n", record.Metadata)
+		}
+		fmt.Println()
+	}
+
+	fmt.Printf("Total: %d operation(s)\n", len(records))
+}
+
+func runHistoryClean(cmd *cobra.Command, args []string) {
+	if err := loadConfig(); err != nil {
+		log.Fatal(err)
+	}
+
+	db, err := database.New(cfg)
+	if err != nil {
+		log.Fatalf("Failed to initialize database: %v", err)
+	}
+	defer db.Close()
+
+	logger := history.NewLogger(db)
+
+	days, _ := cmd.Flags().GetInt("days")
+
+	// Get count before deletion
+	totalBefore, err := logger.GetRecent(0) // Get all
+	if err != nil {
+		log.Fatalf("Failed to count records: %v", err)
+	}
+
+	// Perform cleanup
+	if err := logger.CleanupOldRecords(time.Duration(days) * 24 * time.Hour); err != nil {
+		log.Fatalf("Failed to clean up history: %v", err)
+	}
+
+	// Get count after deletion
+	totalAfter, err := logger.GetRecent(0)
+	if err != nil {
+		log.Fatalf("Failed to count records: %v", err)
+	}
+
+	deleted := len(totalBefore) - len(totalAfter)
+
+	if deleted == 0 {
+		fmt.Printf("No records older than %d days found\n", days)
+	} else {
+		fmt.Printf("✅ Cleaned up %d record(s) older than %d days\n", deleted, days)
+		fmt.Printf("Remaining: %d record(s)\n", len(totalAfter))
+	}
+}
+
+func percentage(part, total int64) float64 {
+	if total == 0 {
+		return 0
+	}
+	return float64(part) / float64(total) * 100
 }
