@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"context"
+
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/javinizer/javinizer-go/internal/worker"
 )
@@ -180,10 +182,10 @@ func (m *Model) handleBrowserKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter":
 		// Start processing
 		if len(m.selectedFiles) > 0 && !m.isProcessing {
-			m.isProcessing = true
-			m.startTime = m.startTime // Reset if needed
-			m.AddLog("info", "Started processing selected files")
-			// TODO: Trigger actual processing
+			ctx := context.Background()
+			if err := m.StartProcessing(ctx); err != nil {
+				m.AddLog("error", err.Error())
+			}
 		}
 
 	case "p":

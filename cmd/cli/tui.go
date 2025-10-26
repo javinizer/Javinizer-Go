@@ -6,12 +6,22 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/javinizer/javinizer-go/internal/aggregator"
+	"github.com/javinizer/javinizer-go/internal/database"
+	"github.com/javinizer/javinizer-go/internal/downloader"
 	"github.com/javinizer/javinizer-go/internal/logging"
 	"github.com/javinizer/javinizer-go/internal/matcher"
+	"github.com/javinizer/javinizer-go/internal/models"
+	"github.com/javinizer/javinizer-go/internal/nfo"
+	"github.com/javinizer/javinizer-go/internal/organizer"
 	"github.com/javinizer/javinizer-go/internal/scanner"
+	"github.com/javinizer/javinizer-go/internal/scraper/dmm"
+	"github.com/javinizer/javinizer-go/internal/scraper/r18dev"
 	"github.com/javinizer/javinizer-go/internal/tui"
+	"github.com/javinizer/javinizer-go/internal/worker"
 	"github.com/spf13/cobra"
 )
 
@@ -26,6 +36,8 @@ func createTUICommand() *cobra.Command {
 	}
 
 	tuiCmd.Flags().BoolP("recursive", "r", true, "Scan directories recursively")
+	tuiCmd.Flags().StringP("dest", "d", "", "Destination directory (default: same as source)")
+	tuiCmd.Flags().BoolP("move", "m", false, "Move files instead of copying")
 
 	return tuiCmd
 }
@@ -38,6 +50,13 @@ func runTUI(cmd *cobra.Command, args []string) {
 	}
 
 	recursive, _ := cmd.Flags().GetBool("recursive")
+	destPath, _ := cmd.Flags().GetString("dest")
+	moveFiles, _ := cmd.Flags().GetBool("move")
+
+	// Default destination is same as source
+	if destPath == "" {
+		destPath = sourcePath
+	}
 
 	// Load config
 	if err := loadConfig(); err != nil {
@@ -139,8 +158,67 @@ func runTUI(cmd *cobra.Command, args []string) {
 		fileItems = append(fileItems, item)
 	}
 
-	// Set files in model
+	// Set files and match results in model
 	model.SetFiles(fileItems)
+	model.SetMatchResults(matchMap)
+
+	// Initialize database
+	db, err := database.New(cfg)
+	if err != nil {
+		logging.Errorf("Failed to connect to database: %v", err)
+		fmt.Fprintf(os.Stderr, "Failed to connect to database: %v\n", err)
+		os.Exit(1)
+	}
+	defer db.Close()
+
+	if err := db.AutoMigrate(); err != nil {
+		logging.Errorf("Failed to run migrations: %v", err)
+	}
+
+	movieRepo := database.NewMovieRepository(db)
+
+	// Initialize scraper registry
+	registry := models.NewScraperRegistry()
+	registry.Register(r18dev.New(cfg))
+	registry.Register(dmm.New(cfg))
+
+	// Initialize aggregator
+	agg := aggregator.NewWithDatabase(cfg, db)
+
+	// Initialize downloader
+	dl := downloader.NewDownloader(&cfg.Output, cfg.Scrapers.UserAgent)
+
+	// Initialize organizer
+	org := organizer.NewOrganizer(&cfg.Output)
+
+	// Initialize NFO generator
+	nfoGen := nfo.NewGenerator(nfo.ConfigFromAppConfig(&cfg.Metadata.NFO))
+
+	// Create progress tracker and worker pool
+	progressChan := make(chan worker.ProgressUpdate, cfg.Performance.BufferSize)
+	progressTracker := worker.NewProgressTracker(progressChan)
+	workerPool := worker.NewPool(
+		cfg.Performance.MaxWorkers,
+		time.Duration(cfg.Performance.WorkerTimeout)*time.Second,
+		progressTracker,
+	)
+
+	// Create processing coordinator
+	processor := tui.NewProcessingCoordinator(
+		workerPool,
+		progressTracker,
+		movieRepo,
+		registry,
+		agg,
+		dl,
+		org,
+		nfoGen,
+		destPath,
+		moveFiles,
+	)
+
+	// Set processor in model
+	model.SetProcessor(processor)
 
 	// Log initial state
 	model.AddLog("info", fmt.Sprintf("Scanned %d files", len(scanResult.Files)))

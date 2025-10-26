@@ -1,10 +1,12 @@
 package tui
 
 import (
+	"context"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/javinizer/javinizer-go/internal/config"
+	"github.com/javinizer/javinizer-go/internal/matcher"
 	"github.com/javinizer/javinizer-go/internal/worker"
 )
 
@@ -32,12 +34,14 @@ type Model struct {
 	files         []FileItem
 	cursor        int
 	selectedFiles map[string]bool
+	matchResults  map[string]matcher.MatchResult
 
 	// Task state
 	tasks         map[string]*worker.TaskProgress
 	taskOrder     []string // Maintain insertion order
 	workerPool    *worker.Pool
 	progressChan  chan worker.ProgressUpdate
+	processor     *ProcessingCoordinator
 	isProcessing  bool
 	isPaused      bool
 
@@ -100,6 +104,7 @@ func New(cfg *config.Config) *Model {
 		currentView:   ViewBrowser,
 		files:         make([]FileItem, 0),
 		selectedFiles: make(map[string]bool),
+		matchResults:  make(map[string]matcher.MatchResult),
 		tasks:         make(map[string]*worker.TaskProgress),
 		taskOrder:     make([]string, 0),
 		workerPool:    workerPool,
@@ -256,6 +261,55 @@ func (m *Model) GetSelectedFiles() []string {
 		selected = append(selected, path)
 	}
 	return selected
+}
+
+// SetProcessor sets the processing coordinator
+func (m *Model) SetProcessor(processor *ProcessingCoordinator) {
+	m.processor = processor
+}
+
+// SetMatchResults sets the match results for files
+func (m *Model) SetMatchResults(matches map[string]matcher.MatchResult) {
+	m.matchResults = matches
+}
+
+// StartProcessing begins processing selected files
+func (m *Model) StartProcessing(ctx context.Context) error {
+	if m.processor == nil {
+		return nil
+	}
+
+	if m.isProcessing {
+		return nil
+	}
+
+	selectedCount := len(m.selectedFiles)
+	if selectedCount == 0 {
+		m.AddLog("warn", "No files selected for processing")
+		return nil
+	}
+
+	m.isProcessing = true
+	m.startTime = time.Now()
+
+	// Filter to get selected file items
+	selectedItems := make([]FileItem, 0, selectedCount)
+	for i := range m.files {
+		if m.files[i].Selected {
+			selectedItems = append(selectedItems, m.files[i])
+		}
+	}
+
+	m.AddLog("info", "Starting processing...")
+
+	// Start processing in background
+	go func() {
+		if err := m.processor.ProcessFiles(ctx, selectedItems, m.matchResults); err != nil {
+			m.AddLog("error", err.Error())
+		}
+	}()
+
+	return nil
 }
 
 // Error returns any error that occurred
