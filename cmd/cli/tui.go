@@ -179,9 +179,10 @@ func runTUI(cmd *cobra.Command, args []string) {
 		fileItems = append(fileItems, item)
 	}
 
-	// Set files and match results in model
+	// Set files, match results, and source path in model
 	model.SetFiles(fileItems)
 	model.SetMatchResults(matchMap)
+	model.SetSourcePath(sourcePath)
 
 	// Initialize database
 	db, err := database.New(cfg)

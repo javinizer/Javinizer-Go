@@ -169,6 +169,13 @@ func (m *Model) SetFiles(files []FileItem) {
 	}
 }
 
+// SetSourcePath sets the source path being scanned
+func (m *Model) SetSourcePath(path string) {
+	if m.browser != nil {
+		m.browser.SetSourcePath(path)
+	}
+}
+
 // AddLog adds a log entry
 func (m *Model) AddLog(level, message string) {
 	entry := LogEntry{

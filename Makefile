@@ -3,7 +3,7 @@
 # Build the application
 build:
 	go build -o bin/javinizer cmd/api/main.go
-	go build -o bin/javinizer-cli cmd/cli/main.go
+	go build -o bin/javinizer-cli ./cmd/cli
 
 # Run the API server
 run:
@@ -11,7 +11,7 @@ run:
 
 # Run the CLI
 cli:
-	go run cmd/cli/main.go
+	go run ./cmd/cli
 
 # Run tests
 test:

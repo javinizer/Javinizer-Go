@@ -46,11 +46,7 @@ func (m *Model) View() string {
 
 // renderHeader renders the header bar
 func (m *Model) renderHeader() string {
-	if m.header != nil {
-		return m.header.View()
-	}
-
-	// Fallback simple header
+	// Title bar
 	title := HeaderStyle.Render("Javinizer TUI")
 
 	workers := fmt.Sprintf("Workers: %d/%d",
@@ -75,12 +71,43 @@ func (m *Model) renderHeader() string {
 		padding = 0
 	}
 
-	return lipgloss.JoinHorizontal(
+	titleBar := lipgloss.JoinHorizontal(
 		lipgloss.Top,
 		title,
 		strings.Repeat(" ", padding),
 		stats,
 	)
+
+	// Tabs
+	tabs := m.renderTabs()
+
+	return lipgloss.JoinVertical(lipgloss.Left, titleBar, tabs)
+}
+
+// renderTabs renders the tab bar
+func (m *Model) renderTabs() string {
+	var tabItems []string
+
+	views := []struct {
+		view ViewMode
+		name string
+		key  string
+	}{
+		{ViewBrowser, "Browser", "1"},
+		{ViewDashboard, "Dashboard", "2"},
+		{ViewLogs, "Logs", "3"},
+	}
+
+	for _, v := range views {
+		tabText := fmt.Sprintf("%s %s", v.key, v.name)
+		if m.currentView == v.view {
+			tabItems = append(tabItems, ActiveTabStyle.Render(tabText))
+		} else {
+			tabItems = append(tabItems, TabStyle.Render(tabText))
+		}
+	}
+
+	return strings.Join(tabItems, "")
 }
 
 // renderFooter renders the footer with keybindings

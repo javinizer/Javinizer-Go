@@ -39,11 +39,12 @@ func (h *Header) View() string {
 
 // Browser component
 type Browser struct {
-	items    []FileItem
-	cursor   int
-	width    int
-	height   int
-	selected map[string]bool
+	items      []FileItem
+	cursor     int
+	width      int
+	height     int
+	selected   map[string]bool
+	sourcePath string // Current scan path
 }
 
 func NewBrowser() *Browser {
@@ -60,6 +61,10 @@ func (b *Browser) SetSize(width, height int) {
 
 func (b *Browser) SetItems(items []FileItem) {
 	b.items = items
+}
+
+func (b *Browser) SetSourcePath(path string) {
+	b.sourcePath = path
 }
 
 func (b *Browser) CursorUp() {
@@ -127,11 +132,22 @@ func (b *Browser) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (b *Browser) View() string {
-	if len(b.items) == 0 {
-		return Dimmed("No files found")
+	view := Title("Files") + "\n"
+
+	// Show scan path if set
+	if b.sourcePath != "" {
+		pathDisplay := b.sourcePath
+		if len(pathDisplay) > 50 {
+			pathDisplay = "..." + pathDisplay[len(pathDisplay)-47:]
+		}
+		view += Dimmed("Scanning: ") + Highlight(pathDisplay) + "\n"
 	}
 
-	view := Title("Files") + "\n\n"
+	view += "\n"
+
+	if len(b.items) == 0 {
+		return view + Dimmed("No files found")
+	}
 
 	// Show items around cursor
 	start := b.cursor - 5
