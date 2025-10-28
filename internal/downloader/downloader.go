@@ -62,6 +62,25 @@ func NewDownloader(cfg *config.OutputConfig, userAgent string) *Downloader {
 	}
 }
 
+// generateFilename generates a filename using the configured template
+func (d *Downloader) generateFilename(movie *models.Movie, templateStr string, index int) string {
+	if templateStr == "" {
+		return ""
+	}
+
+	ctx := template.NewContextFromMovie(movie)
+	ctx.Index = index // Set index for screenshot numbering
+
+	engine := template.NewEngine()
+	filename, err := engine.Execute(templateStr, ctx)
+	if err != nil {
+		// Fallback to ID-based naming if template fails
+		return fmt.Sprintf("%s-unknown", ctx.ID)
+	}
+
+	return filename
+}
+
 // SetDownloadExtrafanart sets whether extrafanart downloads are enabled
 func (d *Downloader) SetDownloadExtrafanart(enabled bool) {
 	d.config.DownloadExtrafanart = enabled
@@ -73,8 +92,11 @@ func (d *Downloader) DownloadCover(movie *models.Movie, destDir string) (*Downlo
 		return &DownloadResult{Type: MediaTypeCover, Downloaded: false}, nil
 	}
 
-	ctx := template.NewContextFromMovie(movie)
-	filename := fmt.Sprintf("%s-fanart.jpg", ctx.ID)
+	filename := d.generateFilename(movie, d.config.FanartFormat, 0)
+	if filename == "" {
+		// Fallback to hardcoded format
+		filename = fmt.Sprintf("%s-fanart.jpg", movie.ID)
+	}
 	destPath := filepath.Join(destDir, filename)
 
 	return d.download(movie.CoverURL, destPath, MediaTypeCover)
@@ -97,8 +119,11 @@ func (d *Downloader) DownloadPoster(movie *models.Movie, destDir string) (*Downl
 		return &DownloadResult{Type: MediaTypePoster, Downloaded: false}, nil
 	}
 
-	ctx := template.NewContextFromMovie(movie)
-	filename := fmt.Sprintf("%s-poster.jpg", ctx.ID)
+	filename := d.generateFilename(movie, d.config.PosterFormat, 0)
+	if filename == "" {
+		// Fallback to hardcoded format
+		filename = fmt.Sprintf("%s-poster.jpg", movie.ID)
+	}
 	destPath := filepath.Join(destDir, filename)
 
 	// Check if poster already exists
@@ -149,14 +174,22 @@ func (d *Downloader) DownloadExtrafanart(movie *models.Movie, destDir string) ([
 		return []DownloadResult{}, nil
 	}
 
-	// Create extrafanart subdirectory
-	extrafanartDir := filepath.Join(destDir, "extrafanart")
+	// Create extrafanart subdirectory using configurable folder name
+	extrafanartDir := filepath.Join(destDir, d.config.ScreenshotFolder)
 
 	results := make([]DownloadResult, 0, len(movie.Screenshots))
 
 	for i, url := range movie.Screenshots {
-		// Extrafanart images are typically numbered: fanart1.jpg, fanart2.jpg, etc.
-		filename := fmt.Sprintf("fanart%d.jpg", i+1)
+		// Use configurable screenshot format with index for numbering
+		filename := d.generateFilename(movie, d.config.ScreenshotFormat, i+1)
+		if filename == "" {
+			// Fallback to hardcoded format with configurable padding
+			if d.config.ScreenshotPadding > 0 {
+				filename = fmt.Sprintf("fanart%0*d.jpg", d.config.ScreenshotPadding, i+1)
+			} else {
+				filename = fmt.Sprintf("fanart%d.jpg", i+1)
+			}
+		}
 		destPath := filepath.Join(extrafanartDir, filename)
 
 		result, err := d.download(url, destPath, MediaTypeExtrafanart)
@@ -179,15 +212,22 @@ func (d *Downloader) DownloadTrailer(movie *models.Movie, destDir string) (*Down
 		return &DownloadResult{Type: MediaTypeTrailer, Downloaded: false}, nil
 	}
 
-	ctx := template.NewContextFromMovie(movie)
-
 	// Determine extension from URL
 	ext := filepath.Ext(movie.TrailerURL)
 	if ext == "" {
 		ext = ".mp4" // Default to mp4
 	}
 
-	filename := fmt.Sprintf("%s-trailer%s", ctx.ID, ext)
+	filename := d.generateFilename(movie, d.config.TrailerFormat, 0)
+	if filename == "" {
+		// Fallback to hardcoded format
+		filename = fmt.Sprintf("%s-trailer%s", movie.ID, ext)
+	} else {
+		// Ensure template filename has the correct extension
+		if filepath.Ext(filename) == "" {
+			filename += ext
+		}
+	}
 	destPath := filepath.Join(destDir, filename)
 
 	return d.download(movie.TrailerURL, destPath, MediaTypeTrailer)
@@ -199,6 +239,9 @@ func (d *Downloader) DownloadActressImages(movie *models.Movie, destDir string) 
 		return []DownloadResult{}, nil
 	}
 
+	// Create actress subdirectory using configurable folder name
+	actressDir := filepath.Join(destDir, d.config.ActressFolder)
+
 	results := make([]DownloadResult, 0)
 
 	for _, actress := range movie.Actresses {
@@ -206,10 +249,20 @@ func (d *Downloader) DownloadActressImages(movie *models.Movie, destDir string) 
 			continue
 		}
 
-		// Sanitize actress name for filename
-		name := template.SanitizeFilename(actress.FullName())
-		filename := fmt.Sprintf("actress-%s.jpg", name)
-		destPath := filepath.Join(destDir, ".actors", filename)
+		// Use configurable template for actress filenames
+		// Create a temporary movie with actress data for template processing
+		actressMovie := &models.Movie{
+			ID:    movie.ID,
+			Title: actress.FullName(),
+		}
+
+		filename := d.generateFilename(actressMovie, "actress-<ACTORNAME>.jpg", 0)
+		if filename == "" {
+			// Fallback to hardcoded format
+			name := template.SanitizeFilename(actress.FullName())
+			filename = fmt.Sprintf("actress-%s.jpg", name)
+		}
+		destPath := filepath.Join(actressDir, filename)
 
 		result, err := d.download(actress.ThumbURL, destPath, MediaTypeActress)
 		if err != nil {

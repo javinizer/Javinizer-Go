@@ -32,10 +32,8 @@ func TestMovieToNFO(t *testing.T) {
 			"https://example.com/screenshot1.jpg",
 			"https://example.com/screenshot2.jpg",
 		},
-		Rating: &models.Rating{
-			Score: 8.5,
-			Votes: 100,
-		},
+		RatingScore: 8.5,
+		RatingVotes: 100,
 		Actresses: []models.Actress{
 			{
 				FirstName:    "Momo",

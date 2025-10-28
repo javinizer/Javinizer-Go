@@ -7,6 +7,11 @@ import (
 	"time"
 )
 
+// Package-level compiled regexes for performance
+var (
+	cjkRegex = regexp.MustCompile(`[\p{Han}\p{Hiragana}\p{Katakana}\p{Hangul}]`)
+)
+
 // Engine is a template processor for format strings
 type Engine struct {
 	// Tag pattern matches: <TAG>, <TAG:modifier>, <TAG:value>
@@ -198,12 +203,78 @@ func (e *Engine) resolveTag(tagName, modifier string, ctx *Context) (string, err
 	case "LASTNAME":
 		return ctx.LastName, nil
 
+	case "ACTORNAME":
+		// For actress filenames, use the title as the actress name
+		return ctx.Title, nil
+
 	default:
 		return "", fmt.Errorf("unknown tag: %s", tagName)
 	}
 }
 
-// truncate limits a string to maxLen characters
+// TruncateTitle smartly truncates a title to maxLen characters
+func (e *Engine) TruncateTitle(title string, maxLen int) string {
+	if maxLen <= 0 || len(title) <= maxLen {
+		return title
+	}
+
+	// Check if title contains CJK characters
+	isCJK := e.containsCJK(title)
+
+	if isCJK {
+		// CJK: Hard truncate at character boundary and add ellipsis
+		if maxLen > 3 {
+			runes := []rune(title)
+			if len(runes) > maxLen-3 {
+				return string(runes[:maxLen-3]) + "..."
+			}
+		}
+		return title
+	}
+
+	// English/Latin: Smart truncate at word boundary (rune-aware)
+	runes := []rune(title)
+	if maxLen > 3 {
+		if len(runes) > maxLen-3 {
+			truncated := runes[:maxLen-3]
+			truncStr := string(truncated)
+			lastSpace := strings.LastIndex(truncStr, " ")
+			if lastSpace > 0 {
+				return truncStr[:lastSpace] + "..."
+			}
+			// No space found, truncate at character boundary
+			return truncStr + "..."
+		}
+		return title
+	}
+
+	// maxLen <= 3: truncate at rune boundary
+	if len(runes) > maxLen {
+		return string(runes[:maxLen])
+	}
+	return title
+}
+
+// ValidatePathLength checks if a path exceeds the maximum length
+func (e *Engine) ValidatePathLength(path string, maxLen int) error {
+	if maxLen <= 0 {
+		return nil // No validation if maxLen is not set
+	}
+
+	if len(path) > maxLen {
+		return fmt.Errorf("path length %d exceeds limit %d: %s", len(path), maxLen, path)
+	}
+	return nil
+}
+
+// containsCJK checks if a string contains CJK characters
+func (e *Engine) containsCJK(s string) bool {
+	// Check for CJK characters (Chinese, Japanese, Korean)
+	// Uses package-level cached regex for performance
+	return cjkRegex.MatchString(s)
+}
+
+// truncate limits a string to maxLen characters (legacy function for backward compatibility)
 func (e *Engine) truncate(s string, maxLenStr string) string {
 	var maxLen int
 	_, err := fmt.Sscanf(maxLenStr, "%d", &maxLen)
@@ -211,15 +282,8 @@ func (e *Engine) truncate(s string, maxLenStr string) string {
 		return s
 	}
 
-	if len(s) <= maxLen {
-		return s
-	}
-
-	// Truncate and add ellipsis if string is long enough
-	if maxLen > 3 {
-		return s[:maxLen-3] + "..."
-	}
-	return s[:maxLen]
+	// Use the new smart truncation
+	return e.TruncateTitle(s, maxLen)
 }
 
 // formatDate formats a date according to a pattern

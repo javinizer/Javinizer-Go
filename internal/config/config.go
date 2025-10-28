@@ -120,6 +120,18 @@ type OutputConfig struct {
 	FileFormat          string   `yaml:"file_format"`
 	SubfolderFormat     []string `yaml:"subfolder_format"`
 	Delimiter           string   `yaml:"delimiter"`
+	MaxTitleLength      int      `yaml:"max_title_length"`
+	MaxPathLength       int      `yaml:"max_path_length"`
+	MoveSubtitles       bool     `yaml:"move_subtitles"`
+	SubtitleExtensions  []string `yaml:"subtitle_extensions"`
+	RenameFolderInPlace bool     `yaml:"rename_folder_in_place"`
+	PosterFormat        string   `yaml:"poster_format"`
+	FanartFormat        string   `yaml:"fanart_format"`
+	TrailerFormat       string   `yaml:"trailer_format"`
+	ScreenshotFormat    string   `yaml:"screenshot_format"`
+	ScreenshotFolder    string   `yaml:"screenshot_folder"`
+	ScreenshotPadding   int      `yaml:"screenshot_padding"`
+	ActressFolder       string   `yaml:"actress_folder"`
 	DownloadCover       bool     `yaml:"download_cover"`
 	DownloadPoster      bool     `yaml:"download_poster"`
 	DownloadExtrafanart bool     `yaml:"download_extrafanart"`
@@ -223,6 +235,18 @@ func DefaultConfig() *Config {
 			FileFormat:          "<ID>",
 			SubfolderFormat:     []string{},
 			Delimiter:           ", ",
+			MaxTitleLength:      100,
+			MaxPathLength:       240,
+			MoveSubtitles:       false,
+			SubtitleExtensions:  []string{".srt", ".ass", ".ssa", ".smi", ".vtt"},
+			RenameFolderInPlace: false,
+			PosterFormat:        "<ID>-poster.jpg",
+			FanartFormat:        "<ID>-fanart.jpg",
+			TrailerFormat:       "<ID>-trailer.mp4",
+			ScreenshotFormat:    "fanart",
+			ScreenshotFolder:    "extrafanart",
+			ScreenshotPadding:   1,
+			ActressFolder:       ".actors",
 			DownloadCover:       true,
 			DownloadPoster:      true,
 			DownloadExtrafanart: false,

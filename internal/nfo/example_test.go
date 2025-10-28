@@ -23,10 +23,8 @@ func ExampleGenerator_Generate() {
 		Maker:       "IdeaPocket",
 		Label:       "IP Premium",
 		Series:      "Beautiful Days",
-		Rating: &models.Rating{
-			Score: 8.5,
-			Votes: 100,
-		},
+		RatingScore: 8.5,
+		RatingVotes: 100,
 		Actresses: []models.Actress{
 			{
 				FirstName: "Momo",

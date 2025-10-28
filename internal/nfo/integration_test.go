@@ -35,10 +35,8 @@ func TestNFOGenerationEndToEnd(t *testing.T) {
 			"https://example.com/screenshots/ipx535-2.jpg",
 			"https://example.com/screenshots/ipx535-3.jpg",
 		},
-		Rating: &models.Rating{
-			Score: 8.7,
-			Votes: 250,
-		},
+		RatingScore: 8.7,
+		RatingVotes: 250,
 		Actresses: []models.Actress{
 			{
 				FirstName:    "Momo",
@@ -409,15 +407,15 @@ func verifyNFOContent(t *testing.T, nfo *Movie, movie *models.Movie, cfg *Config
 	}
 
 	// Rating
-	if movie.Rating != nil {
+	if movie.RatingScore > 0 {
 		if len(nfo.Ratings.Rating) == 0 {
 			t.Error("Rating should be present")
 		} else {
-			if nfo.Ratings.Rating[0].Value != movie.Rating.Score {
-				t.Errorf("Rating value mismatch: got %f, want %f", nfo.Ratings.Rating[0].Value, movie.Rating.Score)
+			if nfo.Ratings.Rating[0].Value != movie.RatingScore {
+				t.Errorf("Rating value mismatch: got %f, want %f", nfo.Ratings.Rating[0].Value, movie.RatingScore)
 			}
-			if nfo.Ratings.Rating[0].Votes != movie.Rating.Votes {
-				t.Errorf("Rating votes mismatch: got %d, want %d", nfo.Ratings.Rating[0].Votes, movie.Rating.Votes)
+			if nfo.Ratings.Rating[0].Votes != movie.RatingVotes {
+				t.Errorf("Rating votes mismatch: got %d, want %d", nfo.Ratings.Rating[0].Votes, movie.RatingVotes)
 			}
 		}
 	}

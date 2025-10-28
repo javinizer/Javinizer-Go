@@ -45,7 +45,7 @@ func TestOrganizer_Plan(t *testing.T) {
 		ID: "IPX-535",
 	}
 
-	plan, err := org.Plan(match, movie, "/dest")
+	plan, err := org.Plan(match, movie, "/dest", false)
 	if err != nil {
 		t.Fatalf("Plan failed: %v", err)
 	}
@@ -100,7 +100,7 @@ func TestOrganizer_Execute_DryRun(t *testing.T) {
 		ID: "IPX-535",
 	}
 
-	plan, err := org.Plan(match, movie, tmpDir)
+	plan, err := org.Plan(match, movie, tmpDir, false)
 	if err != nil {
 		t.Fatalf("Plan failed: %v", err)
 	}
@@ -157,7 +157,7 @@ func TestOrganizer_Execute_ActualMove(t *testing.T) {
 	}
 
 	destDir := filepath.Join(tmpDir, "dest")
-	plan, err := org.Plan(match, movie, destDir)
+	plan, err := org.Plan(match, movie, destDir, false)
 	if err != nil {
 		t.Fatalf("Plan failed: %v", err)
 	}
@@ -219,7 +219,7 @@ func TestOrganizer_Execute_Conflict(t *testing.T) {
 		ID: "IPX-535",
 	}
 
-	plan, err := org.Plan(match, movie, tmpDir)
+	plan, err := org.Plan(match, movie, tmpDir, false)
 	if err != nil {
 		t.Fatalf("Plan failed: %v", err)
 	}
@@ -233,7 +233,7 @@ func TestOrganizer_Execute_Conflict(t *testing.T) {
 	}
 
 	// Recreate plan to detect conflict
-	plan, err = org.Plan(match, movie, tmpDir)
+	plan, err = org.Plan(match, movie, tmpDir, false)
 	if err != nil {
 		t.Fatalf("Plan failed: %v", err)
 	}
@@ -284,7 +284,7 @@ func TestOrganizer_Copy(t *testing.T) {
 	}
 
 	destDir := filepath.Join(tmpDir, "dest")
-	plan, err := org.Plan(match, movie, destDir)
+	plan, err := org.Plan(match, movie, destDir, false)
 	if err != nil {
 		t.Fatalf("Plan failed: %v", err)
 	}
@@ -493,7 +493,7 @@ func TestOrganizer_OrganizeBatch(t *testing.T) {
 	destDir := filepath.Join(tmpDir, "dest")
 
 	// Organize batch
-	results, err := org.OrganizeBatch(matches, movies, destDir, false, false)
+	results, err := org.OrganizeBatch(matches, movies, destDir, false, false, false)
 	if err != nil {
 		t.Fatalf("OrganizeBatch failed: %v", err)
 	}

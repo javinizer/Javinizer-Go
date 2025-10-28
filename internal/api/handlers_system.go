@@ -1,14 +1,16 @@
 package api
 
 import (
-	"encoding/json"
-	"fmt"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 	"github.com/javinizer/javinizer-go/internal/config"
 	"github.com/javinizer/javinizer-go/internal/logging"
 	"github.com/javinizer/javinizer-go/internal/models"
 )
+
+// Mutex to serialize config updates (prevents concurrent read-modify-write races)
+var configMutex sync.Mutex
 
 // healthCheck godoc
 // @Summary Health check
@@ -96,49 +98,39 @@ func getAvailableScrapers(registry *models.ScraperRegistry) gin.HandlerFunc {
 
 // updateConfig godoc
 // @Summary Update configuration
-// @Description Update and save the server configuration to config.yaml
+// @Description Update and save the server configuration
 // @Tags system
 // @Accept json
 // @Produce json
-// @Param config body map[string]interface{} true "Configuration to save"
+// @Param config body config.Config true "Full configuration object"
 // @Success 200 {object} map[string]interface{} "message: Configuration saved successfully"
 // @Failure 400 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
 // @Router /api/v1/config [put]
 func updateConfig(cfg *config.Config, cfgFile string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var newConfig map[string]interface{}
+		// Serialize updates to prevent concurrent read-modify-write races
+		configMutex.Lock()
+		defer configMutex.Unlock()
 
+		// Parse incoming config
+		var newConfig config.Config
 		if err := c.ShouldBindJSON(&newConfig); err != nil {
-			c.JSON(400, ErrorResponse{Error: err.Error()})
-			return
-		}
-
-		// Convert the map back to Config struct
-		// This is a simple approach - unmarshal the JSON again
-		jsonBytes, err := json.Marshal(newConfig)
-		if err != nil {
-			c.JSON(500, ErrorResponse{Error: "Failed to process configuration"})
-			return
-		}
-
-		var updatedConfig config.Config
-		if err := json.Unmarshal(jsonBytes, &updatedConfig); err != nil {
 			c.JSON(400, ErrorResponse{Error: "Invalid configuration format"})
 			return
 		}
 
-		// Save to config file
-		if err := config.Save(&updatedConfig, cfgFile); err != nil {
+		// Save to YAML file (empty arrays are preserved, not removed)
+		if err := config.Save(&newConfig, cfgFile); err != nil {
 			logging.Errorf("Failed to save config: %v", err)
-			c.JSON(500, ErrorResponse{Error: fmt.Sprintf("Failed to save configuration: %v", err)})
+			c.JSON(500, ErrorResponse{Error: "Failed to save configuration"})
 			return
 		}
 
-		// Update the global config
-		*cfg = updatedConfig
+		// Update the in-memory config
+		*cfg = newConfig
 
-		logging.Info("Configuration saved successfully")
+		logging.Info("Configuration updated successfully")
 		c.JSON(200, gin.H{
 			"message": "Configuration saved successfully",
 		})

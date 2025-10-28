@@ -22,35 +22,35 @@ func TestMatcher_MatchFile(t *testing.T) {
 		name          string
 		filename      string
 		expectedID    string
-		expectedPart  string
+		expectedPart  int
 		expectedMulti bool
 		shouldMatch   bool
 	}{
 		// Standard formats
-		{"Standard ID", "IPX-535.mp4", "IPX-535", "", false, true},
-		{"With hyphen", "ABC-123.mkv", "ABC-123", "", false, true},
-		{"With Z suffix", "IPX-535Z.mp4", "IPX-535Z", "", false, true},
-		{"With E suffix", "IPX-535E.mp4", "IPX-535E", "", false, true},
-		{"T28 format", "T28-123.mp4", "T28-123", "", false, true},
+		{"Standard ID", "IPX-535.mp4", "IPX-535", 0, false, true},
+		{"With hyphen", "ABC-123.mkv", "ABC-123", 0, false, true},
+		{"With Z suffix", "IPX-535Z.mp4", "IPX-535Z", 0, false, true},
+		{"With E suffix", "IPX-535E.mp4", "IPX-535E", 0, false, true},
+		{"T28 format", "T28-123.mp4", "T28-123", 0, false, true},
 
 		// Multi-part files
-		{"Multi-part CD1", "IPX-535-pt1.mp4", "IPX-535", "1", true, true},
-		{"Multi-part CD2", "IPX-535-pt2.mp4", "IPX-535", "2", true, true},
-		{"Multi-part CD10", "IPX-535-pt10.mp4", "IPX-535", "10", true, true},
+		{"Multi-part CD1", "IPX-535-pt1.mp4", "IPX-535", 1, true, true},
+		{"Multi-part CD2", "IPX-535-pt2.mp4", "IPX-535", 2, true, true},
+		{"Multi-part CD10", "IPX-535-pt10.mp4", "IPX-535", 10, true, true},
 
 		// With extra text
-		{"With title", "IPX-535 Beautiful Day.mp4", "IPX-535", "", false, true},
-		{"With brackets", "[ThZu.Cc]IPX-535.mp4", "IPX-535", "", false, true},
-		{"With metadata", "IPX-535 [1080p].mp4", "IPX-535", "", false, true},
+		{"With title", "IPX-535 Beautiful Day.mp4", "IPX-535", 0, false, true},
+		{"With brackets", "[ThZu.Cc]IPX-535.mp4", "IPX-535", 0, false, true},
+		{"With metadata", "IPX-535 [1080p].mp4", "IPX-535", 0, false, true},
 
 		// Case variations
-		{"Lowercase", "ipx-535.mp4", "IPX-535", "", false, true},
-		{"Mixed case", "IpX-535.mp4", "IPX-535", "", false, true},
+		{"Lowercase", "ipx-535.mp4", "IPX-535", 0, false, true},
+		{"Mixed case", "IpX-535.mp4", "IPX-535", 0, false, true},
 
 		// Edge cases
-		{"No match", "random_movie.mp4", "", "", false, false},
-		{"Only numbers", "12345.mp4", "", "", false, false},
-		{"Invalid format", "ABC_123.mp4", "", "", false, false},
+		{"No match", "random_movie.mp4", "", 0, false, false},
+		{"Only numbers", "12345.mp4", "", 0, false, false},
+		{"Invalid format", "ABC_123.mp4", "", 0, false, false},
 	}
 
 	for _, tc := range testCases {
@@ -72,7 +72,7 @@ func TestMatcher_MatchFile(t *testing.T) {
 				}
 
 				if result.PartNumber != tc.expectedPart {
-					t.Errorf("Expected part %s, got %s", tc.expectedPart, result.PartNumber)
+					t.Errorf("Expected part %d, got %d", tc.expectedPart, result.PartNumber)
 				}
 
 				if result.IsMultiPart != tc.expectedMulti {
@@ -220,11 +220,11 @@ func TestMatcher_MatchString(t *testing.T) {
 
 func TestGroupByID(t *testing.T) {
 	results := []MatchResult{
-		{ID: "IPX-535", PartNumber: ""},
-		{ID: "ABC-123", PartNumber: ""},
-		{ID: "IPX-535", PartNumber: "1"},
-		{ID: "IPX-535", PartNumber: "2"},
-		{ID: "DEF-456", PartNumber: ""},
+		{ID: "IPX-535", PartNumber: 0},
+		{ID: "ABC-123", PartNumber: 0},
+		{ID: "IPX-535", PartNumber: 1},
+		{ID: "IPX-535", PartNumber: 2},
+		{ID: "DEF-456", PartNumber: 0},
 	}
 
 	grouped := GroupByID(results)
@@ -249,8 +249,8 @@ func TestGroupByID(t *testing.T) {
 func TestFilterMultiPart(t *testing.T) {
 	results := []MatchResult{
 		{ID: "IPX-535", IsMultiPart: false},
-		{ID: "ABC-123", IsMultiPart: true, PartNumber: "1"},
-		{ID: "ABC-123", IsMultiPart: true, PartNumber: "2"},
+		{ID: "ABC-123", IsMultiPart: true, PartNumber: 1},
+		{ID: "ABC-123", IsMultiPart: true, PartNumber: 2},
 		{ID: "DEF-456", IsMultiPart: false},
 	}
 
@@ -271,8 +271,8 @@ func TestFilterMultiPart(t *testing.T) {
 func TestFilterSinglePart(t *testing.T) {
 	results := []MatchResult{
 		{ID: "IPX-535", IsMultiPart: false},
-		{ID: "ABC-123", IsMultiPart: true, PartNumber: "1"},
-		{ID: "ABC-123", IsMultiPart: true, PartNumber: "2"},
+		{ID: "ABC-123", IsMultiPart: true, PartNumber: 1},
+		{ID: "ABC-123", IsMultiPart: true, PartNumber: 2},
 		{ID: "DEF-456", IsMultiPart: false},
 	}
 

@@ -56,7 +56,7 @@ func TestTemplateEngine_Execute(t *testing.T) {
 		{
 			name:     "Truncated long title",
 			template: "<TITLE:10>",
-			want:     "Test Mo...",
+			want:     "Test...",
 		},
 		{
 			name:     "Date format default",
@@ -92,6 +92,11 @@ func TestTemplateEngine_Execute(t *testing.T) {
 			name:     "Multiple tags",
 			template: "<YEAR>/<STUDIO>/<ID> - <TITLE>",
 			want:     "2020/Test Studio/IPX-535 - Test Movie Title",
+		},
+		{
+			name:     "Actor name tag",
+			template: "actress-<ACTORNAME>.jpg",
+			want:     "actress-Test Movie Title.jpg",
 		},
 	}
 
@@ -228,6 +233,210 @@ func TestTemplateEngine_IndexFormatting(t *testing.T) {
 			}
 			if got != tt.want {
 				t.Errorf("Execute() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestTemplateEngine_TruncateTitle(t *testing.T) {
+	engine := NewEngine()
+
+	tests := []struct {
+		name    string
+		title   string
+		maxLen  int
+		want    string
+	}{
+		{
+			name:   "Short title - no truncation",
+			title:  "Test Movie",
+			maxLen: 50,
+			want:   "Test Movie",
+		},
+		{
+			name:   "Title exactly at limit - no truncation",
+			title:  "Test Movie Title",
+			maxLen: 16,
+			want:   "Test Movie Title",
+		},
+		{
+			name:   "English title - smart word boundary truncation",
+			title:  "The Quick Brown Fox Jumps Over The Lazy Dog",
+			maxLen: 40,
+			want:   "The Quick Brown Fox Jumps Over The...",
+		},
+		{
+			name:   "English title - no word boundary found",
+			title:  "Supercalifragilisticexpialidocious",
+			maxLen: 20,
+			want:   "Supercalifragilis...",
+		},
+		{
+			name:   "English title - very short limit",
+			title:  "Test Movie Title",
+			maxLen: 5,
+			want:   "Te...",
+		},
+		{
+			name:   "English title - limit less than 3",
+			title:  "Test Movie Title",
+			maxLen: 2,
+			want:   "Te",
+		},
+		{
+			name:   "Japanese title - CJK character truncation",
+			title:  "これは非常に長い日本語のタイトルですが適切に切り詰められるべきです",
+			maxLen: 17,
+			want:   "これは非常に長い日本語のタイ...",
+		},
+		{
+			name:   "Japanese title - exact character count",
+			title:  "これは日本語です",
+			maxLen: 8,
+			want:   "これは日本...",
+		},
+		{
+			name:   "Mixed title - CJK detection with English",
+			title:  "Japanese Title 日本語タイトルとEnglish",
+			maxLen: 22,
+			want:   "Japanese Title 日本語タ...",
+		},
+		{
+			name:   "Empty title",
+			title:  "",
+			maxLen: 50,
+			want:   "",
+		},
+		{
+			name:   "Zero max length - no truncation",
+			title:  "Test Movie Title",
+			maxLen: 0,
+			want:   "Test Movie Title",
+		},
+		{
+			name:   "Negative max length - no truncation",
+			title:  "Test Movie Title",
+			maxLen: -10,
+			want:   "Test Movie Title",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := engine.TruncateTitle(tt.title, tt.maxLen)
+			if got != tt.want {
+				t.Errorf("TruncateTitle() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestTemplateEngine_ValidatePathLength(t *testing.T) {
+	engine := NewEngine()
+
+	tests := []struct {
+		name    string
+		path    string
+		maxLen  int
+		wantErr bool
+	}{
+		{
+			name:    "Short path - valid",
+			path:    "/Videos/IPX-535 [Studio] - Title (2020)/IPX-535.mp4",
+			maxLen:  260,
+			wantErr: false,
+		},
+		{
+			name:    "Path exactly at limit - valid",
+			path:    "/Videos/" + string(make([]rune, 230)),
+			maxLen:  240,
+			wantErr: false,
+		},
+		{
+			name:    "Long path - invalid",
+			path:    "/Videos/" + string(make([]rune, 250)),
+			maxLen:  240,
+			wantErr: true,
+		},
+		{
+			name:    "Zero max length - no validation",
+			path:    "/Videos/very/long/path/that/exceeds/limit/MP4-535 [Studio] - Title (2020)/MP4-535.mp4",
+			maxLen:  0,
+			wantErr: false,
+		},
+		{
+			name:    "Negative max length - no validation",
+			path:    "/Videos/very/long/path/that/exceeds/limit/MP4-535 [Studio] - Title (2020)/MP4-535.mp4",
+			maxLen:  -10,
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := engine.ValidatePathLength(tt.path, tt.maxLen)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ValidatePathLength() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestTemplateEngine_ContainsCJK(t *testing.T) {
+	engine := NewEngine()
+
+	tests := []struct {
+		name string
+		s    string
+		want bool
+	}{
+		{
+			name: "English only - no CJK",
+			s:    "The Quick Brown Fox",
+			want: false,
+		},
+		{
+			name: "Japanese Hiragana",
+			s:    "これはひらがなです",
+			want: true,
+		},
+		{
+			name: "Japanese Katakana",
+			s:    "これはカタカナです",
+			want: true,
+		},
+		{
+			name: "Chinese characters",
+			s:    "这是中文字符",
+			want: true,
+		},
+		{
+			name: "Korean characters",
+			s:    "한국어 문자",
+			want: true,
+		},
+		{
+			name: "Mixed English and Japanese",
+			s:    "Japanese Title 日本語タイトル",
+			want: true,
+		},
+		{
+			name: "Empty string",
+			s:    "",
+			want: false,
+		},
+		{
+			name: "Numbers and symbols only",
+			s:    "IPX-535 [Studio] - Title (2020)",
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := engine.containsCJK(tt.s)
+			if got != tt.want {
+				t.Errorf("containsCJK() = %v, want %v", got, tt.want)
 			}
 		})
 	}

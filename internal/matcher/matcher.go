@@ -20,7 +20,8 @@ type Matcher struct {
 type MatchResult struct {
 	File        scanner.FileInfo
 	ID          string // Extracted JAV ID (e.g., "IPX-535")
-	PartNumber  string // Part number for multi-part files (e.g., "1", "2")
+	PartNumber  int    // 0 = single-part, 1..N = part index
+	PartSuffix  string // "-A", "-pt1", "-part2" (always with leading dash)
 	IsMultiPart bool   // Whether this is a multi-part file
 	MatchedBy   string // "regex" or "builtin"
 }
@@ -33,7 +34,8 @@ func NewMatcher(cfg *config.MatchingConfig) (*Matcher, error) {
 
 	// Compile built-in pattern (covers most JAV IDs)
 	// Matches: ABC-123, ABC-123Z, ABC-123E, T28-123, etc.
-	builtinPattern := `([a-zA-Z|tT28]+-\d+[zZ]?[eE]?)(?:-pt)?(\d{1,2})?`
+	// Fixed: Proper character class and T28 support
+	builtinPattern := `(?i)((?:[A-Za-z]+|T28)-\d+(?:[ZE])?)`
 	compiled, err := regexp.Compile(builtinPattern)
 	if err != nil {
 		return nil, err
@@ -99,11 +101,11 @@ func (m *Matcher) matchWithRegex(file scanner.FileInfo, filename string, pattern
 		result.ID = strings.ToUpper(matches[1])
 	}
 
-	// Second capture group is the part number (if exists)
-	if len(matches) > 2 && matches[2] != "" {
-		result.PartNumber = matches[2]
-		result.IsMultiPart = true
-	}
+	// Detect part suffix from the rest of the filename
+	num, suffix := DetectPartSuffix(filename, result.ID)
+	result.PartNumber = num
+	result.PartSuffix = suffix
+	result.IsMultiPart = num > 0 || suffix != ""
 
 	return result
 }
