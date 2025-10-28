@@ -14,14 +14,17 @@ type Aggregator struct {
 	config                *config.Config
 	genreReplacementRepo  *database.GenreReplacementRepository
 	genreReplacementCache map[string]string
+	resolvedPriorities    map[string][]string // Cached resolved priorities for each field
 }
 
 // New creates a new aggregator
 func New(cfg *config.Config) *Aggregator {
-	return &Aggregator{
+	agg := &Aggregator{
 		config:                cfg,
 		genreReplacementCache: make(map[string]string),
 	}
+	agg.resolvePriorities()
+	return agg
 }
 
 // NewWithDatabase creates a new aggregator with database support for genre replacements
@@ -34,6 +37,9 @@ func NewWithDatabase(cfg *config.Config, db *database.DB) *Aggregator {
 
 	// Load replacement cache
 	agg.loadGenreReplacementCache()
+
+	// Resolve priorities at initialization
+	agg.resolvePriorities()
 
 	return agg
 }
@@ -48,6 +54,93 @@ func (a *Aggregator) loadGenreReplacementCache() {
 	if err == nil {
 		a.genreReplacementCache = replacementMap
 	}
+}
+
+// resolvePriorities resolves all field priorities at initialization time
+// If a field has an empty priority list or is missing, it falls back to global priority
+func (a *Aggregator) resolvePriorities() {
+	a.resolvedPriorities = make(map[string][]string)
+
+	globalPriority := a.config.Scrapers.Priority
+	if len(globalPriority) == 0 {
+		// Fallback to a sensible default if global priority is empty
+		globalPriority = []string{"r18dev", "dmm"}
+	}
+
+	// List of all metadata fields that need priority resolution
+	fields := []string{
+		"ID", "ContentID", "Title", "OriginalTitle", "Description",
+		"Director", "Maker", "Label", "Series", "PosterURL", "CoverURL",
+		"TrailerURL", "Runtime", "ReleaseDate", "Rating", "Actress",
+		"Genre", "ScreenshotURL",
+	}
+
+	for _, field := range fields {
+		fieldPriority := getFieldPriorityFromConfig(a.config, field)
+
+		// If field priority is empty or nil, use global priority
+		if len(fieldPriority) == 0 {
+			a.resolvedPriorities[field] = copySlice(globalPriority)
+		} else {
+			a.resolvedPriorities[field] = copySlice(fieldPriority)
+		}
+	}
+}
+
+// getFieldPriorityFromConfig extracts the priority list for a field from config
+// Returns nil if the field is not configured
+func getFieldPriorityFromConfig(cfg *config.Config, fieldKey string) []string {
+	// Use reflection-free approach by checking each field explicitly
+	switch fieldKey {
+	case "ID":
+		return cfg.Metadata.Priority.ID
+	case "ContentID":
+		return cfg.Metadata.Priority.ContentID
+	case "Title":
+		return cfg.Metadata.Priority.Title
+	case "OriginalTitle":
+		return cfg.Metadata.Priority.OriginalTitle
+	case "Description":
+		return cfg.Metadata.Priority.Description
+	case "Director":
+		return cfg.Metadata.Priority.Director
+	case "Maker":
+		return cfg.Metadata.Priority.Maker
+	case "Label":
+		return cfg.Metadata.Priority.Label
+	case "Series":
+		return cfg.Metadata.Priority.Series
+	case "PosterURL":
+		return cfg.Metadata.Priority.PosterURL
+	case "CoverURL":
+		return cfg.Metadata.Priority.CoverURL
+	case "TrailerURL":
+		return cfg.Metadata.Priority.TrailerURL
+	case "Runtime":
+		return cfg.Metadata.Priority.Runtime
+	case "ReleaseDate":
+		return cfg.Metadata.Priority.ReleaseDate
+	case "Rating":
+		return cfg.Metadata.Priority.Rating
+	case "Actress":
+		return cfg.Metadata.Priority.Actress
+	case "Genre":
+		return cfg.Metadata.Priority.Genre
+	case "ScreenshotURL":
+		return cfg.Metadata.Priority.ScreenshotURL
+	default:
+		return nil
+	}
+}
+
+// copySlice creates a copy of a string slice
+func copySlice(src []string) []string {
+	if src == nil {
+		return nil
+	}
+	dst := make([]string, len(src))
+	copy(dst, src)
+	return dst
 }
 
 // Aggregate combines multiple scraper results into a single Movie
@@ -67,62 +160,62 @@ func (a *Aggregator) Aggregate(results []*models.ScraperResult) (*models.Movie, 
 		resultsBySource[result.Source] = result
 	}
 
-	// Aggregate each field based on priority
-	movie.ID = a.getFieldByPriority(resultsBySource, a.config.Metadata.Priority.ID, func(r *models.ScraperResult) string {
+	// Aggregate each field based on resolved priority
+	movie.ID = a.getFieldByPriority(resultsBySource, a.resolvedPriorities["ID"], func(r *models.ScraperResult) string {
 		return r.ID
 	})
 
-	movie.ContentID = a.getFieldByPriority(resultsBySource, a.config.Metadata.Priority.ContentID, func(r *models.ScraperResult) string {
+	movie.ContentID = a.getFieldByPriority(resultsBySource, a.resolvedPriorities["ContentID"], func(r *models.ScraperResult) string {
 		return r.ContentID
 	})
 
-	movie.Title = a.getFieldByPriority(resultsBySource, a.config.Metadata.Priority.Title, func(r *models.ScraperResult) string {
+	movie.Title = a.getFieldByPriority(resultsBySource, a.resolvedPriorities["Title"], func(r *models.ScraperResult) string {
 		return r.Title
 	})
 
-	movie.OriginalTitle = a.getFieldByPriority(resultsBySource, a.config.Metadata.Priority.OriginalTitle, func(r *models.ScraperResult) string {
+	movie.OriginalTitle = a.getFieldByPriority(resultsBySource, a.resolvedPriorities["OriginalTitle"], func(r *models.ScraperResult) string {
 		return r.OriginalTitle
 	})
 
-	movie.Description = a.getFieldByPriority(resultsBySource, a.config.Metadata.Priority.Description, func(r *models.ScraperResult) string {
+	movie.Description = a.getFieldByPriority(resultsBySource, a.resolvedPriorities["Description"], func(r *models.ScraperResult) string {
 		return r.Description
 	})
 
-	movie.Director = a.getFieldByPriority(resultsBySource, a.config.Metadata.Priority.Director, func(r *models.ScraperResult) string {
+	movie.Director = a.getFieldByPriority(resultsBySource, a.resolvedPriorities["Director"], func(r *models.ScraperResult) string {
 		return r.Director
 	})
 
-	movie.Maker = a.getFieldByPriority(resultsBySource, a.config.Metadata.Priority.Maker, func(r *models.ScraperResult) string {
+	movie.Maker = a.getFieldByPriority(resultsBySource, a.resolvedPriorities["Maker"], func(r *models.ScraperResult) string {
 		return r.Maker
 	})
 
-	movie.Label = a.getFieldByPriority(resultsBySource, a.config.Metadata.Priority.Label, func(r *models.ScraperResult) string {
+	movie.Label = a.getFieldByPriority(resultsBySource, a.resolvedPriorities["Label"], func(r *models.ScraperResult) string {
 		return r.Label
 	})
 
-	movie.Series = a.getFieldByPriority(resultsBySource, a.config.Metadata.Priority.Series, func(r *models.ScraperResult) string {
+	movie.Series = a.getFieldByPriority(resultsBySource, a.resolvedPriorities["Series"], func(r *models.ScraperResult) string {
 		return r.Series
 	})
 
-	movie.PosterURL = a.getFieldByPriority(resultsBySource, a.config.Metadata.Priority.PosterURL, func(r *models.ScraperResult) string {
+	movie.PosterURL = a.getFieldByPriority(resultsBySource, a.resolvedPriorities["PosterURL"], func(r *models.ScraperResult) string {
 		return r.PosterURL
 	})
 
-	movie.CoverURL = a.getFieldByPriority(resultsBySource, a.config.Metadata.Priority.CoverURL, func(r *models.ScraperResult) string {
+	movie.CoverURL = a.getFieldByPriority(resultsBySource, a.resolvedPriorities["CoverURL"], func(r *models.ScraperResult) string {
 		return r.CoverURL
 	})
 
-	movie.TrailerURL = a.getFieldByPriority(resultsBySource, a.config.Metadata.Priority.TrailerURL, func(r *models.ScraperResult) string {
+	movie.TrailerURL = a.getFieldByPriority(resultsBySource, a.resolvedPriorities["TrailerURL"], func(r *models.ScraperResult) string {
 		return r.TrailerURL
 	})
 
 	// Aggregate runtime
-	movie.Runtime = a.getIntFieldByPriority(resultsBySource, a.config.Metadata.Priority.Runtime, func(r *models.ScraperResult) int {
+	movie.Runtime = a.getIntFieldByPriority(resultsBySource, a.resolvedPriorities["Runtime"], func(r *models.ScraperResult) int {
 		return r.Runtime
 	})
 
 	// Aggregate release date
-	movie.ReleaseDate = a.getTimeFieldByPriority(resultsBySource, a.config.Metadata.Priority.ReleaseDate, func(r *models.ScraperResult) *time.Time {
+	movie.ReleaseDate = a.getTimeFieldByPriority(resultsBySource, a.resolvedPriorities["ReleaseDate"], func(r *models.ScraperResult) *time.Time {
 		return r.ReleaseDate
 	})
 
@@ -131,15 +224,15 @@ func (a *Aggregator) Aggregate(results []*models.ScraperResult) (*models.Movie, 
 	}
 
 	// Aggregate rating
-	ratingScore, ratingVotes := a.getRatingByPriority(resultsBySource, a.config.Metadata.Priority.Rating)
+	ratingScore, ratingVotes := a.getRatingByPriority(resultsBySource, a.resolvedPriorities["Rating"])
 	movie.RatingScore = ratingScore
 	movie.RatingVotes = ratingVotes
 
 	// Aggregate actresses
-	movie.Actresses = a.getActressesByPriority(resultsBySource, a.config.Metadata.Priority.Actress)
+	movie.Actresses = a.getActressesByPriority(resultsBySource, a.resolvedPriorities["Actress"])
 
 	// Aggregate genres
-	genreNames := a.getGenresByPriority(resultsBySource, a.config.Metadata.Priority.Genre)
+	genreNames := a.getGenresByPriority(resultsBySource, a.resolvedPriorities["Genre"])
 	movie.Genres = make([]models.Genre, 0, len(genreNames))
 	for _, name := range genreNames {
 		// Apply replacement if exists
@@ -153,7 +246,7 @@ func (a *Aggregator) Aggregate(results []*models.ScraperResult) (*models.Movie, 
 	}
 
 	// Aggregate screenshots
-	movie.Screenshots = a.getScreenshotsByPriority(resultsBySource, a.config.Metadata.Priority.ScreenshotURL)
+	movie.Screenshots = a.getScreenshotsByPriority(resultsBySource, a.resolvedPriorities["ScreenshotURL"])
 
 	// Set source metadata
 	if len(results) > 0 {

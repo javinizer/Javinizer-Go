@@ -183,3 +183,125 @@ func TestAggregatePriority_MissingData(t *testing.T) {
 	assert.Equal(t, "プレステージ", movie.Maker,
 		"Should use DMM maker since it's available")
 }
+
+// TestAggregatePriority_EmptyPriorityFallsBackToGlobal tests that empty priority arrays fall back to global priority
+func TestAggregatePriority_EmptyPriorityFallsBackToGlobal(t *testing.T) {
+	cfg := &config.Config{
+		Scrapers: config.ScrapersConfig{
+			Priority: []string{"r18dev", "dmm"}, // Global priority
+		},
+		Metadata: config.MetadataConfig{
+			Priority: config.PriorityConfig{
+				Title:       []string{},           // Empty - should use global
+				Description: []string{"dmm"},      // Explicit priority
+				Maker:       []string{},           // Empty - should use global
+			},
+		},
+	}
+
+	agg := New(cfg)
+
+	// Verify resolved priorities
+	assert.Equal(t, []string{"r18dev", "dmm"}, agg.resolvedPriorities["Title"],
+		"Empty title priority should resolve to global priority")
+	assert.Equal(t, []string{"dmm"}, agg.resolvedPriorities["Description"],
+		"Explicit description priority should be preserved")
+	assert.Equal(t, []string{"r18dev", "dmm"}, agg.resolvedPriorities["Maker"],
+		"Empty maker priority should resolve to global priority")
+
+	// Create mock scraper results
+	r18devResult := &models.ScraperResult{
+		Source:      "r18dev",
+		Language:    "en",
+		ID:          "TEST-001",
+		Title:       "English Title",
+		Maker:       "English Maker",
+		Description: "English Description",
+	}
+
+	dmmResult := &models.ScraperResult{
+		Source:      "dmm",
+		Language:    "ja",
+		ID:          "TEST-001",
+		Title:       "Japanese Title",
+		Maker:       "Japanese Maker",
+		Description: "Japanese Description",
+	}
+
+	results := []*models.ScraperResult{r18devResult, dmmResult}
+	movie, err := agg.Aggregate(results)
+	require.NoError(t, err)
+	require.NotNil(t, movie)
+
+	// Title should use global priority (r18dev first) because title priority is empty
+	assert.Equal(t, "English Title", movie.Title,
+		"Title with empty priority should use global priority (r18dev first)")
+
+	// Description should use explicit priority (dmm only)
+	assert.Equal(t, "Japanese Description", movie.Description,
+		"Description should use explicit priority (dmm)")
+
+	// Maker should use global priority (r18dev first) because maker priority is empty
+	assert.Equal(t, "English Maker", movie.Maker,
+		"Maker with empty priority should use global priority (r18dev first)")
+}
+
+// TestAggregatePriority_MissingPriorityFallsBackToGlobal tests that missing priorities fall back to global
+func TestAggregatePriority_MissingPriorityFallsBackToGlobal(t *testing.T) {
+	cfg := &config.Config{
+		Scrapers: config.ScrapersConfig{
+			Priority: []string{"dmm", "r18dev"}, // Global priority
+		},
+		Metadata: config.MetadataConfig{
+			Priority: config.PriorityConfig{
+				// Only define some fields, others are nil/missing
+				Title: []string{"r18dev", "dmm"}, // Explicit
+				// Description, Maker, etc. are missing
+			},
+		},
+	}
+
+	agg := New(cfg)
+
+	// Verify resolved priorities
+	assert.Equal(t, []string{"r18dev", "dmm"}, agg.resolvedPriorities["Title"],
+		"Explicit title priority should be preserved")
+	assert.Equal(t, []string{"dmm", "r18dev"}, agg.resolvedPriorities["Description"],
+		"Missing description priority should resolve to global priority")
+	assert.Equal(t, []string{"dmm", "r18dev"}, agg.resolvedPriorities["Maker"],
+		"Missing maker priority should resolve to global priority")
+
+	// Create mock scraper results
+	r18devResult := &models.ScraperResult{
+		Source:      "r18dev",
+		ID:          "TEST-001",
+		Title:       "English Title",
+		Maker:       "English Maker",
+		Description: "English Description",
+	}
+
+	dmmResult := &models.ScraperResult{
+		Source:      "dmm",
+		ID:          "TEST-001",
+		Title:       "Japanese Title",
+		Maker:       "Japanese Maker",
+		Description: "Japanese Description",
+	}
+
+	results := []*models.ScraperResult{r18devResult, dmmResult}
+	movie, err := agg.Aggregate(results)
+	require.NoError(t, err)
+	require.NotNil(t, movie)
+
+	// Title should use explicit priority (r18dev first)
+	assert.Equal(t, "English Title", movie.Title,
+		"Title should use explicit priority (r18dev first)")
+
+	// Description should use global priority (dmm first) because it's missing
+	assert.Equal(t, "Japanese Description", movie.Description,
+		"Description with missing priority should use global priority (dmm first)")
+
+	// Maker should use global priority (dmm first) because it's missing
+	assert.Equal(t, "Japanese Maker", movie.Maker,
+		"Maker with missing priority should use global priority (dmm first)")
+}

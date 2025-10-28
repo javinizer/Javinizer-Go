@@ -6,6 +6,7 @@
 	import Button from '$lib/components/ui/Button.svelte';
 	import Card from '$lib/components/ui/Card.svelte';
 	import { toastStore } from '$lib/stores/toast';
+	import MetadataPriority from '$lib/components/priority/MetadataPriority.svelte';
 
 	interface ScraperItem {
 		name: string;
@@ -139,8 +140,94 @@
 	}
 
 	function toggleScraper(index: number) {
-		scrapers[index].enabled = !scrapers[index].enabled;
+		const scraper = scrapers[index];
+		const wasEnabled = scraper.enabled;
+		const willBeEnabled = !wasEnabled;
+
+		// If disabling a scraper, check if it's used in any priority lists
+		if (wasEnabled && !willBeEnabled) {
+			const usageInfo = getScraperUsage(scraper.name);
+			if (usageInfo.count > 0) {
+				const confirmed = confirm(
+					`${scraper.displayName} is currently used in ${usageInfo.count} field(s):\n\n${usageInfo.fields.join(', ')}\n\nDisabling this scraper will remove it from all priority lists. Continue?`
+				);
+				if (!confirmed) return;
+
+				// Remove scraper from all priority lists
+				removeScraperFromPriorities(scraper.name);
+			}
+		}
+
+		scrapers[index].enabled = willBeEnabled;
 		updateConfigFromScrapers();
+	}
+
+	// Get scraper usage count and field names
+	function getScraperUsage(scraperName: string): { count: number; fields: string[] } {
+		if (!config) return { count: 0, fields: [] };
+
+		const metadataFields = [
+			{ key: 'ID', label: 'Movie ID' },
+			{ key: 'Title', label: 'Title' },
+			{ key: 'OriginalTitle', label: 'Original Title' },
+			{ key: 'Description', label: 'Description' },
+			{ key: 'ReleaseDate', label: 'Release Date' },
+			{ key: 'Runtime', label: 'Runtime' },
+			{ key: 'ContentID', label: 'Content ID' },
+			{ key: 'Actress', label: 'Actresses' },
+			{ key: 'Genre', label: 'Genres' },
+			{ key: 'Director', label: 'Director' },
+			{ key: 'Maker', label: 'Studio/Maker' },
+			{ key: 'Label', label: 'Label' },
+			{ key: 'Series', label: 'Series' },
+			{ key: 'Rating', label: 'Rating' },
+			{ key: 'CoverURL', label: 'Cover Image' },
+			{ key: 'PosterURL', label: 'Poster Image' },
+			{ key: 'ScreenshotURL', label: 'Screenshots' },
+			{ key: 'TrailerURL', label: 'Trailer' }
+		];
+
+		const globalPriority = config?.Scrapers?.Priority || [];
+		const fieldsUsing: string[] = [];
+
+		metadataFields.forEach((field) => {
+			// Check if field has custom priority
+			const fieldPriority = config?.Metadata?.Priority?.[field.key];
+			const priority = fieldPriority && fieldPriority.length > 0 ? fieldPriority : globalPriority;
+
+			if (priority.includes(scraperName)) {
+				fieldsUsing.push(field.label);
+			}
+		});
+
+		return { count: fieldsUsing.length, fields: fieldsUsing };
+	}
+
+	// Remove scraper from all priority lists
+	function removeScraperFromPriorities(scraperName: string) {
+		if (!config) return;
+
+		// Remove from global priority
+		if (config.Scrapers?.Priority) {
+			config.Scrapers.Priority = config.Scrapers.Priority.filter((s: string) => s !== scraperName);
+		}
+
+		// Remove from all field-specific priorities
+		if (config.Metadata?.Priority) {
+			Object.keys(config.Metadata.Priority).forEach((fieldKey) => {
+				config.Metadata.Priority[fieldKey] = config.Metadata.Priority[fieldKey].filter(
+					(s: string) => s !== scraperName
+				);
+
+				// Clean up empty arrays
+				if (config.Metadata.Priority[fieldKey].length === 0) {
+					delete config.Metadata.Priority[fieldKey];
+				}
+			});
+		}
+
+		// Trigger reactivity
+		config = { ...config };
 	}
 
 	onMount(async () => {
@@ -261,9 +348,9 @@
 				<h2 class="text-xl font-semibold mb-4">Scraper Settings</h2>
 				<div class="space-y-4">
 					<div>
-						<label class="block text-sm font-medium mb-2">Scraper Priority & Status</label>
+						<label class="block text-sm font-medium mb-2">Available Scrapers</label>
 						<p class="text-sm text-muted-foreground mb-3">
-							Scrapers are tried in order from top to bottom. Use arrows to reorder.
+							Enable or disable scrapers and configure their options. Scraper priority is managed in the "Metadata Priority" section below.
 						</p>
 						<div class="space-y-2">
 							{#each scrapers as scraper, index}
@@ -281,6 +368,14 @@
 										<!-- Scraper Name -->
 										<div class="flex-1 font-medium {scraper.enabled ? '' : 'text-muted-foreground'}">
 											{scraper.displayName}
+											{#if scraper.enabled}
+												{@const usage = getScraperUsage(scraper.name)}
+												{#if usage.count > 0}
+													<span class="ml-2 text-xs font-normal text-muted-foreground">
+														(used in {usage.count} field{usage.count !== 1 ? 's' : ''})
+													</span>
+												{/if}
+											{/if}
 										</div>
 
 										<!-- Expand button (only if scraper has options and is enabled) -->
@@ -300,30 +395,6 @@
 												{/snippet}
 											</Button>
 										{/if}
-
-										<!-- Move Buttons -->
-										<div class="flex gap-1">
-											<Button
-												variant="ghost"
-												size="icon"
-												onclick={() => moveScraperUp(index)}
-												disabled={index === 0}
-											>
-												{#snippet children()}
-													<ChevronUp class="h-4 w-4" />
-												{/snippet}
-											</Button>
-											<Button
-												variant="ghost"
-												size="icon"
-												onclick={() => moveScraperDown(index)}
-												disabled={index === scrapers.length - 1}
-											>
-												{#snippet children()}
-													<ChevronDown class="h-4 w-4" />
-												{/snippet}
-											</Button>
-										</div>
 									</div>
 
 									<!-- Collapsible options section - dynamically rendered -->
@@ -364,6 +435,9 @@
 					</div>
 				</div>
 			</Card>
+
+			<!-- Metadata Priority Settings -->
+			<MetadataPriority config={config} onUpdate={(updatedConfig) => { config = updatedConfig; }} />
 
 			<!-- Output Settings -->
 			<Card class="p-6">

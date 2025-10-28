@@ -58,25 +58,26 @@ type MetadataConfig struct {
 }
 
 // PriorityConfig defines which scraper to prefer for each field
+// Note: omitempty is removed so empty arrays are preserved in YAML (signaling "use global")
 type PriorityConfig struct {
-	Actress       []string `yaml:"actress"`
-	OriginalTitle []string `yaml:"original_title"`
-	CoverURL      []string `yaml:"cover_url"`
-	Description   []string `yaml:"description"`
-	Director      []string `yaml:"director"`
-	Genre         []string `yaml:"genre"`
-	ID            []string `yaml:"id"`
-	ContentID     []string `yaml:"content_id"`
-	Label         []string `yaml:"label"`
-	Maker         []string `yaml:"maker"`
-	PosterURL     []string `yaml:"poster_url"`
-	Rating        []string `yaml:"rating"`
-	ReleaseDate   []string `yaml:"release_date"`
-	Runtime       []string `yaml:"runtime"`
-	Series        []string `yaml:"series"`
-	ScreenshotURL []string `yaml:"screenshot_url"`
-	Title         []string `yaml:"title"`
-	TrailerURL    []string `yaml:"trailer_url"`
+	Actress       []string `yaml:"actress" json:"Actress"`
+	OriginalTitle []string `yaml:"original_title" json:"OriginalTitle"`
+	CoverURL      []string `yaml:"cover_url" json:"CoverURL"`
+	Description   []string `yaml:"description" json:"Description"`
+	Director      []string `yaml:"director" json:"Director"`
+	Genre         []string `yaml:"genre" json:"Genre"`
+	ID            []string `yaml:"id" json:"ID"`
+	ContentID     []string `yaml:"content_id" json:"ContentID"`
+	Label         []string `yaml:"label" json:"Label"`
+	Maker         []string `yaml:"maker" json:"Maker"`
+	PosterURL     []string `yaml:"poster_url" json:"PosterURL"`
+	Rating        []string `yaml:"rating" json:"Rating"`
+	ReleaseDate   []string `yaml:"release_date" json:"ReleaseDate"`
+	Runtime       []string `yaml:"runtime" json:"Runtime"`
+	Series        []string `yaml:"series" json:"Series"`
+	ScreenshotURL []string `yaml:"screenshot_url" json:"ScreenshotURL"`
+	Title         []string `yaml:"title" json:"Title"`
+	TrailerURL    []string `yaml:"trailer_url" json:"TrailerURL"`
 }
 
 // CSVConfig holds CSV file configuration
