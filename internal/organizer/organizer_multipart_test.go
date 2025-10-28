@@ -15,6 +15,7 @@ func TestPlan_AppendsPartSuffix(t *testing.T) {
 	cfg := &config.OutputConfig{
 		FolderFormat:    "<ID> [<STUDIO>] - <TITLE>",
 		FileFormat:      "<ID>",
+		RenameFile:      true,
 		SubfolderFormat: []string{},
 		MaxTitleLength:  0,
 		MaxPathLength:   260,
@@ -99,6 +100,7 @@ func TestOrganizeBatch_GroupsAndSortsParts(t *testing.T) {
 	cfg := &config.OutputConfig{
 		FolderFormat:    "<ID>",
 		FileFormat:      "<ID>",
+		RenameFile:      true,
 		SubfolderFormat: []string{},
 	}
 	o := NewOrganizer(cfg)

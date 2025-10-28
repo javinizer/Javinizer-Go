@@ -127,6 +127,7 @@ type OutputConfig struct {
 	SubtitleExtensions  []string `yaml:"subtitle_extensions"`
 	RenameFolderInPlace bool     `yaml:"rename_folder_in_place"`
 	MoveToFolder        bool     `yaml:"move_to_folder"` // Move/copy files to organized folders (default: true)
+	RenameFile          bool     `yaml:"rename_file"`    // Rename files using file_format template (default: true)
 	PosterFormat        string   `yaml:"poster_format"`
 	FanartFormat        string   `yaml:"fanart_format"`
 	TrailerFormat       string   `yaml:"trailer_format"`
@@ -244,6 +245,7 @@ func DefaultConfig() *Config {
 			SubtitleExtensions:  []string{".srt", ".ass", ".ssa", ".smi", ".vtt"},
 			RenameFolderInPlace: false,
 			MoveToFolder:        true, // Move to organized folders by default
+			RenameFile:          true, // Rename files by default
 			PosterFormat:        "<ID>-poster.jpg",
 			FanartFormat:        "<ID>-fanart.jpg",
 			TrailerFormat:       "<ID>-trailer.mp4",

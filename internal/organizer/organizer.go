@@ -155,24 +155,31 @@ func (o *Organizer) Plan(match matcher.MatchResult, movie *models.Movie, destDir
 	folderName = template.SanitizeFolderPath(folderName)
 
 	// Generate file name
-	fileName, err := o.templateEngine.Execute(o.config.FileFormat, ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate file name: %w", err)
-	}
+	var fileName string
+	if o.config.RenameFile {
+		// Use template to generate new filename
+		fileName, err = o.templateEngine.Execute(o.config.FileFormat, ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate file name: %w", err)
+		}
 
-	// Apply title truncation if configured (for file names too)
-	if o.config.MaxTitleLength > 0 {
-		fileName = o.templateEngine.TruncateTitle(fileName, o.config.MaxTitleLength)
-	}
-	fileName = template.SanitizeFilename(fileName)
+		// Apply title truncation if configured (for file names too)
+		if o.config.MaxTitleLength > 0 {
+			fileName = o.templateEngine.TruncateTitle(fileName, o.config.MaxTitleLength)
+		}
+		fileName = template.SanitizeFilename(fileName)
 
-	// Append part suffix before extension
-	if match.IsMultiPart && match.PartSuffix != "" {
-		fileName = fileName + match.PartSuffix
-	}
+		// Append part suffix before extension
+		if match.IsMultiPart && match.PartSuffix != "" {
+			fileName = fileName + match.PartSuffix
+		}
 
-	// Add extension
-	fileName = fileName + match.File.Extension
+		// Add extension
+		fileName = fileName + match.File.Extension
+	} else {
+		// Keep original filename
+		fileName = match.File.Name
+	}
 
 	// Build target paths with subfolder hierarchy
 	// Start with destDir, add subfolder parts, then final folder name

@@ -31,6 +31,7 @@ func TestOrganizer_Plan(t *testing.T) {
 	cfg := &config.OutputConfig{
 		FolderFormat: "<ID> - <TITLE>",
 		FileFormat:   "<ID>",
+		RenameFile:   true,
 	}
 
 	org := NewOrganizer(cfg)
@@ -86,6 +87,7 @@ func TestOrganizer_Execute_DryRun(t *testing.T) {
 	cfg := &config.OutputConfig{
 		FolderFormat: "<ID>",
 		FileFormat:   "<ID>",
+		RenameFile:   true,
 	}
 
 	org := NewOrganizer(cfg)
@@ -142,6 +144,7 @@ func TestOrganizer_Execute_ActualMove(t *testing.T) {
 	cfg := &config.OutputConfig{
 		FolderFormat: "<ID> - <TITLE>",
 		FileFormat:   "<ID>",
+		RenameFile:   true,
 	}
 
 	org := NewOrganizer(cfg)
@@ -205,6 +208,7 @@ func TestOrganizer_Execute_Conflict(t *testing.T) {
 	cfg := &config.OutputConfig{
 		FolderFormat: "<ID>",
 		FileFormat:   "<ID>",
+		RenameFile:   true,
 	}
 
 	org := NewOrganizer(cfg)
@@ -269,6 +273,7 @@ func TestOrganizer_Copy(t *testing.T) {
 	cfg := &config.OutputConfig{
 		FolderFormat: "<ID>",
 		FileFormat:   "<ID>",
+		RenameFile:   true,
 	}
 
 	org := NewOrganizer(cfg)
@@ -328,6 +333,7 @@ func TestOrganizer_Revert(t *testing.T) {
 	cfg := &config.OutputConfig{
 		FolderFormat: "<ID>",
 		FileFormat:   "<ID>",
+		RenameFile:   true,
 	}
 
 	org := NewOrganizer(cfg)
@@ -459,6 +465,7 @@ func TestOrganizer_OrganizeBatch(t *testing.T) {
 	cfg := &config.OutputConfig{
 		FolderFormat: "<ID>",
 		FileFormat:   "<ID>",
+		RenameFile:   true,
 	}
 
 	org := NewOrganizer(cfg)
