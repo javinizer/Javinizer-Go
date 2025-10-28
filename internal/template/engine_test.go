@@ -3,6 +3,8 @@ package template
 import (
 	"testing"
 	"time"
+
+	"github.com/javinizer/javinizer-go/internal/mediainfo"
 )
 
 func TestTemplateEngine_Execute(t *testing.T) {
@@ -576,4 +578,119 @@ func TestTemplateEngine_Conditionals(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestTemplateEngine_GroupActress(t *testing.T) {
+	engine := NewEngine()
+
+	tests := []struct {
+		name         string
+		actresses    []string
+		groupActress bool
+		template     string
+		want         string
+	}{
+		{
+			name:         "Multiple actresses with GroupActress enabled",
+			actresses:    []string{"Actress One", "Actress Two", "Actress Three"},
+			groupActress: true,
+			template:     "<ID> - <ACTORS>",
+			want:         "IPX-535 - @Group",
+		},
+		{
+			name:         "Multiple actresses with GroupActress disabled",
+			actresses:    []string{"Actress One", "Actress Two", "Actress Three"},
+			groupActress: false,
+			template:     "<ID> - <ACTORS>",
+			want:         "IPX-535 - Actress One, Actress Two, Actress Three",
+		},
+		{
+			name:         "Single actress with GroupActress enabled (should not group)",
+			actresses:    []string{"Single Actress"},
+			groupActress: true,
+			template:     "<ID> - <ACTORS>",
+			want:         "IPX-535 - Single Actress",
+		},
+		{
+			name:         "Single actress with GroupActress disabled",
+			actresses:    []string{"Single Actress"},
+			groupActress: false,
+			template:     "<ID> - <ACTORS>",
+			want:         "IPX-535 - Single Actress",
+		},
+		{
+			name:         "No actresses with GroupActress enabled",
+			actresses:    []string{},
+			groupActress: true,
+			template:     "<ID> - <ACTORS>",
+			want:         "IPX-535 - ",
+		},
+		{
+			name:         "Two actresses with GroupActress enabled",
+			actresses:    []string{"Actress One", "Actress Two"},
+			groupActress: true,
+			template:     "<ID> - <ACTORS>",
+			want:         "IPX-535 - @Group",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := &Context{
+				ID:           "IPX-535",
+				Actresses:    tt.actresses,
+				GroupActress: tt.groupActress,
+			}
+
+			got, err := engine.Execute(tt.template, ctx)
+			if err != nil {
+				t.Errorf("Execute() error = %v", err)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("Execute() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestTemplateEngine_ResolutionTag(t *testing.T) {
+	engine := NewEngine()
+
+	t.Run("With cached mediainfo", func(t *testing.T) {
+		ctx := &Context{
+			ID: "TEST-001",
+		}
+
+		// Import mediainfo package for the test
+		ctx.cachedMediaInfo = &mediainfo.VideoInfo{
+			Height: 1080,
+		}
+
+		result, err := engine.Execute("<ID> - <RESOLUTION>", ctx)
+		if err != nil {
+			t.Fatalf("Execute() error = %v", err)
+		}
+
+		want := "TEST-001 - 1080p"
+		if result != want {
+			t.Errorf("Execute() = %q, want %q", result, want)
+		}
+	})
+
+	t.Run("Without video file path", func(t *testing.T) {
+		ctx := &Context{
+			ID: "TEST-001",
+		}
+
+		result, err := engine.Execute("<ID> - <RESOLUTION>", ctx)
+		if err != nil {
+			t.Fatalf("Execute() error = %v", err)
+		}
+
+		want := "TEST-001 - "
+		if result != want {
+			t.Errorf("Execute() = %q, want %q", result, want)
+		}
+	})
 }

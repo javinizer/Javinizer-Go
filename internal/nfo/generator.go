@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/javinizer/javinizer-go/internal/mediainfo"
 	"github.com/javinizer/javinizer-go/internal/models"
 	"github.com/javinizer/javinizer-go/internal/template"
 )
@@ -35,6 +36,9 @@ type Config struct {
 
 	// Rating source
 	DefaultRatingSource string // Which rating to mark as default (default: "themoviedb")
+
+	// Output configuration
+	GroupActress bool // Replace multiple actresses with "@Group" (default: false)
 }
 
 // NewGenerator creates a new NFO generator
@@ -73,11 +77,13 @@ func DefaultConfig() *Config {
 
 // Generate creates an NFO file from a Movie model
 // partSuffix: optional suffix for multi-part files (e.g., "-pt1", "-A")
-func (g *Generator) Generate(movie *models.Movie, outputPath string, partSuffix string) error {
-	nfo := g.MovieToNFO(movie)
+// videoFilePath: optional path to video file for extracting stream details (empty string to skip)
+func (g *Generator) Generate(movie *models.Movie, outputPath string, partSuffix string, videoFilePath string) error {
+	nfo := g.MovieToNFO(movie, videoFilePath)
 
 	// Generate filename using template
 	ctx := template.NewContextFromMovie(movie)
+	ctx.GroupActress = g.config.GroupActress
 	filename, err := g.templateEngine.Execute(g.config.NFOFilenameTemplate, ctx)
 	if err != nil {
 		return fmt.Errorf("failed to generate NFO filename: %w", err)
@@ -103,7 +109,8 @@ func (g *Generator) Generate(movie *models.Movie, outputPath string, partSuffix 
 }
 
 // MovieToNFO converts a Movie model to NFO format
-func (g *Generator) MovieToNFO(movie *models.Movie) *Movie {
+// videoFilePath: optional path to video file for extracting stream details (empty string to skip)
+func (g *Generator) MovieToNFO(movie *models.Movie, videoFilePath string) *Movie {
 	nfo := &Movie{
 		ID:            movie.ID,
 		Title:         movie.Title,
@@ -206,6 +213,15 @@ func (g *Generator) MovieToNFO(movie *models.Movie) *Movie {
 	// Add trailer
 	if g.config.IncludeTrailer && movie.TrailerURL != "" {
 		nfo.Trailer = movie.TrailerURL
+	}
+
+	// Add stream details if enabled and video file path provided
+	if g.config.IncludeStreamDetails && videoFilePath != "" {
+		if streamDetails := g.extractStreamDetails(videoFilePath); streamDetails != nil {
+			nfo.FileInfo = &FileInfo{
+				StreamDetails: streamDetails,
+			}
+		}
 	}
 
 	return nfo
@@ -420,4 +436,49 @@ func (g *Generator) ScraperResultToNFO(result *models.ScraperResult) *Movie {
 	}
 
 	return nfo
+}
+
+// extractStreamDetails extracts video/audio stream information from a video file
+func (g *Generator) extractStreamDetails(videoFilePath string) *StreamDetails {
+	// Extract media information
+	info, err := mediainfo.Analyze(videoFilePath)
+	if err != nil {
+		// Silently fail - stream details are optional
+		return nil
+	}
+
+	streamDetails := &StreamDetails{}
+
+	// Add video stream
+	if info.Width > 0 && info.Height > 0 {
+		videoStream := VideoStream{
+			Codec:  info.VideoCodec,
+			Aspect: info.AspectRatio,
+			Width:  info.Width,
+			Height: info.Height,
+		}
+
+		if info.Duration > 0 {
+			videoStream.DurationInSeconds = int(info.Duration)
+		}
+
+		streamDetails.Video = []VideoStream{videoStream}
+	}
+
+	// Add audio stream
+	if info.AudioCodec != "" {
+		audioStream := AudioStream{
+			Codec:    info.AudioCodec,
+			Channels: info.AudioChannels,
+		}
+
+		streamDetails.Audio = []AudioStream{audioStream}
+	}
+
+	// Return nil if no streams were added
+	if len(streamDetails.Video) == 0 && len(streamDetails.Audio) == 0 {
+		return nil
+	}
+
+	return streamDetails
 }

@@ -245,7 +245,7 @@ func processOrganizeJob(job *worker.BatchJob, mat *matcher.Matcher, destination 
 	// Initialize organizer, downloader, and NFO generator
 	org := organizer.NewOrganizer(&cfg.Output)
 	dl := downloader.NewDownloader(&cfg.Output, "Javinizer/1.0")
-	nfoGen := nfo.NewGenerator(nfo.ConfigFromAppConfig(&cfg.Metadata.NFO))
+	nfoGen := nfo.NewGenerator(nfo.ConfigFromAppConfig(&cfg.Metadata.NFO, &cfg.Output))
 
 	// Broadcast organization started
 	wsHub.BroadcastProgress(&ws.ProgressMessage{
@@ -332,7 +332,13 @@ func processOrganizeJob(job *worker.BatchJob, mat *matcher.Matcher, destination 
 				partSuffix = match.PartSuffix
 			}
 
-			if err := nfoGen.Generate(movie, result.FolderPath, partSuffix); err != nil {
+			// Pass the video file path for stream details extraction
+			// Use NewPath (destination) after move/copy, fall back to OriginalPath
+			videoFilePath := result.NewPath
+			if videoFilePath == "" {
+				videoFilePath = result.OriginalPath
+			}
+			if err := nfoGen.Generate(movie, result.FolderPath, partSuffix, videoFilePath); err != nil {
 				logging.Errorf("Failed to generate NFO for %s: %v", movie.ID, err)
 			}
 		}
@@ -361,6 +367,7 @@ func processOrganizeJob(job *worker.BatchJob, mat *matcher.Matcher, destination 
 func generatePreview(movie *models.Movie, destination string, cfg *config.Config) OrganizePreviewResponse {
 	// Create template context from movie
 	ctx := template.NewContextFromMovie(movie)
+	ctx.GroupActress = cfg.Output.GroupActress
 	templateEngine := template.NewEngine()
 
 	// Generate folder name

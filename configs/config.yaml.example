@@ -75,7 +75,20 @@ metadata:
         enabled: true
         path: data/genres.csv
         auto_add: true
+    # Genres to ignore/filter out. Supports both exact strings and regex patterns.
+    # Patterns starting with ^, ending with $, or containing regex metacharacters are treated as regex.
+    # Examples:
+    #   - "Sample"           # Exact match
+    #   - "^Featured"        # Starts with "Featured"
+    #   - ".*mosaic.*"       # Contains "mosaic"
+    #   - "^(HD|4K|VR)"      # Starts with HD, 4K, or VR
+    #   - "(?i)uncensored"   # Case-insensitive match for "uncensored"
     ignore_genres: []
+    # ignore_genres:
+    #   - "^Featured Actress"
+    #   - ".*mosaic.*"
+    #   - "Sample"
+    #   - "Trailer"
     required_fields: []
     nfo:
         enabled: true

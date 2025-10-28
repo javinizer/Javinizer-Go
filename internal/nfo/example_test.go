@@ -42,7 +42,7 @@ func ExampleGenerator_Generate() {
 
 	// Generate NFO file (no part suffix for single file)
 	tmpDir := os.TempDir()
-	err := gen.Generate(movie, tmpDir, "")
+	err := gen.Generate(movie, tmpDir, "", "")
 	if err != nil {
 		fmt.Printf("Error: %v\n", err)
 		return
@@ -64,7 +64,7 @@ func ExampleGenerator_MovieToNFO() {
 	}
 
 	gen := nfo.NewGenerator(nfo.DefaultConfig())
-	nfoMovie := gen.MovieToNFO(movie)
+	nfoMovie := gen.MovieToNFO(movie, "")
 
 	fmt.Printf("ID: %s\n", nfoMovie.ID)
 	fmt.Printf("Title: %s\n", nfoMovie.Title)

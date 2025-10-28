@@ -416,6 +416,7 @@ type NFOTask struct {
 	progressTracker *ProgressTracker
 	dryRun          bool
 	partSuffix      string // Optional suffix for multi-part files (e.g., "-pt1", "-A")
+	videoFilePath   string // Optional path to video file for stream details extraction
 }
 
 // NewNFOTask creates a new NFO generation task
@@ -426,6 +427,7 @@ func NewNFOTask(
 	progressTracker *ProgressTracker,
 	dryRun bool,
 	partSuffix string, // Optional suffix for multi-part files (e.g., "-pt1", "-A")
+	videoFilePath string, // Optional path to video file for stream details extraction
 ) *NFOTask {
 	desc := fmt.Sprintf("Generating NFO for %s", movie.ID)
 	if partSuffix != "" {
@@ -447,6 +449,7 @@ func NewNFOTask(
 		progressTracker: progressTracker,
 		dryRun:          dryRun,
 		partSuffix:      partSuffix,
+		videoFilePath:   videoFilePath,
 	}
 }
 
@@ -464,7 +467,7 @@ func (t *NFOTask) Execute(ctx context.Context) error {
 		return nil
 	}
 
-	if err := t.generator.Generate(t.movie, t.targetDir, t.partSuffix); err != nil {
+	if err := t.generator.Generate(t.movie, t.targetDir, t.partSuffix, t.videoFilePath); err != nil {
 		return fmt.Errorf("failed to generate NFO: %w", err)
 	}
 
@@ -694,6 +697,7 @@ func (t *ProcessFileTask) Execute(ctx context.Context) error {
 			t.progressTracker,
 			t.dryRun,
 			partSuffix,
+			t.match.File.Path, // Pass original video file path for stream details
 		)
 		if err := nfoTask.Execute(ctx); err != nil {
 			// Log but don't fail

@@ -2,6 +2,7 @@ package aggregator
 
 import (
 	"fmt"
+	"regexp"
 	"time"
 
 	"github.com/javinizer/javinizer-go/internal/config"
@@ -15,6 +16,7 @@ type Aggregator struct {
 	genreReplacementRepo  *database.GenreReplacementRepository
 	genreReplacementCache map[string]string
 	resolvedPriorities    map[string][]string // Cached resolved priorities for each field
+	ignoreGenreRegexes    []*regexp.Regexp    // Compiled regex patterns for genre filtering
 }
 
 // New creates a new aggregator
@@ -24,6 +26,7 @@ func New(cfg *config.Config) *Aggregator {
 		genreReplacementCache: make(map[string]string),
 	}
 	agg.resolvePriorities()
+	agg.compileGenreRegexes()
 	return agg
 }
 
@@ -41,6 +44,9 @@ func NewWithDatabase(cfg *config.Config, db *database.DB) *Aggregator {
 	// Resolve priorities at initialization
 	agg.resolvePriorities()
 
+	// Compile genre filter regexes
+	agg.compileGenreRegexes()
+
 	return agg
 }
 
@@ -54,6 +60,43 @@ func (a *Aggregator) loadGenreReplacementCache() {
 	if err == nil {
 		a.genreReplacementCache = replacementMap
 	}
+}
+
+// compileGenreRegexes compiles regex patterns from ignore_genres config
+// Patterns that look like regex (contain special chars) are compiled
+// Plain strings are left for exact matching
+func (a *Aggregator) compileGenreRegexes() {
+	a.ignoreGenreRegexes = make([]*regexp.Regexp, 0)
+
+	for _, pattern := range a.config.Metadata.IgnoreGenres {
+		// Check if pattern looks like a regex (contains regex metacharacters)
+		if isRegexPattern(pattern) {
+			compiled, err := regexp.Compile(pattern)
+			if err == nil {
+				a.ignoreGenreRegexes = append(a.ignoreGenreRegexes, compiled)
+			}
+			// If compilation fails, silently skip (will fall through to exact match)
+		}
+	}
+}
+
+// isRegexPattern checks if a string looks like a regex pattern
+func isRegexPattern(s string) bool {
+	// Check for common regex metacharacters
+	regexChars := []string{"^", "$", ".*", ".+", "\\", "[", "]", "(", ")", "|", "?", "*", "+"}
+	for _, char := range regexChars {
+		if len(s) > 0 && (s[0] == '^' || s[len(s)-1] == '$') {
+			return true
+		}
+		if len(s) >= len(char) {
+			for i := 0; i <= len(s)-len(char); i++ {
+				if s[i:i+len(char)] == char {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 // resolvePriorities resolves all field priorities at initialization time
@@ -432,12 +475,22 @@ func (a *Aggregator) getScreenshotsByPriority(
 }
 
 // isGenreIgnored checks if a genre should be ignored
+// Supports both exact string matching and regex patterns
 func (a *Aggregator) isGenreIgnored(genre string) bool {
+	// First, check compiled regex patterns
+	for _, re := range a.ignoreGenreRegexes {
+		if re.MatchString(genre) {
+			return true
+		}
+	}
+
+	// Fall back to exact string matching for non-regex patterns
 	for _, ignored := range a.config.Metadata.IgnoreGenres {
 		if genre == ignored {
 			return true
 		}
 	}
+
 	return false
 }
 

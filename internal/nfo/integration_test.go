@@ -59,7 +59,7 @@ func TestNFOGenerationEndToEnd(t *testing.T) {
 	t.Run("Default Config", func(t *testing.T) {
 		gen := NewGenerator(DefaultConfig())
 
-		err := gen.Generate(movie, tmpDir, "")
+		err := gen.Generate(movie, tmpDir, "", "")
 		if err != nil {
 			t.Fatalf("Generate failed: %v", err)
 		}
@@ -100,7 +100,7 @@ func TestNFOGenerationEndToEnd(t *testing.T) {
 		gen := NewGenerator(cfg)
 
 		tmpDir2 := t.TempDir()
-		err := gen.Generate(movie, tmpDir2, "")
+		err := gen.Generate(movie, tmpDir2, "", "")
 		if err != nil {
 			t.Fatalf("Generate failed: %v", err)
 		}
@@ -159,7 +159,7 @@ func TestNFOGenerationEndToEnd(t *testing.T) {
 		gen := NewGenerator(cfg)
 
 		tmpDir3 := t.TempDir()
-		err := gen.Generate(movie, tmpDir3, "")
+		err := gen.Generate(movie, tmpDir3, "", "")
 		if err != nil {
 			t.Fatalf("Generate failed: %v", err)
 		}
@@ -201,7 +201,7 @@ func TestConfigFromAppConfig(t *testing.T) {
 		RatingSource:         "custom",
 	}
 
-	nfoCfg := ConfigFromAppConfig(appCfg)
+	nfoCfg := ConfigFromAppConfig(appCfg, nil)
 
 	// Verify all fields are mapped correctly
 	if nfoCfg.ActorFirstNameOrder != false {
@@ -320,7 +320,7 @@ func TestXMLFormatting(t *testing.T) {
 	gen := NewGenerator(DefaultConfig())
 	tmpDir := t.TempDir()
 
-	err := gen.Generate(movie, tmpDir, "")
+	err := gen.Generate(movie, tmpDir, "", "")
 	if err != nil {
 		t.Fatalf("Generate failed: %v", err)
 	}
@@ -471,7 +471,7 @@ func TestMultipleActresses(t *testing.T) {
 	}
 
 	gen := NewGenerator(DefaultConfig())
-	nfo := gen.MovieToNFO(movie)
+	nfo := gen.MovieToNFO(movie, "")
 
 	if len(nfo.Actors) != 3 {
 		t.Fatalf("Expected 3 actors, got %d", len(nfo.Actors))

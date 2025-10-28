@@ -76,6 +76,7 @@ func (d *Downloader) generateFilename(movie *models.Movie, templateStr string, i
 
 	ctx := template.NewContextFromMovie(movie)
 	ctx.Index = index // Set index for screenshot numbering
+	ctx.GroupActress = d.config.GroupActress
 
 	engine := template.NewEngine()
 	filename, err := engine.Execute(templateStr, ctx)

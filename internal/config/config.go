@@ -128,6 +128,7 @@ type OutputConfig struct {
 	RenameFolderInPlace bool     `yaml:"rename_folder_in_place"`
 	MoveToFolder        bool     `yaml:"move_to_folder"` // Move/copy files to organized folders (default: true)
 	RenameFile          bool     `yaml:"rename_file"`    // Rename files using file_format template (default: true)
+	GroupActress        bool     `yaml:"group_actress"`  // Replace multiple actresses with "@Group" in templates (default: false)
 	PosterFormat        string   `yaml:"poster_format"`
 	FanartFormat        string   `yaml:"fanart_format"`
 	TrailerFormat       string   `yaml:"trailer_format"`
@@ -244,8 +245,9 @@ func DefaultConfig() *Config {
 			MoveSubtitles:       false,
 			SubtitleExtensions:  []string{".srt", ".ass", ".ssa", ".smi", ".vtt"},
 			RenameFolderInPlace: false,
-			MoveToFolder:        true, // Move to organized folders by default
-			RenameFile:          true, // Rename files by default
+			MoveToFolder:        true,  // Move to organized folders by default
+			RenameFile:          true,  // Rename files by default
+			GroupActress:        false, // Don't group actresses by default
 			PosterFormat:        "<ID>-poster.jpg",
 			FanartFormat:        "<ID>-fanart.jpg",
 			TrailerFormat:       "<ID>-trailer.mp4",

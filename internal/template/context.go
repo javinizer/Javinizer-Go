@@ -3,6 +3,7 @@ package template
 import (
 	"time"
 
+	"github.com/javinizer/javinizer-go/internal/mediainfo"
 	"github.com/javinizer/javinizer-go/internal/models"
 )
 
@@ -36,15 +37,22 @@ type Context struct {
 
 	// Media info
 	OriginalFilename string
+	VideoFilePath    string // Path to video file for mediainfo extraction
 
 	// Indexing (for screenshots, multi-part, etc.)
 	Index int
+
+	// Cached mediainfo (lazy-loaded)
+	cachedMediaInfo *mediainfo.VideoInfo
 
 	// Additional metadata
 	Rating      float64
 	Description string
 	CoverURL    string
 	TrailerURL  string
+
+	// Output configuration
+	GroupActress bool // Replace multiple actresses with "@Group"
 }
 
 // NewContextFromMovie creates a template context from a Movie model
@@ -155,4 +163,24 @@ func (c *Context) Clone() *Context {
 	}
 
 	return &clone
+}
+
+// GetMediaInfo lazy-loads and caches video metadata
+func (c *Context) GetMediaInfo() *mediainfo.VideoInfo {
+	if c.cachedMediaInfo != nil {
+		return c.cachedMediaInfo
+	}
+
+	if c.VideoFilePath == "" {
+		return nil
+	}
+
+	// Analyze video file
+	info, err := mediainfo.Analyze(c.VideoFilePath)
+	if err != nil {
+		return nil
+	}
+
+	c.cachedMediaInfo = info
+	return info
 }

@@ -162,6 +162,11 @@ func (e *Engine) resolveTag(tagName, modifier string, ctx *Context) (string, err
 
 	case "ACTORS", "ACTRESSES":
 		if len(ctx.Actresses) > 0 {
+			// Check if GroupActress is enabled and there are multiple actresses
+			if ctx.GroupActress && len(ctx.Actresses) > 1 {
+				return "@Group", nil
+			}
+
 			delimiter := ", "
 			if modifier != "" {
 				delimiter = modifier
@@ -206,6 +211,14 @@ func (e *Engine) resolveTag(tagName, modifier string, ctx *Context) (string, err
 	case "ACTORNAME":
 		// For actress filenames, use the title as the actress name
 		return ctx.Title, nil
+
+	case "RESOLUTION":
+		// Extract resolution from video file
+		info := ctx.GetMediaInfo()
+		if info != nil {
+			return info.GetResolution(), nil
+		}
+		return "", nil
 
 	default:
 		return "", fmt.Errorf("unknown tag: %s", tagName)

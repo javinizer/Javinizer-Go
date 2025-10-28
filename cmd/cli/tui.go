@@ -204,7 +204,7 @@ func runTUI(cmd *cobra.Command, args []string) {
 	org := organizer.NewOrganizer(&cfg.Output)
 
 	// Initialize NFO generator
-	nfoGen := nfo.NewGenerator(nfo.ConfigFromAppConfig(&cfg.Metadata.NFO))
+	nfoGen := nfo.NewGenerator(nfo.ConfigFromAppConfig(&cfg.Metadata.NFO, &cfg.Output))
 
 	// Create progress tracker and worker pool
 	progressChan := make(chan worker.ProgressUpdate, cfg.Performance.BufferSize)

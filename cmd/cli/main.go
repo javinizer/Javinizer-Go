@@ -693,7 +693,7 @@ func runSort(cmd *cobra.Command, args []string) {
 	}
 
 	fileOrganizer := organizer.NewOrganizer(&cfg.Output)
-	nfoGenerator := nfo.NewGenerator(nfo.ConfigFromAppConfig(&cfg.Metadata.NFO))
+	nfoGenerator := nfo.NewGenerator(nfo.ConfigFromAppConfig(&cfg.Metadata.NFO, &cfg.Output))
 	mediaDownloader := downloader.NewDownloader(&cfg.Output, cfg.Scrapers.UserAgent)
 
 	// Print configuration
@@ -890,7 +890,7 @@ func runSort(cmd *cobra.Command, args []string) {
 					if dryRun {
 						fmt.Printf("   %s%s.nfo (would generate)\n", id, partSuffix)
 					} else {
-						if err := nfoGenerator.Generate(movie, outputDir, partSuffix); err != nil {
+						if err := nfoGenerator.Generate(movie, outputDir, partSuffix, ""); err != nil {
 							logging.Infof("Failed to generate NFO for %s%s: %v", id, partSuffix, err)
 						} else {
 							nfoCount++
@@ -903,7 +903,7 @@ func runSort(cmd *cobra.Command, args []string) {
 				if dryRun {
 					fmt.Printf("   %s.nfo (would generate)\n", id)
 				} else {
-					if err := nfoGenerator.Generate(movie, outputDir, ""); err != nil {
+					if err := nfoGenerator.Generate(movie, outputDir, "", ""); err != nil {
 						logging.Infof("Failed to generate NFO for %s: %v", id, err)
 					} else {
 						nfoCount++

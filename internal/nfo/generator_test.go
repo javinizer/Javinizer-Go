@@ -54,7 +54,7 @@ func TestMovieToNFO(t *testing.T) {
 		},
 	}
 
-	nfo := gen.MovieToNFO(movie)
+	nfo := gen.MovieToNFO(movie, "")
 
 	// Verify basic fields
 	if nfo.ID != "IPX-535" {
@@ -354,7 +354,7 @@ func TestNFOWithoutOptionalFields(t *testing.T) {
 		Title: "Minimal Movie",
 	}
 
-	nfo := gen.MovieToNFO(movie)
+	nfo := gen.MovieToNFO(movie, "")
 
 	if nfo.ID != "TEST-001" {
 		t.Errorf("Expected ID 'TEST-001', got '%s'", nfo.ID)
@@ -394,7 +394,7 @@ func TestGenerateWithTemplate(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Generate NFO (no part suffix for single file)
-	err := gen.Generate(movie, tmpDir, "")
+	err := gen.Generate(movie, tmpDir, "", "")
 	if err != nil {
 		t.Fatalf("Generate failed: %v", err)
 	}
@@ -439,13 +439,13 @@ func TestGenerator_GenerateMultiPart(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Generate NFO for part 1
-	err := gen.Generate(movie, tmpDir, "-pt1")
+	err := gen.Generate(movie, tmpDir, "-pt1", "")
 	if err != nil {
 		t.Fatalf("Generate part 1 failed: %v", err)
 	}
 
 	// Generate NFO for part 2
-	err = gen.Generate(movie, tmpDir, "-pt2")
+	err = gen.Generate(movie, tmpDir, "-pt2", "")
 	if err != nil {
 		t.Fatalf("Generate part 2 failed: %v", err)
 	}

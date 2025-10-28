@@ -127,6 +127,7 @@ func (o *Organizer) isDedicatedFolder(dir string, id string, m *matcher.Matcher)
 // Plan creates an organization plan without executing it
 func (o *Organizer) Plan(match matcher.MatchResult, movie *models.Movie, destDir string, forceUpdate bool) (*OrganizePlan, error) {
 	ctx := template.NewContextFromMovie(movie)
+	ctx.GroupActress = o.config.GroupActress
 
 	// Generate subfolder hierarchy (if configured)
 	subfolderParts := make([]string, 0, len(o.config.SubfolderFormat))
