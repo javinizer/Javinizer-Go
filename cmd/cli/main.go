@@ -864,11 +864,19 @@ func runSort(cmd *cobra.Command, args []string) {
 				}
 			}
 
-			// Create destination folder for this movie (use first match for planning)
-			plan, err := fileOrganizer.Plan(idMatches[0], movie, destPath, forceUpdate)
-			if err != nil {
-				logging.Infof("Failed to plan for %s: %v", id, err)
-				continue
+			// Determine output directory: either organized folder or source directory
+			var outputDir string
+			if cfg.Output.MoveToFolder {
+				// Create destination folder for this movie (use first match for planning)
+				plan, err := fileOrganizer.Plan(idMatches[0], movie, destPath, forceUpdate)
+				if err != nil {
+					logging.Infof("Failed to plan for %s: %v", id, err)
+					continue
+				}
+				outputDir = plan.TargetDir
+			} else {
+				// Use source directory (directory of the first file)
+				outputDir = idMatches[0].File.Dir
 			}
 
 			// If per_file is enabled and this is multi-part, generate NFO for each part
@@ -882,7 +890,7 @@ func runSort(cmd *cobra.Command, args []string) {
 					if dryRun {
 						fmt.Printf("   %s%s.nfo (would generate)\n", id, partSuffix)
 					} else {
-						if err := nfoGenerator.Generate(movie, plan.TargetDir, partSuffix); err != nil {
+						if err := nfoGenerator.Generate(movie, outputDir, partSuffix); err != nil {
 							logging.Infof("Failed to generate NFO for %s%s: %v", id, partSuffix, err)
 						} else {
 							nfoCount++
@@ -895,7 +903,7 @@ func runSort(cmd *cobra.Command, args []string) {
 				if dryRun {
 					fmt.Printf("   %s.nfo (would generate)\n", id)
 				} else {
-					if err := nfoGenerator.Generate(movie, plan.TargetDir, ""); err != nil {
+					if err := nfoGenerator.Generate(movie, outputDir, ""); err != nil {
 						logging.Infof("Failed to generate NFO for %s: %v", id, err)
 					} else {
 						nfoCount++
@@ -930,9 +938,17 @@ func runSort(cmd *cobra.Command, args []string) {
 			}
 			firstMatch := idMatches[0]
 
-			plan, err := fileOrganizer.Plan(firstMatch, movie, destPath, forceUpdate)
-			if err != nil {
-				continue
+			// Determine output directory: either organized folder or source directory
+			var downloadDir string
+			if cfg.Output.MoveToFolder {
+				plan, err := fileOrganizer.Plan(firstMatch, movie, destPath, forceUpdate)
+				if err != nil {
+					continue
+				}
+				downloadDir = plan.TargetDir
+			} else {
+				// Use source directory
+				downloadDir = firstMatch.File.Dir
 			}
 
 			if dryRun {
@@ -947,7 +963,7 @@ func runSort(cmd *cobra.Command, args []string) {
 				}
 				fmt.Printf("   %s: would download ~%d file(s)\n", id, count)
 			} else {
-				logging.Debugf("[%s] Starting download to: %s", id, plan.TargetDir)
+				logging.Debugf("[%s] Starting download to: %s", id, downloadDir)
 				// Use PartNumber for deduplication (0 for single file, 1+ for multi-part)
 				// Find the lowest part number to determine if we should download shared media
 				partNumber := 0
@@ -966,7 +982,7 @@ func runSort(cmd *cobra.Command, args []string) {
 					}
 					partNumber = minPartNumber
 				}
-				results, err := mediaDownloader.DownloadAll(movie, plan.TargetDir, partNumber)
+				results, err := mediaDownloader.DownloadAll(movie, downloadDir, partNumber)
 				if err != nil {
 					logging.Infof("Download error for %s: %v", id, err)
 				}
@@ -999,9 +1015,9 @@ func runSort(cmd *cobra.Command, args []string) {
 		}
 	}
 
-	// Step 6: Organize files (skip in update mode)
+	// Step 6: Organize files (skip in update mode or if move_to_folder is disabled)
 	organizedCount := 0
-	if !updateMode {
+	if !updateMode && cfg.Output.MoveToFolder {
 		fmt.Println("\n📦 Organizing files...")
 
 		for _, match := range matches {
