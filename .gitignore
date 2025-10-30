@@ -41,3 +41,8 @@ configs/config.yaml
 # Test files
 /test-videos/
 cli
+
+# Coverage files
+coverage.out
+coverage.html
+*.coverprofile
