@@ -444,8 +444,13 @@ func (s *Scraper) parseHTML(doc *goquery.Document, sourceURL string) (*models.Sc
 	// Extract genres
 	result.Genres = s.extractGenres(doc)
 
-	// Extract actresses
-	result.Actresses = s.extractActresses(doc)
+	// Extract actresses (only if scrape_actress is enabled)
+	if s.scrapeActress {
+		result.Actresses = s.extractActresses(doc)
+		logging.Debugf("DMM: Extracted %d actresses", len(result.Actresses))
+	} else {
+		logging.Debug("DMM: Skipping actress extraction (scrape_actress=false)")
+	}
 
 	// Extract cover URL
 	result.CoverURL = s.extractCoverURL(doc, isNewSite)

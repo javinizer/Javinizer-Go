@@ -154,6 +154,9 @@ export interface ScraperOption {
 	label: string;
 	description: string;
 	type: string; // 'boolean', 'string', 'number', etc.
+	min?: number; // For number type
+	max?: number; // For number type
+	unit?: string; // For number type (e.g., 'seconds', 'MB')
 }
 
 export interface ScraperInfo {

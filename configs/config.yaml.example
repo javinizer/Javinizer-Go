@@ -118,7 +118,7 @@ metadata:
         include_stream_details: false
         include_fanart: true
         include_trailer: true
-        rating_source: themoviedb
+        rating_source: r18dev
         tag: []
         tagline: ""
         credits: []

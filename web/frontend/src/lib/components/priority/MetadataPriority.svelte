@@ -209,15 +209,7 @@
 	});
 </script>
 
-<Card class="p-6">
-	<div class="space-y-6">
-		<!-- Header -->
-		<div>
-			<h2 class="text-xl font-semibold mb-2">Metadata Priority</h2>
-			<p class="text-sm text-muted-foreground">
-				Configure which scraper to use for each metadata field
-			</p>
-		</div>
+<div class="space-y-6">
 
 		<!-- Mode Toggle -->
 		<div class="flex items-start gap-4 p-4 bg-accent/30 rounded-lg">
@@ -322,8 +314,7 @@
 				{/if}
 			</div>
 		{/if}
-	</div>
-</Card>
+</div>
 
 <!-- Field Editor Modal -->
 {#if editingField}

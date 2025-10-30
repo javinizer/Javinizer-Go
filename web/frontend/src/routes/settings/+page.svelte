@@ -7,6 +7,13 @@
 	import Card from '$lib/components/ui/Card.svelte';
 	import { toastStore } from '$lib/stores/toast';
 	import MetadataPriority from '$lib/components/priority/MetadataPriority.svelte';
+	import SettingsSection from '$lib/components/settings/SettingsSection.svelte';
+	import SettingsSubsection from '$lib/components/settings/SettingsSubsection.svelte';
+	import FormToggle from '$lib/components/settings/FormToggle.svelte';
+	import FormTextInput from '$lib/components/settings/FormTextInput.svelte';
+	import FormNumberInput from '$lib/components/settings/FormNumberInput.svelte';
+	import FormPasswordInput from '$lib/components/settings/FormPasswordInput.svelte';
+	import FormTemplateInput from '$lib/components/settings/FormTemplateInput.svelte';
 
 	interface ScraperItem {
 		name: string;
@@ -327,31 +334,24 @@
 			</Card>
 		{:else if config}
 			<!-- Server Settings -->
-			<Card class="p-6">
-				<h2 class="text-xl font-semibold mb-4">Server Settings</h2>
-				<div class="space-y-4">
-					<div class="grid grid-cols-2 gap-4">
-						<div>
-							<label class="block text-sm font-medium mb-2">Host</label>
-							<input type="text" bind:value={config.Server.Host} class={inputClass} placeholder="localhost" />
-						</div>
-						<div>
-							<label class="block text-sm font-medium mb-2">Port</label>
-							<input type="number" bind:value={config.Server.Port} class={inputClass} placeholder="8080" />
-						</div>
+			<SettingsSection title="Server Settings" description="Configure API server host and port" defaultExpanded={false}>
+				<div class="grid grid-cols-2 gap-4">
+					<div>
+						<label class="block text-sm font-medium mb-2">Host</label>
+						<input type="text" bind:value={config.Server.Host} class={inputClass} placeholder="localhost" />
+					</div>
+					<div>
+						<label class="block text-sm font-medium mb-2">Port</label>
+						<input type="number" bind:value={config.Server.Port} class={inputClass} placeholder="8080" />
 					</div>
 				</div>
-			</Card>
+			</SettingsSection>
 
 			<!-- Scraper Settings -->
-			<Card class="p-6">
-				<h2 class="text-xl font-semibold mb-4">Scraper Settings</h2>
+			<SettingsSection title="Scraper Settings" description="Enable/disable scrapers and configure user agent. Scraper priority is managed in Metadata Priority section." defaultExpanded={false}>
 				<div class="space-y-4">
 					<div>
 						<label class="block text-sm font-medium mb-2">Available Scrapers</label>
-						<p class="text-sm text-muted-foreground mb-3">
-							Enable or disable scrapers and configure their options. Scraper priority is managed in the "Metadata Priority" section below.
-						</p>
 						<div class="space-y-2">
 							{#each scrapers as scraper, index}
 								<div class="rounded-lg border {scraper.enabled ? 'bg-background' : 'bg-muted/30'}">
@@ -417,8 +417,27 @@
 															<p class="text-xs text-muted-foreground ml-6">
 																{option.description}
 															</p>
+														{:else if option.type === 'number'}
+															<div>
+																<label class="block text-sm font-medium mb-1">{option.label}</label>
+																<div class="flex items-center gap-2">
+																	<input
+																		type="number"
+																		value={getOptionValue(scraper.name, option.key)}
+																		oninput={(e) => setOptionValue(scraper.name, option.key, parseInt(e.currentTarget.value))}
+																		min={option.min || 0}
+																		max={option.max || 999}
+																		class="w-32 px-3 py-2 border rounded-md focus:ring-2 focus:ring-primary focus:border-primary transition-all bg-background text-sm"
+																	/>
+																	{#if option.unit}
+																		<span class="text-sm text-muted-foreground">{option.unit}</span>
+																	{/if}
+																</div>
+																<p class="text-xs text-muted-foreground mt-1">
+																	{option.description}
+																</p>
+															</div>
 														{/if}
-														<!-- Add more option types here as needed (string, number, etc.) -->
 													</div>
 												{/each}
 											</div>
@@ -434,14 +453,58 @@
 						<input type="text" bind:value={config.Scrapers.UserAgent} class={inputClass} />
 					</div>
 				</div>
-			</Card>
+			</SettingsSection>
 
 			<!-- Metadata Priority Settings -->
-			<MetadataPriority config={config} onUpdate={(updatedConfig) => { config = updatedConfig; }} />
+			<SettingsSection title="Metadata Priority" description="Configure which scraper to use for each metadata field" defaultExpanded={false}>
+				<MetadataPriority config={config} onUpdate={(updatedConfig) => { config = updatedConfig; }} />
+			</SettingsSection>
+
+			<!-- File Operations Section -->
+			<SettingsSection title="File Operations" description="Control how Javinizer organizes and moves your files" defaultExpanded={false}>
+				<FormToggle
+					label="Move to folder"
+					description="Create a dedicated folder for each movie and move files into it"
+					checked={config.Output.MoveToFolder ?? true}
+					onchange={(val) => { config.Output.MoveToFolder = val; }}
+				/>
+
+				<FormToggle
+					label="Rename file"
+					description="Rename video files according to the file naming template"
+					checked={config.Output.RenameFile ?? true}
+					onchange={(val) => { config.Output.RenameFile = val; }}
+				/>
+
+				<FormToggle
+					label="Rename folder in place"
+					description="Rename the parent folder without moving files to a new location"
+					checked={config.Output.RenameFolderInPlace ?? false}
+					onchange={(val) => { config.Output.RenameFolderInPlace = val; }}
+				/>
+
+				<SettingsSubsection title="Subtitle Handling">
+					<FormToggle
+						label="Move subtitles"
+						description="Automatically move subtitle files (.srt, .ass, etc.) with video files"
+						checked={config.Output.MoveSubtitles ?? false}
+						onchange={(val) => { config.Output.MoveSubtitles = val; }}
+					/>
+
+					<FormTextInput
+						label="Subtitle extensions"
+						description="Comma-separated list of subtitle file extensions to move with videos"
+						value={config.Output.SubtitleExtensions?.join(', ') ?? ".srt, .ass, .ssa, .sub, .vtt"}
+						placeholder=".srt, .ass, .ssa, .sub, .vtt"
+						onchange={(val) => {
+							config.Output.SubtitleExtensions = val.split(',').map(s => s.trim()).filter(s => s.length > 0);
+						}}
+					/>
+				</SettingsSubsection>
+			</SettingsSection>
 
 			<!-- Output Settings -->
-			<Card class="p-6">
-				<h2 class="text-xl font-semibold mb-4">Output Settings</h2>
+			<SettingsSection title="Output Settings" description="Configure output paths, templates, and download options" defaultExpanded={false}>
 				<div class="space-y-4">
 					<div>
 						<label class="block text-sm font-medium mb-2">Destination Path</label>
@@ -457,18 +520,47 @@
 						/>
 					</div>
 
-					<div>
-						<label class="block text-sm font-medium mb-2">Delimiter</label>
-						<input
-							type="text"
-							bind:value={config.Output.Delimiter}
-							class={inputClass}
-							placeholder=", "
+					<SettingsSubsection title="Template Options">
+						<FormNumberInput
+							label="Max title length"
+							description="Maximum characters for movie titles in folder names. Longer titles will be intelligently truncated."
+							value={config.Output.MaxTitleLength ?? 100}
+							min={10}
+							max={500}
+							unit="characters"
+							onchange={(val) => { config.Output.MaxTitleLength = val; }}
 						/>
-						<p class="text-xs text-muted-foreground mt-1">
-							Character(s) used to separate multiple values (e.g., actresses, genres)
-						</p>
-					</div>
+
+						<FormNumberInput
+							label="Max path length"
+							description="Maximum total path length to prevent Windows path errors (MAX_PATH = 260)"
+							value={config.Output.MaxPathLength ?? 240}
+							min={100}
+							max={250}
+							unit="characters"
+							onchange={(val) => { config.Output.MaxPathLength = val; }}
+						/>
+
+						<FormToggle
+							label="Group actress"
+							description="Group actress names with @ prefix (e.g., '@GroupName')"
+							checked={config.Output.GroupActress ?? false}
+							onchange={(val) => { config.Output.GroupActress = val; }}
+						/>
+
+						<div class="py-4 border-b border-border">
+							<label class="block text-sm font-medium mb-2">Delimiter</label>
+							<input
+								type="text"
+								bind:value={config.Output.Delimiter}
+								class={inputClass}
+								placeholder=", "
+							/>
+							<p class="text-xs text-muted-foreground mt-1">
+								Character(s) used to separate multiple values (e.g., actresses, genres)
+							</p>
+						</div>
+					</SettingsSubsection>
 
 					<div>
 						<label class="block text-sm font-medium mb-2">Subfolder Format</label>
@@ -517,6 +609,16 @@
 						</label>
 					</div>
 
+					<FormNumberInput
+						label="Download timeout"
+						description="Maximum time to wait for image/video downloads to complete"
+						value={config.Output.DownloadTimeout ?? 60}
+						min={5}
+						max={600}
+						unit="seconds"
+						onchange={(val) => { config.Output.DownloadTimeout = val; }}
+					/>
+
 					<div>
 						<label class="block text-sm font-medium mb-2">Folder Naming Template</label>
 						<input
@@ -539,28 +641,456 @@
 							placeholder="<ID>"
 						/>
 					</div>
+
+					<SettingsSubsection title="Media File Naming">
+						<FormTemplateInput
+							label="Poster format"
+							description="Naming template for poster images"
+							value={config.Output.PosterFormat ?? "<ID>-poster.jpg"}
+							placeholder="<ID>-poster.jpg"
+							showTagList={true}
+							onchange={(val) => { config.Output.PosterFormat = val; }}
+						/>
+
+						<FormTemplateInput
+							label="Fanart format"
+							description="Naming template for fanart/cover images"
+							value={config.Output.FanartFormat ?? "<ID>-fanart.jpg"}
+							placeholder="<ID>-fanart.jpg"
+							onchange={(val) => { config.Output.FanartFormat = val; }}
+						/>
+
+						<FormTemplateInput
+							label="Trailer format"
+							description="Naming template for trailer videos"
+							value={config.Output.TrailerFormat ?? "<ID>-trailer.mp4"}
+							placeholder="<ID>-trailer.mp4"
+							onchange={(val) => { config.Output.TrailerFormat = val; }}
+						/>
+
+						<FormTemplateInput
+							label="Screenshot format"
+							description="Naming template for screenshot images"
+							value={config.Output.ScreenshotFormat ?? "fanart"}
+							placeholder="fanart"
+							onchange={(val) => { config.Output.ScreenshotFormat = val; }}
+						/>
+
+						<FormTextInput
+							label="Screenshot folder"
+							description="Folder name for storing screenshot images"
+							value={config.Output.ScreenshotFolder ?? "extrafanart"}
+							placeholder="extrafanart"
+							onchange={(val) => { config.Output.ScreenshotFolder = val; }}
+						/>
+
+						<FormNumberInput
+							label="Screenshot padding"
+							description="Zero-padding for screenshot numbers (e.g., 01, 02, 03)"
+							value={config.Output.ScreenshotPadding ?? 1}
+							min={1}
+							max={5}
+							unit="digits"
+							onchange={(val) => { config.Output.ScreenshotPadding = val; }}
+						/>
+
+						<FormTextInput
+							label="Actress folder"
+							description="Folder name for storing actress images"
+							value={config.Output.ActressFolder ?? ".actors"}
+							placeholder=".actors"
+							onchange={(val) => { config.Output.ActressFolder = val; }}
+						/>
+					</SettingsSubsection>
 				</div>
-			</Card>
+			</SettingsSection>
 
 			<!-- Database Settings -->
-			<Card class="p-6">
-				<h2 class="text-xl font-semibold mb-4">Database Settings</h2>
-				<div class="space-y-4">
-					<div>
-						<label class="block text-sm font-medium mb-2">Database Path (DSN)</label>
-						<input
-							type="text"
-							bind:value={config.Database.DSN}
-							class={inputClass}
-							placeholder="data/javinizer.db"
-						/>
-					</div>
+			<SettingsSection title="Database Settings" description="Configure database options and behavior" defaultExpanded={false}>
+				<div class="mb-4">
+					<label class="block text-sm font-medium mb-2">Database Type</label>
+					<select bind:value={config.Database.Type} class={inputClass}>
+						<option value="sqlite">SQLite</option>
+						<option value="postgres">PostgreSQL</option>
+						<option value="mysql">MySQL</option>
+					</select>
+					<p class="text-xs text-muted-foreground mt-1">
+						Database engine to use (SQLite recommended for most users)
+					</p>
 				</div>
-			</Card>
+
+				<div class="mb-4">
+					<label class="block text-sm font-medium mb-2">Database Path (DSN)</label>
+					<input
+						type="text"
+						bind:value={config.Database.DSN}
+						class={inputClass}
+						placeholder="data/javinizer.db"
+					/>
+				</div>
+
+				<SettingsSubsection title="Actress Database">
+					<FormToggle
+						label="Auto-add actresses"
+						description="Automatically add new actresses to the database when encountered"
+						checked={config.Metadata.ActressDatabase?.AutoAdd ?? false}
+						onchange={(val) => {
+							if (!config.Metadata.ActressDatabase) config.Metadata.ActressDatabase = {};
+							config.Metadata.ActressDatabase.AutoAdd = val;
+						}}
+					/>
+
+					<FormToggle
+						label="Convert aliases"
+						description="Use actress aliases from the database when generating metadata"
+						checked={config.Metadata.ActressDatabase?.ConvertAlias ?? false}
+						onchange={(val) => {
+							if (!config.Metadata.ActressDatabase) config.Metadata.ActressDatabase = {};
+							config.Metadata.ActressDatabase.ConvertAlias = val;
+						}}
+					/>
+				</SettingsSubsection>
+
+				<SettingsSubsection title="Genre Replacement">
+					<FormToggle
+						label="Auto-add genres"
+						description="Automatically add new genre replacements to the database"
+						checked={config.Metadata.GenreReplacement?.AutoAdd ?? false}
+						onchange={(val) => {
+							if (!config.Metadata.GenreReplacement) config.Metadata.GenreReplacement = {};
+							config.Metadata.GenreReplacement.AutoAdd = val;
+						}}
+					/>
+				</SettingsSubsection>
+
+				<SettingsSubsection title="Tag Database">
+					<FormToggle
+						label="Enable tag database"
+						description="Enable per-movie tag lookup from database"
+						checked={config.Metadata.TagDatabase?.Enabled ?? false}
+						onchange={(val) => {
+							if (!config.Metadata.TagDatabase) config.Metadata.TagDatabase = {};
+							config.Metadata.TagDatabase.Enabled = val;
+						}}
+					/>
+				</SettingsSubsection>
+
+				<SettingsSubsection title="Advanced Metadata Options">
+					<FormTextInput
+						label="Ignore genres"
+						description="Comma-separated list of genres to exclude from metadata"
+						value={config.Metadata.IgnoreGenres?.join(', ') ?? ""}
+						placeholder="e.g., Sample, Trailer"
+						onchange={(val) => {
+							config.Metadata.IgnoreGenres = val.split(',').map(s => s.trim()).filter(s => s.length > 0);
+						}}
+					/>
+
+					<FormTextInput
+						label="Required fields"
+						description="Comma-separated list of required metadata fields (scraping fails if missing)"
+						value={config.Metadata.RequiredFields?.join(', ') ?? ""}
+						placeholder="e.g., title, actress, studio"
+						onchange={(val) => {
+							config.Metadata.RequiredFields = val.split(',').map(s => s.trim()).filter(s => s.length > 0);
+						}}
+					/>
+				</SettingsSubsection>
+			</SettingsSection>
+
+			<!-- NFO Settings -->
+			<SettingsSection title="NFO Settings" description="Configure NFO metadata file generation for Kodi/Plex compatibility" defaultExpanded={false}>
+				<SettingsSubsection title="Basic NFO Options">
+					<FormToggle
+						label="Enable NFO generation"
+						description="Generate .nfo metadata files for use with media servers like Kodi and Plex"
+						checked={config.Metadata.NFO?.Enabled ?? true}
+						onchange={(val) => {
+							if (!config.Metadata.NFO) config.Metadata.NFO = {};
+							config.Metadata.NFO.Enabled = val;
+						}}
+					/>
+
+					<FormToggle
+						label="NFO per file"
+						description="Create separate NFO files for each video file (useful for multi-part movies)"
+						checked={config.Metadata.NFO?.PerFile ?? false}
+						onchange={(val) => {
+							if (!config.Metadata.NFO) config.Metadata.NFO = {};
+							config.Metadata.NFO.PerFile = val;
+						}}
+					/>
+
+					<FormTemplateInput
+						label="Display name template"
+						description="Template for the <title> field in NFO files"
+						value={config.Metadata.NFO?.DisplayName ?? "[<ID>] <TITLE>"}
+						placeholder="[<ID>] <TITLE>"
+						showTagList={true}
+						onchange={(val) => {
+							if (!config.Metadata.NFO) config.Metadata.NFO = {};
+							config.Metadata.NFO.DisplayName = val;
+						}}
+					/>
+
+					<FormTemplateInput
+						label="Filename template"
+						description="Template for NFO filenames"
+						value={config.Metadata.NFO?.FilenameTemplate ?? "<ID>"}
+						placeholder="<ID>"
+						onchange={(val) => {
+							if (!config.Metadata.NFO) config.Metadata.NFO = {};
+							config.Metadata.NFO.FilenameTemplate = val;
+						}}
+					/>
+				</SettingsSubsection>
+
+				<SettingsSubsection title="Actress Settings">
+					<FormToggle
+						label="First name order"
+						description="Use first-name-first order for actress names (Western style)"
+						checked={config.Metadata.NFO?.FirstNameOrder ?? false}
+						onchange={(val) => {
+							if (!config.Metadata.NFO) config.Metadata.NFO = {};
+							config.Metadata.NFO.FirstNameOrder = val;
+						}}
+					/>
+
+					<FormToggle
+						label="Japanese actress names"
+						description="Use Japanese names for actresses in NFO files"
+						checked={config.Metadata.NFO?.ActressLanguageJA ?? false}
+						onchange={(val) => {
+							if (!config.Metadata.NFO) config.Metadata.NFO = {};
+							config.Metadata.NFO.ActressLanguageJA = val;
+						}}
+					/>
+
+					<FormTextInput
+						label="Unknown actress text"
+						description="Text to display when actress information is unavailable"
+						value={config.Metadata.NFO?.UnknownActressText ?? "Unknown"}
+						placeholder="Unknown"
+						onchange={(val) => {
+							if (!config.Metadata.NFO) config.Metadata.NFO = {};
+							config.Metadata.NFO.UnknownActressText = val;
+						}}
+					/>
+
+					<FormToggle
+						label="Actress as tag"
+						description="Include actress names in the <tag> field"
+						checked={config.Metadata.NFO?.ActressAsTag ?? false}
+						onchange={(val) => {
+							if (!config.Metadata.NFO) config.Metadata.NFO = {};
+							config.Metadata.NFO.ActressAsTag = val;
+						}}
+					/>
+
+					<FormToggle
+						label="Add generic role"
+						description="Add 'Actress' as a generic role for all performers"
+						checked={config.Metadata.NFO?.AddGenericRole ?? false}
+						onchange={(val) => {
+							if (!config.Metadata.NFO) config.Metadata.NFO = {};
+							config.Metadata.NFO.AddGenericRole = val;
+						}}
+					/>
+
+					<FormToggle
+						label="Use alternate name for role"
+						description="Use actress alternate names in <role> field"
+						checked={config.Metadata.NFO?.AltNameRole ?? false}
+						onchange={(val) => {
+							if (!config.Metadata.NFO) config.Metadata.NFO = {};
+							config.Metadata.NFO.AltNameRole = val;
+						}}
+					/>
+				</SettingsSubsection>
+
+				<SettingsSubsection title="Media Information">
+					<FormToggle
+						label="Include stream details"
+						description="Include video/audio codec information from MediaInfo analysis"
+						checked={config.Metadata.NFO?.IncludeStreamDetails ?? false}
+						onchange={(val) => {
+							if (!config.Metadata.NFO) config.Metadata.NFO = {};
+							config.Metadata.NFO.IncludeStreamDetails = val;
+						}}
+					/>
+
+					<FormToggle
+						label="Include fanart"
+						description="Include fanart/cover image reference in NFO"
+						checked={config.Metadata.NFO?.IncludeFanart ?? true}
+						onchange={(val) => {
+							if (!config.Metadata.NFO) config.Metadata.NFO = {};
+							config.Metadata.NFO.IncludeFanart = val;
+						}}
+					/>
+
+					<FormToggle
+						label="Include trailer"
+						description="Include trailer video reference in NFO"
+						checked={config.Metadata.NFO?.IncludeTrailer ?? true}
+						onchange={(val) => {
+							if (!config.Metadata.NFO) config.Metadata.NFO = {};
+							config.Metadata.NFO.IncludeTrailer = val;
+						}}
+					/>
+
+					<FormTextInput
+						label="Rating source"
+						description="Source name for movie ratings (e.g., 'r18dev', 'dmm')"
+						value={config.Metadata.NFO?.RatingSource ?? "r18dev"}
+						placeholder="r18dev"
+						onchange={(val) => {
+							if (!config.Metadata.NFO) config.Metadata.NFO = {};
+							config.Metadata.NFO.RatingSource = val;
+						}}
+					/>
+				</SettingsSubsection>
+
+				<SettingsSubsection title="Advanced NFO Options">
+					<FormToggle
+						label="Include original path"
+						description="Include the original file path in NFO metadata"
+						checked={config.Metadata.NFO?.IncludeOriginalPath ?? false}
+						onchange={(val) => {
+							if (!config.Metadata.NFO) config.Metadata.NFO = {};
+							config.Metadata.NFO.IncludeOriginalPath = val;
+						}}
+					/>
+
+					<FormTemplateInput
+						label="Tag template"
+						description="Template for custom tags in NFO files"
+						value={config.Metadata.NFO?.Tag ?? "<SET>"}
+						placeholder="<SET>"
+						showTagList={true}
+						onchange={(val) => {
+							if (!config.Metadata.NFO) config.Metadata.NFO = {};
+							config.Metadata.NFO.Tag = val;
+						}}
+					/>
+
+					<FormTemplateInput
+						label="Tagline template"
+						description="Template for the tagline field in NFO files"
+						value={config.Metadata.NFO?.Tagline ?? ""}
+						placeholder=""
+						onchange={(val) => {
+							if (!config.Metadata.NFO) config.Metadata.NFO = {};
+							config.Metadata.NFO.Tagline = val;
+						}}
+					/>
+
+					<FormTextInput
+						label="Credits"
+						description="Credits to include in NFO (comma-separated)"
+						value={config.Metadata.NFO?.Credits?.join(', ') ?? ""}
+						placeholder="Director Name, Studio Name"
+						onchange={(val) => {
+							if (!config.Metadata.NFO) config.Metadata.NFO = {};
+							config.Metadata.NFO.Credits = val.split(',').map(s => s.trim()).filter(s => s.length > 0);
+						}}
+					/>
+				</SettingsSubsection>
+			</SettingsSection>
+
+			<!-- Proxy Settings -->
+			<SettingsSection title="Proxy Settings" description="Configure HTTP/SOCKS5 proxies for scraper requests and downloads" defaultExpanded={false}>
+				<SettingsSubsection title="Scraper Proxy">
+					<FormToggle
+						label="Enable scraper proxy"
+						description="Route all scraper requests through a proxy server"
+						checked={config.Scrapers.Proxy?.Enabled ?? false}
+						onchange={(val) => {
+							if (!config.Scrapers.Proxy) config.Scrapers.Proxy = {};
+							config.Scrapers.Proxy.Enabled = val;
+						}}
+					/>
+
+					<FormTextInput
+						label="Proxy URL"
+						description="Proxy server URL (e.g., http://proxy.example.com:8080 or socks5://localhost:1080)"
+						value={config.Scrapers.Proxy?.URL ?? ""}
+						placeholder="http://proxy.example.com:8080"
+						onchange={(val) => {
+							if (!config.Scrapers.Proxy) config.Scrapers.Proxy = {};
+							config.Scrapers.Proxy.URL = val;
+						}}
+					/>
+
+					<FormTextInput
+						label="Proxy username"
+						description="Username for authenticated proxy (optional)"
+						value={config.Scrapers.Proxy?.Username ?? ""}
+						placeholder=""
+						onchange={(val) => {
+							if (!config.Scrapers.Proxy) config.Scrapers.Proxy = {};
+							config.Scrapers.Proxy.Username = val;
+						}}
+					/>
+
+					<FormPasswordInput
+						label="Proxy password"
+						description="Password for authenticated proxy (optional)"
+						value={config.Scrapers.Proxy?.Password ?? ""}
+						onchange={(val) => {
+							if (!config.Scrapers.Proxy) config.Scrapers.Proxy = {};
+							config.Scrapers.Proxy.Password = val;
+						}}
+					/>
+				</SettingsSubsection>
+
+				<SettingsSubsection title="Download Proxy">
+					<FormToggle
+						label="Enable download proxy"
+						description="Use a separate proxy for downloading covers, screenshots, and trailers"
+						checked={config.Output.DownloadProxy?.Enabled ?? false}
+						onchange={(val) => {
+							if (!config.Output.DownloadProxy) config.Output.DownloadProxy = {};
+							config.Output.DownloadProxy.Enabled = val;
+						}}
+					/>
+
+					<FormTextInput
+						label="Download proxy URL"
+						description="Proxy server URL for downloads (leave empty to use no proxy for downloads)"
+						value={config.Output.DownloadProxy?.URL ?? ""}
+						placeholder="http://proxy.example.com:8080"
+						onchange={(val) => {
+							if (!config.Output.DownloadProxy) config.Output.DownloadProxy = {};
+							config.Output.DownloadProxy.URL = val;
+						}}
+					/>
+
+					<FormTextInput
+						label="Download proxy username"
+						description="Username for authenticated download proxy (optional)"
+						value={config.Output.DownloadProxy?.Username ?? ""}
+						placeholder=""
+						onchange={(val) => {
+							if (!config.Output.DownloadProxy) config.Output.DownloadProxy = {};
+							config.Output.DownloadProxy.Username = val;
+						}}
+					/>
+
+					<FormPasswordInput
+						label="Download proxy password"
+						description="Password for authenticated download proxy (optional)"
+						value={config.Output.DownloadProxy?.Password ?? ""}
+						onchange={(val) => {
+							if (!config.Output.DownloadProxy) config.Output.DownloadProxy = {};
+							config.Output.DownloadProxy.Password = val;
+						}}
+					/>
+				</SettingsSubsection>
+			</SettingsSection>
 
 			<!-- Performance Settings -->
-			<Card class="p-6">
-				<h2 class="text-xl font-semibold mb-4">Performance Settings</h2>
+			<SettingsSection title="Performance Settings" description="Configure worker pool and performance tuning options" defaultExpanded={false}>
 				<div class="space-y-4">
 					<div>
 						<label class="block text-sm font-medium mb-2">
@@ -618,11 +1148,10 @@
 					</div>
 
 				</div>
-			</Card>
+			</SettingsSection>
 
 			<!-- File Matching Settings -->
-			<Card class="p-6">
-				<h2 class="text-xl font-semibold mb-4">File Matching Settings</h2>
+			<SettingsSection title="File Matching Settings" description="Configure file scanning, extensions, and ID extraction patterns" defaultExpanded={false}>
 				<div class="space-y-4">
 					<div>
 						<label class="block text-sm font-medium mb-2">File Extensions</label>
@@ -696,11 +1225,10 @@
 						</div>
 					{/if}
 				</div>
-			</Card>
+			</SettingsSection>
 
 			<!-- Logging Settings -->
-			<Card class="p-6">
-				<h2 class="text-xl font-semibold mb-4">Logging Settings</h2>
+			<SettingsSection title="Logging Settings" description="Configure logging level, format, and output destination" defaultExpanded={false}>
 				<div class="space-y-4">
 					<div>
 						<label class="block text-sm font-medium mb-2">Log Level</label>
@@ -733,7 +1261,46 @@
 						</p>
 					</div>
 				</div>
-			</Card>
+			</SettingsSection>
+
+			<!-- MediaInfo Settings -->
+			<SettingsSection title="MediaInfo Settings" description="Configure MediaInfo CLI fallback for media file analysis" defaultExpanded={false}>
+				<div class="space-y-4">
+					<FormToggle
+						label="Enable MediaInfo CLI"
+						description="Enable MediaInfo CLI fallback when library-based parsing fails"
+						checked={config.MediaInfo?.CLIEnabled ?? false}
+						onchange={(val) => {
+							if (!config.MediaInfo) config.MediaInfo = {};
+							config.MediaInfo.CLIEnabled = val;
+						}}
+					/>
+
+					<FormTextInput
+						label="MediaInfo CLI path"
+						description="Path to the mediainfo binary (default: 'mediainfo' from PATH)"
+						value={config.MediaInfo?.CLIPath ?? "mediainfo"}
+						placeholder="mediainfo"
+						onchange={(val) => {
+							if (!config.MediaInfo) config.MediaInfo = {};
+							config.MediaInfo.CLIPath = val;
+						}}
+					/>
+
+					<FormNumberInput
+						label="CLI timeout"
+						description="Maximum time to wait for MediaInfo CLI execution"
+						value={config.MediaInfo?.CLITimeout ?? 30}
+						min={5}
+						max={120}
+						unit="seconds"
+						onchange={(val) => {
+							if (!config.MediaInfo) config.MediaInfo = {};
+							config.MediaInfo.CLITimeout = val;
+						}}
+					/>
+				</div>
+			</SettingsSection>
 		{/if}
 	</div>
 </div>

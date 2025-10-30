@@ -47,6 +47,9 @@ type ScraperOption struct {
 	Label       string `json:"label" example:"Scrape Actress Information"`
 	Description string `json:"description" example:"Enable detailed actress data scraping from DMM (may be slower)"`
 	Type        string `json:"type" example:"boolean"` // boolean, string, number, etc.
+	Min         *int   `json:"min,omitempty" example:"5"`
+	Max         *int   `json:"max,omitempty" example:"120"`
+	Unit        string `json:"unit,omitempty" example:"seconds"`
 }
 
 // ScraperInfo represents information about a scraper
