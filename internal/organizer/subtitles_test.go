@@ -373,3 +373,51 @@ func TestSubtitleHandler_generateSubtitleFileName(t *testing.T) {
 		})
 	}
 }
+
+func TestSubtitleHandler_FindSubtitles_NonexistentDirectory(t *testing.T) {
+	cfg := &config.OutputConfig{
+		SubtitleExtensions: []string{".srt"},
+	}
+	handler := NewSubtitleHandler(cfg)
+
+	videoFile := scanner.FileInfo{
+		Path:      "/nonexistent/path/video.mp4",
+		Name:      "video.mp4",
+		Extension: ".mp4",
+	}
+
+	matches := handler.FindSubtitles(videoFile)
+	if len(matches) != 0 {
+		t.Errorf("Expected 0 matches for nonexistent directory, got %d", len(matches))
+	}
+}
+
+func TestSubtitleHandler_FindSubtitles_EmptyExtensions(t *testing.T) {
+	cfg := &config.OutputConfig{
+		SubtitleExtensions: []string{}, // No extensions configured
+	}
+	handler := NewSubtitleHandler(cfg)
+
+	tmpDir := t.TempDir()
+	videoPath := filepath.Join(tmpDir, "IPX-535.mp4")
+	if err := os.WriteFile(videoPath, []byte("video"), 0644); err != nil {
+		t.Fatalf("Failed to create video file: %v", err)
+	}
+
+	// Create subtitle file
+	subtitlePath := filepath.Join(tmpDir, "IPX-535.srt")
+	if err := os.WriteFile(subtitlePath, []byte("subtitle"), 0644); err != nil {
+		t.Fatalf("Failed to create subtitle file: %v", err)
+	}
+
+	videoFile := scanner.FileInfo{
+		Path:      videoPath,
+		Name:      "IPX-535.mp4",
+		Extension: ".mp4",
+	}
+
+	matches := handler.FindSubtitles(videoFile)
+	if len(matches) != 0 {
+		t.Errorf("Expected 0 matches when no extensions configured, got %d", len(matches))
+	}
+}

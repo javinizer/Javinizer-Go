@@ -136,7 +136,8 @@ func analyzeFLV(f *os.File) (*VideoInfo, error) {
 		case 9: // Video
 			if info.VideoCodec == "" {
 				codecID, _ := readByte(f)
-				info.VideoCodec = mapFLVVideoCodec(codecID >> 4)
+				// FLV video tag format: bits 7-4 = frame type, bits 3-0 = codec ID
+				info.VideoCodec = mapFLVVideoCodec(codecID & 0x0F)
 				// Seek back 1 byte
 				f.Seek(-1, io.SeekCurrent)
 			}

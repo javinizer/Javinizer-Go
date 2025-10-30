@@ -550,3 +550,280 @@ func TestCleanEmptyDirectories(t *testing.T) {
 		t.Error("Empty directory 'a' was not removed")
 	}
 }
+
+func TestCleanEmptyDirectories_WithHiddenFiles(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create nested directories
+	deepDir := filepath.Join(tmpDir, "a", "b", "c")
+	if err := os.MkdirAll(deepDir, 0755); err != nil {
+		t.Fatalf("Failed to create directories: %v", err)
+	}
+
+	// Create a hidden file in middle directory (should prevent deletion)
+	hiddenFile := filepath.Join(tmpDir, "a", "b", ".hidden")
+	if err := os.WriteFile(hiddenFile, []byte("test"), 0644); err != nil {
+		t.Fatalf("Failed to create hidden file: %v", err)
+	}
+
+	// Try to clean from deepest directory
+	if err := CleanEmptyDirectories(filepath.Join(deepDir, "file.mp4"), tmpDir); err != nil {
+		t.Fatalf("CleanEmptyDirectories failed: %v", err)
+	}
+
+	// Directory 'c' should be removed (empty)
+	if _, err := os.Stat(deepDir); !os.IsNotExist(err) {
+		t.Error("Empty directory 'c' was not removed")
+	}
+
+	// Directory 'b' should still exist (has hidden file)
+	if _, err := os.Stat(filepath.Join(tmpDir, "a", "b")); os.IsNotExist(err) {
+		t.Error("Directory 'b' with hidden file was incorrectly removed")
+	}
+}
+
+func TestOrganizer_Copy_SourceDoesNotExist(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	cfg := &config.OutputConfig{
+		FolderFormat: "<ID>",
+		FileFormat:   "<ID>",
+		RenameFile:   true,
+	}
+
+	org := NewOrganizer(cfg)
+	movie := createTestMovie()
+
+	// Create plan with nonexistent source
+	plan := &OrganizePlan{
+		SourcePath: filepath.Join(tmpDir, "nonexistent.mp4"),
+		TargetDir:  filepath.Join(tmpDir, "target"),
+		TargetFile: "IPX-535.mp4",
+		TargetPath: filepath.Join(tmpDir, "target", "IPX-535.mp4"),
+		WillMove:   true,
+		Conflicts:  []string{},
+		Movie:      movie,
+	}
+
+	// Copy should fail
+	result, err := org.Copy(plan, false)
+	if err == nil {
+		t.Error("Expected error for nonexistent source file")
+	}
+	if result.Error == nil {
+		t.Error("Expected result.Error for nonexistent source file")
+	}
+}
+
+func TestOrganizer_Plan_WithSubfolderFormat(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	cfg := &config.OutputConfig{
+		FolderFormat:    "<ID> - <TITLE>",
+		FileFormat:      "<ID>",
+		RenameFile:      true,
+		SubfolderFormat: []string{"<STUDIO>", "<YEAR>"},
+	}
+
+	org := NewOrganizer(cfg)
+	movie := createTestMovie()
+
+	sourceFile := filepath.Join(tmpDir, "ipx-535.mp4")
+	if err := os.WriteFile(sourceFile, []byte("test"), 0644); err != nil {
+		t.Fatalf("Failed to create source file: %v", err)
+	}
+
+	match := matcher.MatchResult{
+		File: scanner.FileInfo{
+			Path:      sourceFile,
+			Name:      "ipx-535.mp4",
+			Extension: ".mp4",
+		},
+		ID: "IPX-535",
+	}
+
+	plan, err := org.Plan(match, movie, tmpDir, false)
+	if err != nil {
+		t.Fatalf("Plan failed: %v", err)
+	}
+
+	// Verify subfolder hierarchy is included in target dir
+	expectedTargetDir := filepath.Join(tmpDir, "IdeaPocket", "2020", "IPX-535 - Beautiful Day")
+	if plan.TargetDir != expectedTargetDir {
+		t.Errorf("Expected target dir %s, got %s", expectedTargetDir, plan.TargetDir)
+	}
+}
+
+func TestOrganizer_Execute_InPlaceRename_DirectoryAlreadyExists(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create source directory with file
+	sourceDir := filepath.Join(tmpDir, "old-folder")
+	if err := os.MkdirAll(sourceDir, 0755); err != nil {
+		t.Fatalf("Failed to create source directory: %v", err)
+	}
+
+	sourceFile := filepath.Join(sourceDir, "ipx-535.mp4")
+	if err := os.WriteFile(sourceFile, []byte("test"), 0644); err != nil {
+		t.Fatalf("Failed to create source file: %v", err)
+	}
+
+	// Create target directory with same name (conflict)
+	targetDir := filepath.Join(tmpDir, "IPX-535 - Beautiful Day")
+	if err := os.MkdirAll(targetDir, 0755); err != nil {
+		t.Fatalf("Failed to create target directory: %v", err)
+	}
+
+	cfg := &config.OutputConfig{
+		FolderFormat: "<ID> - <TITLE>",
+		FileFormat:   "<ID>",
+		RenameFile:   true,
+	}
+
+	org := NewOrganizer(cfg)
+	movie := createTestMovie()
+
+	// Create plan with in-place rename
+	plan := &OrganizePlan{
+		SourcePath: sourceFile,
+		TargetDir:  targetDir,
+		TargetFile: "IPX-535.mp4",
+		TargetPath: filepath.Join(targetDir, "IPX-535.mp4"),
+		WillMove:   true,
+		Conflicts:  []string{},
+		InPlace:    true,
+		OldDir:     sourceDir,
+		Movie:      movie,
+	}
+
+	// Execute should fail because target directory already exists
+	result, err := org.Execute(plan, false)
+	if err == nil {
+		t.Error("Expected error when target directory already exists in in-place rename")
+	}
+	if result.Error == nil {
+		t.Error("Expected result.Error when target directory already exists")
+	}
+}
+
+func TestOrganizer_OrganizeBatch_PartialFailure(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create source directory
+	sourceDir := filepath.Join(tmpDir, "source")
+	if err := os.MkdirAll(sourceDir, 0755); err != nil {
+		t.Fatalf("Failed to create source directory: %v", err)
+	}
+
+	// Create first file (will succeed) - use ABC so it sorts first
+	file1 := filepath.Join(sourceDir, "abc-123.mp4")
+	if err := os.WriteFile(file1, []byte("test"), 0644); err != nil {
+		t.Fatalf("Failed to create file1: %v", err)
+	}
+
+	// file2 doesn't exist (will fail) - use XYZ so it sorts last
+	file2 := filepath.Join(sourceDir, "xyz-999.mp4")
+
+	cfg := &config.OutputConfig{
+		FolderFormat: "<ID>",
+		FileFormat:   "<ID>",
+		RenameFile:   true,
+	}
+
+	org := NewOrganizer(cfg)
+
+	matches := []matcher.MatchResult{
+		{
+			File: scanner.FileInfo{
+				Path:      file1,
+				Name:      "abc-123.mp4",
+				Extension: ".mp4",
+			},
+			ID: "ABC-123",
+		},
+		{
+			File: scanner.FileInfo{
+				Path:      file2,
+				Name:      "xyz-999.mp4",
+				Extension: ".mp4",
+			},
+			ID: "XYZ-999",
+		},
+	}
+
+	releaseDate := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
+	movies := map[string]*models.Movie{
+		"ABC-123": {ID: "ABC-123", Title: "Movie1", ReleaseDate: &releaseDate},
+		"XYZ-999": {ID: "XYZ-999", Title: "Movie2", ReleaseDate: &releaseDate},
+	}
+
+	destDir := filepath.Join(tmpDir, "dest")
+
+	// Organize batch (should continue despite one failure)
+	results, err := org.OrganizeBatch(matches, movies, destDir, false, false, false)
+	if err != nil {
+		t.Fatalf("OrganizeBatch failed: %v", err)
+	}
+
+	if len(results) != 2 {
+		t.Errorf("Expected 2 results, got %d", len(results))
+	}
+
+	// First file (ABC-123) should succeed
+	if results[0].Error != nil {
+		t.Errorf("Expected first file (ABC-123) to succeed, got error: %v", results[0].Error)
+	}
+
+	// Second file (XYZ-999) should fail (doesn't exist)
+	if results[1].Error == nil {
+		t.Error("Expected second file (XYZ-999) to fail (doesn't exist)")
+	}
+}
+
+func TestOrganizer_OrganizeBatch_MissingMovieData(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create source file
+	sourceFile := filepath.Join(tmpDir, "ipx-535.mp4")
+	if err := os.WriteFile(sourceFile, []byte("test"), 0644); err != nil {
+		t.Fatalf("Failed to create source file: %v", err)
+	}
+
+	cfg := &config.OutputConfig{
+		FolderFormat: "<ID>",
+		FileFormat:   "<ID>",
+		RenameFile:   true,
+	}
+
+	org := NewOrganizer(cfg)
+
+	matches := []matcher.MatchResult{
+		{
+			File: scanner.FileInfo{
+				Path:      sourceFile,
+				Name:      "ipx-535.mp4",
+				Extension: ".mp4",
+			},
+			ID: "IPX-535",
+		},
+	}
+
+	// Empty movie map (no data for this ID)
+	movies := map[string]*models.Movie{}
+
+	destDir := filepath.Join(tmpDir, "dest")
+
+	results, err := org.OrganizeBatch(matches, movies, destDir, false, false, false)
+	if err != nil {
+		t.Fatalf("OrganizeBatch failed: %v", err)
+	}
+
+	if len(results) != 1 {
+		t.Errorf("Expected 1 result, got %d", len(results))
+	}
+
+	// Should have error for missing movie data
+	if results[0].Error == nil {
+		t.Error("Expected error for missing movie data")
+	}
+}

@@ -214,125 +214,9 @@ func TestMOVProber_CanProbe(t *testing.T) {
 	}
 }
 
-func TestAVIProber_CanProbe(t *testing.T) {
-	prober := NewAVIProber()
-
-	tests := []struct {
-		name     string
-		header   []byte
-		expected bool
-	}{
-		{
-			name:     "Valid AVI header",
-			header:   []byte{'R', 'I', 'F', 'F', 0x00, 0x00, 0x00, 0x00, 'A', 'V', 'I', ' '},
-			expected: true,
-		},
-		{
-			name:     "Invalid - RIFF but not AVI",
-			header:   []byte{'R', 'I', 'F', 'F', 0x00, 0x00, 0x00, 0x00, 'W', 'A', 'V', 'E'},
-			expected: false,
-		},
-		{
-			name:     "Invalid - too short",
-			header:   []byte{'R', 'I', 'F', 'F', 0x00, 0x00},
-			expected: false,
-		},
-		{
-			name:     "Invalid - wrong signature",
-			header:   []byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 'A', 'V', 'I', ' '},
-			expected: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := prober.CanProbe(tt.header)
-			if result != tt.expected {
-				t.Errorf("Expected %v, got %v", tt.expected, result)
-			}
-		})
-	}
-}
-
-func TestFLVProber_CanProbe(t *testing.T) {
-	prober := NewFLVProber()
-
-	tests := []struct {
-		name     string
-		header   []byte
-		expected bool
-	}{
-		{
-			name:     "Valid FLV header",
-			header:   []byte{'F', 'L', 'V', 0x01, 0x05},
-			expected: true,
-		},
-		{
-			name:     "Valid FLV header (minimal)",
-			header:   []byte{'F', 'L', 'V'},
-			expected: true,
-		},
-		{
-			name:     "Invalid - too short",
-			header:   []byte{'F', 'L'},
-			expected: false,
-		},
-		{
-			name:     "Invalid - wrong signature",
-			header:   []byte{'X', 'X', 'X'},
-			expected: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := prober.CanProbe(tt.header)
-			if result != tt.expected {
-				t.Errorf("Expected %v, got %v", tt.expected, result)
-			}
-		})
-	}
-}
-
-func TestCLIProber_CanProbe(t *testing.T) {
-	// CLI enabled
-	enabledProber := NewCLIProber(&MediaInfoConfig{
-		CLIEnabled: true,
-		CLIPath:    "mediainfo",
-		CLITimeout: 30,
-	})
-
-	if !enabledProber.CanProbe([]byte{0x00}) {
-		t.Error("CLI prober should accept any header when enabled")
-	}
-
-	// CLI disabled
-	disabledProber := NewCLIProber(&MediaInfoConfig{
-		CLIEnabled: false,
-		CLIPath:    "mediainfo",
-		CLITimeout: 30,
-	})
-
-	if disabledProber.CanProbe([]byte{0x00}) {
-		t.Error("CLI prober should reject when disabled")
-	}
-}
-
-func TestDefaultMediaInfoConfig(t *testing.T) {
-	cfg := DefaultMediaInfoConfig()
-
-	if cfg.CLIEnabled {
-		t.Error("CLI should be disabled by default")
-	}
-
-	if cfg.CLIPath != "mediainfo" {
-		t.Errorf("Expected default CLI path 'mediainfo', got '%s'", cfg.CLIPath)
-	}
-
-	if cfg.CLITimeout != 30 {
-		t.Errorf("Expected default timeout 30, got %d", cfg.CLITimeout)
-	}
-}
+// Note: TestAVIProber_CanProbe, TestFLVProber_CanProbe, TestCLIProber_CanProbe,
+// and TestDefaultMediaInfoConfig are in their respective dedicated test files:
+// avi_test.go, flv_test.go, and cli_test.go
 
 func TestMapMOVVideoCodec(t *testing.T) {
 	tests := []struct {
@@ -346,9 +230,17 @@ func TestMapMOVVideoCodec(t *testing.T) {
 		{"ap4h", "prores_4444"},
 		{"ap4x", "prores_4444_xq"},
 		{"dvcp", "dvcpro"},
+		{"dvpp", "dvcpro"},
 		{"dvc ", "dv"},
+		{"dvsd", "dv"},
+		{"dvh5", "dvcpro_hd"},
+		{"dvh6", "dvcpro_hd"},
 		{"mjp2", "jpeg2000"},
 		{"jpeg", "mjpeg"},
+		{"png ", "png"},
+		{"rle ", "quicktime_rle"},
+		{"rpza", "quicktime_rpza"},
+		{"smc ", "quicktime_smc"},
 		{"SVQ1", "sorenson_video_1"},
 		{"SVQ3", "sorenson_video_3"},
 		{"mp4v", "mpeg4"},
@@ -373,12 +265,18 @@ func TestMapMOVAudioCodec(t *testing.T) {
 		{"sowt", "pcm_s16le"},
 		{"twos", "pcm_s16be"},
 		{"in24", "pcm_s24le"},
+		{"in32", "pcm_s32le"},
 		{"fl32", "pcm_f32le"},
+		{"fl64", "pcm_f64le"},
 		{"ulaw", "pcm_mulaw"},
 		{"alaw", "pcm_alaw"},
 		{"ima4", "adpcm_ima_qt"},
+		{"MAC3", "mace3"},
+		{"MAC6", "mace6"},
 		{"alac", "alac"},
+		{"QDMC", "qdmc"},
 		{"QDM2", "qdm2"},
+		{"Qclp", "qcelp"},
 		{"unknown", "unknown"}, // Pass-through
 	}
 
