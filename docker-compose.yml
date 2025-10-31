@@ -17,10 +17,10 @@ services:
     # SIMPLIFIED: Only 2 volumes
     volumes:
       # Application state (config, database, logs, cache)
-      - ./javinizer:/javinizer
+      - ./data:/javinizer
 
       # JAV files for sorting (read-write for organize operations)
-      - /path/to/your/jav-library:/data
+      - /path/to/your/jav-library:/media
 
     # UPDATED environment variables
     environment:
@@ -36,8 +36,8 @@ services:
       # Log directory
       - JAVINIZER_LOG_DIR=/javinizer/logs
 
-      # Data directory (JAV files)
-      - JAVINIZER_DATA_DIR=/data
+      # Media directory (JAV files)
+      - JAVINIZER_DATA_DIR=/media
 
       # Timezone
       - TZ=UTC
@@ -62,8 +62,8 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - ./javinizer:/javinizer
-      - /path/to/your/jav-library:/data
+      - ./data:/javinizer
+      - /path/to/your/jav-library:/media
       # Mount frontend source for live development
       - ./web/frontend:/app/web/frontend
     environment:
@@ -73,5 +73,5 @@ services:
       - JAVINIZER_CONFIG=/javinizer/config.yaml
       - JAVINIZER_DB=/javinizer/javinizer.db
       - JAVINIZER_LOG_DIR=/javinizer/logs
-      - JAVINIZER_DATA_DIR=/data
+      - JAVINIZER_DATA_DIR=/media
       - TZ=UTC

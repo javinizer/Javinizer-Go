@@ -104,15 +104,15 @@ COPY scripts/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # Create directory structure for volumes
-RUN mkdir -p /javinizer/logs /javinizer/cache /data && \
-    chown -R javinizer:javinizer /javinizer /data /app
+RUN mkdir -p /javinizer/logs /javinizer/cache /media && \
+    chown -R javinizer:javinizer /javinizer /media /app
 
 # Environment variables
 ENV JAVINIZER_HOME=/javinizer \
     JAVINIZER_CONFIG=/javinizer/config.yaml \
     JAVINIZER_DB=/javinizer/javinizer.db \
     JAVINIZER_LOG_DIR=/javinizer/logs \
-    JAVINIZER_DATA_DIR=/data \
+    JAVINIZER_DATA_DIR=/media \
     PATH="/usr/local/bin:${PATH}"
 
 # Switch to non-root user

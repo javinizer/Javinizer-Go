@@ -118,22 +118,22 @@ Contains all application data:
 - `logs/` - Application logs
 - `cache/` - Temporary cache files
 
-**Host mount**: `./javinizer:/javinizer`
+**Host mount**: `./data:/javinizer`
 
-### Volume 2: Media Files (`/data`)
+### Volume 2: Media Files (`/media`)
 
 Your JAV library for scanning and organizing:
 - Read-write access required for organize operations
 - Can be any directory on your host
 
-**Host mount**: `/path/to/your/jav-library:/data`
+**Host mount**: `/path/to/your/jav-library:/media`
 
 ### Example Directory Structure
 
 ```
 /Users/you/
 ├── javinizer-go/          # Project root
-│   └── javinizer/         # Application state (created by Docker)
+│   └── data/              # Application state (created by Docker)
 │       ├── config.yaml
 │       ├── javinizer.db
 │       └── logs/
@@ -145,8 +145,8 @@ Your JAV library for scanning and organizing:
 **docker-compose.yml**:
 ```yaml
 volumes:
-  - ./javinizer:/javinizer                    # Relative path
-  - /Users/you/JAV:/data                      # Absolute path
+  - ./data:/javinizer                         # Application state (relative path)
+  - /Users/you/JAV:/media                     # Media files (absolute path)
 ```
 
 ---
@@ -171,8 +171,8 @@ environment:
   # Log directory
   - JAVINIZER_LOG_DIR=/javinizer/logs
 
-  # Data directory (JAV files)
-  - JAVINIZER_DATA_DIR=/data
+  # Media directory (JAV files)
+  - JAVINIZER_DATA_DIR=/media
 
   # Timezone (affects log timestamps)
   - TZ=America/New_York
@@ -180,7 +180,7 @@ environment:
 
 ### Configuration File
 
-Edit `./javinizer/config.yaml` on the host:
+Edit `./data/config.yaml` on the host:
 
 ```yaml
 server:
@@ -196,7 +196,7 @@ scrapers:
     url: "http://proxy.example.com:8080"
 
 output:
-  organize_directory: "/data/organized"
+  organize_directory: "/media/organized"
   folder_template: "<ID> [<STUDIO>] - <TITLE> (<YEAR>)"
 ```
 
@@ -242,7 +242,7 @@ docker-compose logs
 
 Common issues:
 - **Port 8080 in use**: Change port mapping in `docker-compose.yml`
-- **Permission denied**: Ensure the `./javinizer` directory is writable
+- **Permission denied**: Ensure the `./data` directory is writable
 - **Volume mount failed**: Check that your JAV library path exists
 
 ### Health Check Failing
@@ -260,7 +260,7 @@ If SQLite database is locked:
 docker-compose down
 
 # Remove lock file
-rm ./javinizer/javinizer.db-shm ./javinizer/javinizer.db-wal
+rm ./data/javinizer.db-shm ./data/javinizer.db-wal
 
 # Restart
 docker-compose up -d
@@ -290,7 +290,7 @@ To start fresh (⚠️ **deletes all cached metadata**):
 docker-compose down
 
 # Remove application state
-rm -rf ./javinizer
+rm -rf ./data
 
 # Restart (will create fresh state)
 docker-compose up -d
@@ -363,7 +363,7 @@ echo "GROUP_ID=$(id -g)" >> .env
 docker-compose up -d
 ```
 
-**Why this matters**: Matching the container UID/GID to your host user prevents permission issues when the container writes to mounted volumes (`./javinizer` and `/data`). Without this, you may see "permission denied" errors or files owned by the wrong user.
+**Why this matters**: Matching the container UID/GID to your host user prevents permission issues when the container writes to mounted volumes (`./data` and `/media`). Without this, you may see "permission denied" errors or files owned by the wrong user.
 
 ### Network Security
 
@@ -401,8 +401,8 @@ services:
       - "127.0.0.1:8080:8080"  # Localhost only
 
     volumes:
-      - ./javinizer:/javinizer
-      - /mnt/media/jav:/data  # Read-write for organize operations
+      - ./data:/javinizer
+      - /mnt/media/jav:/media  # Read-write for organize operations
 
     environment:
       - TZ=UTC
