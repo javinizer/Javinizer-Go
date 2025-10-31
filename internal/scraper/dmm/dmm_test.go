@@ -465,13 +465,13 @@ func TestExtractActresses(t *testing.T) {
 			name:          "English names",
 			html:          `<a href="?actress=111">Jane Doe</a><a href="?actress=222">Mary Smith</a>`,
 			expectedCount: 2,
-			checkNames:    []string{},
+			checkNames:    []string{"Doe", "Smith"}, // Check first names are extracted (note: FirstName field gets second part)
 		},
 		{
 			name:          "Filter out UI elements",
 			html:          `<a href="?actress=111">Test Actress</a><a href="?actress=222">購入前</a><a href="?actress=333">レビュー</a>`,
 			expectedCount: 1,
-			checkNames:    []string{},
+			checkNames:    []string{"Actress"}, // Only real actress retained (FirstName="Actress"), UI elements filtered
 		},
 	}
 
@@ -496,12 +496,13 @@ func TestExtractActresses(t *testing.T) {
 			for _, name := range tt.checkNames {
 				found := false
 				for _, actress := range actresses {
-					if actress.JapaneseName == name {
+					// Check Japanese name or first name for matches
+					if actress.JapaneseName == name || actress.FirstName == name {
 						found = true
 						break
 					}
 				}
-				assert.True(t, found, "Expected to find actress: %s", name)
+				assert.True(t, found, "Expected to find actress with name containing: %s", name)
 			}
 		})
 	}
@@ -692,4 +693,502 @@ func TestExtractRating_OldSite(t *testing.T) {
 func parseHTMLString(html string) (*goquery.Document, error) {
 	reader := strings.NewReader(html)
 	return goquery.NewDocumentFromReader(reader)
+}
+
+// TestExtractDescription_EdgeCases verifies description extraction with various HTML structures
+func TestExtractDescription_EdgeCases(t *testing.T) {
+	tests := []struct {
+		name        string
+		html        string
+		isNewSite   bool
+		expected    string
+		description string
+	}{
+		{
+			name: "Multiple paragraphs",
+			html: `<html><body>
+				<div class="mg-b20 lh4">
+					<p class="mg-b20">First paragraph.</p>
+					<p class="mg-b20">Second paragraph.</p>
+				</div>
+			</body></html>`,
+			isNewSite:   false,
+			expected:    "First paragraph.Second paragraph.",
+			description: "Should extract all paragraphs from description div",
+		},
+		{
+			name: "Description without p tag",
+			html: `<html><body>
+				<div class="mg-b20 lh4">Direct description text</div>
+			</body></html>`,
+			isNewSite:   false,
+			expected:    "Direct description text",
+			description: "Should extract description from div directly",
+		},
+		{
+			name: "Empty description",
+			html: `<html><body>
+				<div class="mg-b20 lh4"></div>
+			</body></html>`,
+			isNewSite:   false,
+			expected:    "",
+			description: "Should handle empty description",
+		},
+		{
+			name: "Description with extra whitespace",
+			html: `<html><body>
+				<div class="mg-b20 lh4">
+					<p class="mg-b20">
+						Description   with
+						extra   whitespace
+					</p>
+				</div>
+			</body></html>`,
+			isNewSite:   false,
+			expected:    "Description with extra whitespace",
+			description: "Should clean whitespace",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &config.Config{
+				Scrapers: config.ScrapersConfig{
+					DMM: config.DMMConfig{Enabled: true},
+				},
+			}
+			scraper := New(cfg, nil)
+
+			doc, err := parseHTMLString(tt.html)
+			require.NoError(t, err)
+
+			result := scraper.extractDescription(doc, tt.isNewSite)
+			assert.Equal(t, tt.expected, result, tt.description)
+		})
+	}
+}
+
+// TestExtractDirector_EdgeCases verifies director extraction with various patterns
+func TestExtractDirector_EdgeCases(t *testing.T) {
+	tests := []struct {
+		name        string
+		html        string
+		expected    string
+		description string
+	}{
+		{
+			name:        "Director with special characters",
+			html:        `<a href="?director=123">山田 太郎</a>`,
+			expected:    "山田 太郎",
+			description: "Should handle Japanese director name",
+		},
+		{
+			name:        "Multiple directors",
+			html:        `<a href="?director=123">Director One</a><a href="?director=456">Director Two</a>`,
+			expected:    "Director One",
+			description: "Should extract first director only",
+		},
+		{
+			name:        "Director with extra whitespace",
+			html:        `<a href="?director=123">  Director Name  </a>`,
+			expected:    "Director Name",
+			description: "Should clean whitespace from director name",
+		},
+		{
+			name:        "No director",
+			html:        `<html><body>No director info</body></html>`,
+			expected:    "",
+			description: "Should return empty when no director found",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &config.Config{
+				Scrapers: config.ScrapersConfig{
+					DMM: config.DMMConfig{Enabled: true},
+				},
+			}
+			scraper := New(cfg, nil)
+
+			doc, err := parseHTMLString(fmt.Sprintf("<html><body>%s</body></html>", tt.html))
+			require.NoError(t, err)
+
+			result := scraper.extractDirector(doc)
+			assert.Equal(t, tt.expected, result, tt.description)
+		})
+	}
+}
+
+// TestExtractMaker_Formats verifies maker extraction with different URL formats
+func TestExtractMaker_Formats(t *testing.T) {
+	tests := []struct {
+		name        string
+		html        string
+		isNewSite   bool
+		expected    string
+		description string
+	}{
+		{
+			name:        "Maker with ?maker= format",
+			html:        `<a href="?maker=123">Studio Name</a>`,
+			isNewSite:   false,
+			expected:    "Studio Name",
+			description: "Should extract maker from ?maker= link",
+		},
+		{
+			name:        "Maker with /article=maker/ format",
+			html:        `<a href="/article=maker/id=123">Studio Name</a>`,
+			isNewSite:   false,
+			expected:    "Studio Name",
+			description: "Should extract maker from /article=maker/ link",
+		},
+		{
+			name:        "Maker with Japanese characters",
+			html:        `<a href="?maker=123">アイデアポケット</a>`,
+			isNewSite:   false,
+			expected:    "アイデアポケット",
+			description: "Should handle Japanese maker name",
+		},
+		{
+			name:        "No maker",
+			html:        `<html><body>No maker info</body></html>`,
+			isNewSite:   false,
+			expected:    "",
+			description: "Should return empty when no maker found",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &config.Config{
+				Scrapers: config.ScrapersConfig{
+					DMM: config.DMMConfig{Enabled: true},
+				},
+			}
+			scraper := New(cfg, nil)
+
+			doc, err := parseHTMLString(fmt.Sprintf("<html><body>%s</body></html>", tt.html))
+			require.NoError(t, err)
+
+			result := scraper.extractMaker(doc, tt.isNewSite)
+			assert.Equal(t, tt.expected, result, tt.description)
+		})
+	}
+}
+
+// TestExtractLabel_Formats verifies label extraction with different URL formats
+func TestExtractLabel_Formats(t *testing.T) {
+	tests := []struct {
+		name        string
+		html        string
+		expected    string
+		description string
+	}{
+		{
+			name:        "Label with ?label= format",
+			html:        `<a href="?label=123">Label Name</a>`,
+			expected:    "Label Name",
+			description: "Should extract label from ?label= link",
+		},
+		{
+			name:        "Label with /article=label/ format",
+			html:        `<a href="/article=label/id=123">Label Name</a>`,
+			expected:    "Label Name",
+			description: "Should extract label from /article=label/ link",
+		},
+		{
+			name:        "Label with special characters",
+			html:        `<a href="?label=123">Label &amp; Co.</a>`,
+			expected:    "Label &amp; Co.",
+			description: "Should preserve HTML entities in label",
+		},
+		{
+			name:        "No label",
+			html:        `<html><body>No label info</body></html>`,
+			expected:    "",
+			description: "Should return empty when no label found",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &config.Config{
+				Scrapers: config.ScrapersConfig{
+					DMM: config.DMMConfig{Enabled: true},
+				},
+			}
+			scraper := New(cfg, nil)
+
+			doc, err := parseHTMLString(fmt.Sprintf("<html><body>%s</body></html>", tt.html))
+			require.NoError(t, err)
+
+			result := scraper.extractLabel(doc)
+			assert.Equal(t, tt.expected, result, tt.description)
+		})
+	}
+}
+
+// TestExtractSeries_EdgeCases verifies series extraction handles empty cases
+func TestExtractSeries_EdgeCases(t *testing.T) {
+	tests := []struct {
+		name        string
+		html        string
+		isNewSite   bool
+		expected    string
+		description string
+	}{
+		{
+			name:        "No series",
+			html:        `<html><body>No series info</body></html>`,
+			isNewSite:   false,
+			expected:    "",
+			description: "Should return empty when no series found",
+		},
+		{
+			name:        "Empty series tag",
+			html:        `<html><body><a href="/digital/videoa/-/list/=/article=series/id=123/"></a></td></body></html>`,
+			isNewSite:   false,
+			expected:    "",
+			description: "Should handle empty series name",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &config.Config{
+				Scrapers: config.ScrapersConfig{
+					DMM: config.DMMConfig{Enabled: true},
+				},
+			}
+			scraper := New(cfg, nil)
+
+			doc, err := parseHTMLString(tt.html)
+			require.NoError(t, err)
+
+			result := scraper.extractSeries(doc, tt.isNewSite)
+			assert.Equal(t, tt.expected, result, tt.description)
+		})
+	}
+}
+
+// TestExtractCoverURL_EdgeCases verifies cover URL extraction with various patterns
+func TestExtractCoverURL_EdgeCases(t *testing.T) {
+	tests := []struct {
+		name        string
+		html        string
+		isNewSite   bool
+		expected    string
+		description string
+	}{
+		{
+			name:        "Digital video cover",
+			html:        `<img src="https://pics.dmm.co.jp/digital/video/ipx00535/ipx00535ps.jpg" />`,
+			isNewSite:   false,
+			expected:    "https://pics.dmm.co.jp/digital/video/ipx00535/ipx00535pl.jpg",
+			description: "Should replace ps.jpg with pl.jpg for larger image",
+		},
+		{
+			name:        "Physical DVD cover",
+			html:        `<img src="https://pics.dmm.co.jp/mono/movie/adult/abp420/abp420ps.jpg" />`,
+			isNewSite:   false,
+			expected:    "https://pics.dmm.co.jp/mono/movie/adult/abp420/abp420pl.jpg",
+			description: "Should replace ps.jpg with pl.jpg for DVD",
+		},
+		{
+			name:        "Amateur cover",
+			html:        `<img src="https://pics.dmm.co.jp/digital/amateur/xyz123/xyz123ps.jpg" />`,
+			isNewSite:   false,
+			expected:    "https://pics.dmm.co.jp/digital/amateur/xyz123/xyz123pl.jpg",
+			description: "Should handle amateur category covers",
+		},
+		{
+			name:        "No cover image",
+			html:        `<html><body>No images</body></html>`,
+			isNewSite:   false,
+			expected:    "",
+			description: "Should return empty when no cover found",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &config.Config{
+				Scrapers: config.ScrapersConfig{
+					DMM: config.DMMConfig{Enabled: true},
+				},
+			}
+			scraper := New(cfg, nil)
+
+			doc, err := parseHTMLString(fmt.Sprintf("<html><body>%s</body></html>", tt.html))
+			require.NoError(t, err)
+
+			result := scraper.extractCoverURL(doc, tt.isNewSite)
+			assert.Equal(t, tt.expected, result, tt.description)
+		})
+	}
+}
+
+// TestExtractScreenshots_EdgeCases verifies screenshot extraction with various patterns
+func TestExtractScreenshots_EdgeCases(t *testing.T) {
+	tests := []struct {
+		name          string
+		html          string
+		isNewSite     bool
+		expectedCount int
+		description   string
+	}{
+		{
+			name: "Multiple screenshots",
+			html: `<html><body>
+				<a name="sample-image"><img data-lazy="https://pics.dmm.co.jp/digital/video/ipx00535/ipx00535-1.jpg" /></a>
+				<a name="sample-image"><img data-lazy="https://pics.dmm.co.jp/digital/video/ipx00535/ipx00535-2.jpg" /></a>
+				<a name="sample-image"><img data-lazy="https://pics.dmm.co.jp/digital/video/ipx00535/ipx00535-3.jpg" /></a>
+			</body></html>`,
+			isNewSite:     false,
+			expectedCount: 3,
+			description:   "Should extract all screenshot URLs",
+		},
+		{
+			name: "Screenshots with jp- prefix added",
+			html: `<html><body>
+				<a name="sample-image"><img data-lazy="https://pics.dmm.co.jp/digital/video/ipx00535/ipx00535-1.jpg" /></a>
+			</body></html>`,
+			isNewSite:     false,
+			expectedCount: 1,
+			description:   "Should add jp- prefix to screenshots",
+		},
+		{
+			name:          "No screenshots",
+			html:          `<html><body>No screenshots</body></html>`,
+			isNewSite:     false,
+			expectedCount: 0,
+			description:   "Should return empty array when no screenshots found",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &config.Config{
+				Scrapers: config.ScrapersConfig{
+					DMM: config.DMMConfig{Enabled: true},
+				},
+			}
+			scraper := New(cfg, nil)
+
+			doc, err := parseHTMLString(tt.html)
+			require.NoError(t, err)
+
+			result := scraper.extractScreenshots(doc, tt.isNewSite)
+			assert.Len(t, result, tt.expectedCount, tt.description)
+
+			// Verify jp- prefix is added
+			if tt.expectedCount > 0 {
+				for _, url := range result {
+					assert.Contains(t, url, "jp-", "Screenshot URL should contain jp- prefix")
+				}
+			}
+		})
+	}
+}
+
+// TestParseHTML_ScrapeActressFlag verifies actress extraction respects scrape_actress flag
+func TestParseHTML_ScrapeActressFlag(t *testing.T) {
+	htmlContent := `
+<!DOCTYPE html>
+<html>
+<body>
+	<h1 id="title" class="item">Test Movie</h1>
+	<a href="?actress=111">Test Actress</a>
+</body>
+</html>
+`
+
+	tests := []struct {
+		name               string
+		scrapeActress      bool
+		expectedActressLen int
+	}{
+		{
+			name:               "Scrape actress enabled",
+			scrapeActress:      true,
+			expectedActressLen: 1,
+		},
+		{
+			name:               "Scrape actress disabled",
+			scrapeActress:      false,
+			expectedActressLen: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &config.Config{
+				Scrapers: config.ScrapersConfig{
+					DMM: config.DMMConfig{
+						Enabled:       true,
+						ScrapeActress: tt.scrapeActress,
+					},
+				},
+			}
+			scraper := New(cfg, nil)
+
+			doc, err := parseHTMLString(htmlContent)
+			require.NoError(t, err)
+
+			result, err := scraper.parseHTML(doc, "https://www.dmm.co.jp/test")
+			require.NoError(t, err)
+
+			assert.Len(t, result.Actresses, tt.expectedActressLen)
+		})
+	}
+}
+
+// TestNormalizeContentID_EdgeCases verifies content ID normalization with edge cases
+func TestNormalizeContentID_EdgeCases(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{"Empty string", "", ""},
+		{"Only letters", "ABC", "abc"},
+		{"Only numbers", "123", "123"},
+		{"Single character prefix", "A-1", "a00001"},
+		{"Long prefix", "ABCDEF-123", "abcdef00123"},
+		{"Multiple hyphens", "A-B-C-123", "abc00123"},
+		{"Special suffix", "IPX-535-HD", "ipx00535hd"},
+		{"Uppercase with suffix", "ABC-001Z", "abc00001z"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := normalizeContentID(tt.input)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+// TestNormalizeID_EdgeCases verifies ID normalization with edge cases
+func TestNormalizeID_EdgeCases(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{"Empty string", "", ""},
+		{"Only letters lowercase", "abc", "ABC"},
+		{"Only letters uppercase", "ABC", "ABC"},
+		{"Only numbers", "12345", "12345"},
+		{"Mixed case", "AbCdEf00123", "ABCDEF00123"}, // normalizeID uppercases but doesn't add hyphen to random input
+		{"Leading digit prefix", "1abc00123", "ABC-123"},
+		{"Multiple leading digits", "999xyz00456", "XYZ-456"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := normalizeID(tt.input)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
 }

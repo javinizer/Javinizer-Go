@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -1154,6 +1155,476 @@ func TestIDResolution(t *testing.T) {
 			result, err := scraper.parseResponse(tt.data, "https://r18.dev/test")
 			require.NoError(t, err, tt.description)
 			assert.Equal(t, tt.expectedID, result.ID, tt.description)
+		})
+	}
+}
+
+// TestParseResponse_LanguageHandling verifies proper language field handling
+func TestParseResponse_LanguageHandling(t *testing.T) {
+	cfg := createTestConfig(true)
+	scraper := New(cfg)
+
+	data := &R18Response{
+		DVDID:     "TEST-001",
+		ContentID: "test00001",
+		Title:     "Test Movie",
+	}
+
+	result, err := scraper.parseResponse(data, "https://r18.dev/test")
+	require.NoError(t, err)
+
+	// R18Dev should always set language to "en"
+	assert.Equal(t, "en", result.Language)
+	assert.Equal(t, "r18dev", result.Source)
+}
+
+// TestParseResponse_TitleFallback verifies title fallback logic
+func TestParseResponse_TitleFallback(t *testing.T) {
+	cfg := createTestConfig(true)
+	scraper := New(cfg)
+
+	tests := []struct {
+		name          string
+		titleEn       string
+		title         string
+		expectedTitle string
+		expectedOrig  string
+	}{
+		{
+			name:          "English title preferred",
+			titleEn:       "English Title",
+			title:         "Japanese Title",
+			expectedTitle: "English Title",
+			expectedOrig:  "Japanese Title",
+		},
+		{
+			name:          "Fallback to Japanese title",
+			titleEn:       "",
+			title:         "Japanese Title",
+			expectedTitle: "Japanese Title",
+			expectedOrig:  "Japanese Title",
+		},
+		{
+			name:          "Both empty",
+			titleEn:       "",
+			title:         "",
+			expectedTitle: "",
+			expectedOrig:  "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			data := &R18Response{
+				DVDID:     "TEST-001",
+				ContentID: "test00001",
+				TitleEn:   tt.titleEn,
+				Title:     tt.title,
+			}
+
+			result, err := scraper.parseResponse(data, "https://r18.dev/test")
+			require.NoError(t, err)
+
+			assert.Equal(t, tt.expectedTitle, result.Title)
+			assert.Equal(t, tt.expectedOrig, result.OriginalTitle)
+		})
+	}
+}
+
+// TestParseResponse_DescriptionFallback verifies description fallback logic
+func TestParseResponse_DescriptionFallback(t *testing.T) {
+	cfg := createTestConfig(true)
+	scraper := New(cfg)
+
+	tests := []struct {
+		name        string
+		descEn      string
+		desc        string
+		expectedVal string
+	}{
+		{
+			name:        "English description preferred",
+			descEn:      "English Description",
+			desc:        "Japanese Description",
+			expectedVal: "English Description",
+		},
+		{
+			name:        "Fallback to Japanese description",
+			descEn:      "",
+			desc:        "Japanese Description",
+			expectedVal: "Japanese Description",
+		},
+		{
+			name:        "Both empty",
+			descEn:      "",
+			desc:        "",
+			expectedVal: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			data := &R18Response{
+				DVDID:         "TEST-001",
+				ContentID:     "test00001",
+				Title:         "Test",
+				DescriptionEn: tt.descEn,
+				Description:   tt.desc,
+			}
+
+			result, err := scraper.parseResponse(data, "https://r18.dev/test")
+			require.NoError(t, err)
+
+			assert.Equal(t, tt.expectedVal, result.Description)
+		})
+	}
+}
+
+// TestParseResponse_ReleaseDateVariants verifies date parsing with various formats
+func TestParseResponse_ReleaseDateVariants(t *testing.T) {
+	cfg := createTestConfig(true)
+	scraper := New(cfg)
+
+	tests := []struct {
+		name        string
+		releaseDate string
+		expectNil   bool
+		expectedDay int
+	}{
+		{
+			name:        "Valid ISO date",
+			releaseDate: "2024-03-15",
+			expectNil:   false,
+			expectedDay: 15,
+		},
+		{
+			name:        "Invalid format",
+			releaseDate: "15/03/2024",
+			expectNil:   true,
+		},
+		{
+			name:        "Empty date",
+			releaseDate: "",
+			expectNil:   true,
+		},
+		{
+			name:        "Malformed date",
+			releaseDate: "not-a-date",
+			expectNil:   true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			data := &R18Response{
+				DVDID:       "TEST-001",
+				ContentID:   "test00001",
+				Title:       "Test",
+				ReleaseDate: tt.releaseDate,
+			}
+
+			result, err := scraper.parseResponse(data, "https://r18.dev/test")
+			require.NoError(t, err)
+
+			if tt.expectNil {
+				assert.Nil(t, result.ReleaseDate)
+			} else {
+				require.NotNil(t, result.ReleaseDate)
+				assert.Equal(t, tt.expectedDay, result.ReleaseDate.Day())
+			}
+		})
+	}
+}
+
+// TestParseResponse_RuntimeVariants verifies runtime handling
+func TestParseResponse_RuntimeVariants(t *testing.T) {
+	cfg := createTestConfig(true)
+	scraper := New(cfg)
+
+	tests := []struct {
+		name     string
+		runtime  int
+		expected int
+	}{
+		{
+			name:     "Standard runtime",
+			runtime:  120,
+			expected: 120,
+		},
+		{
+			name:     "Zero runtime",
+			runtime:  0,
+			expected: 0,
+		},
+		{
+			name:     "Short runtime",
+			runtime:  30,
+			expected: 30,
+		},
+		{
+			name:     "Long runtime",
+			runtime:  240,
+			expected: 240,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			data := &R18Response{
+				DVDID:     "TEST-001",
+				ContentID: "test00001",
+				Title:     "Test",
+				Runtime:   tt.runtime,
+			}
+
+			result, err := scraper.parseResponse(data, "https://r18.dev/test")
+			require.NoError(t, err)
+
+			assert.Equal(t, tt.expected, result.Runtime)
+		})
+	}
+}
+
+// TestParseResponse_EmptyFields verifies handling of empty/missing optional fields
+func TestParseResponse_EmptyFields(t *testing.T) {
+	cfg := createTestConfig(true)
+	scraper := New(cfg)
+
+	data := &R18Response{
+		DVDID:     "TEST-001",
+		ContentID: "test00001",
+		Title:     "Minimal Test",
+		Runtime:   90,
+		// All optional fields left empty
+	}
+
+	result, err := scraper.parseResponse(data, "https://r18.dev/test")
+	require.NoError(t, err)
+
+	// Verify required fields
+	assert.Equal(t, "r18dev", result.Source)
+	assert.Equal(t, "TEST-001", result.ID)
+	assert.Equal(t, "test00001", result.ContentID)
+	assert.Equal(t, "Minimal Test", result.Title)
+	assert.Equal(t, 90, result.Runtime)
+
+	// Verify optional fields are empty but not causing errors
+	assert.Empty(t, result.Director)
+	assert.Empty(t, result.Maker)
+	assert.Empty(t, result.Label)
+	assert.Empty(t, result.Series)
+	assert.Empty(t, result.Description)
+	assert.Nil(t, result.ReleaseDate)
+	assert.Empty(t, result.PosterURL)
+	assert.Empty(t, result.CoverURL)
+	assert.Empty(t, result.TrailerURL)
+	assert.Empty(t, result.Actresses)
+	assert.Empty(t, result.Genres)
+	assert.Empty(t, result.ScreenshotURL)
+}
+
+// TestActressThumbURLFallback verifies actress thumbnail URL generation
+func TestActressThumbURLFallback(t *testing.T) {
+	cfg := createTestConfig(true)
+	scraper := New(cfg)
+
+	tests := []struct {
+		name           string
+		imageURL       string
+		nameRomaji     string
+		expectPrefix   bool
+		expectContains string
+		description    string
+	}{
+		{
+			name:           "Provided image URL with relative path",
+			imageURL:       "actresses/test_actress.jpg",
+			nameRomaji:     "Test Actress",
+			expectPrefix:   true,
+			expectContains: "actresses/test_actress.jpg",
+			description:    "Should prepend DMM URL prefix to relative paths",
+		},
+		{
+			name:           "Provided image URL with absolute URL",
+			imageURL:       "https://example.com/actress.jpg",
+			nameRomaji:     "Test Actress",
+			expectPrefix:   false,
+			expectContains: "https://example.com/actress.jpg",
+			description:    "Should use absolute URL as-is",
+		},
+		{
+			name:           "Generated from romaji name",
+			imageURL:       "",
+			nameRomaji:     "Yui Hatano",
+			expectPrefix:   false,
+			expectContains: "hatano_yui.jpg",
+			description:    "Should generate URL from romaji name",
+		},
+		{
+			name:           "Single name actress",
+			imageURL:       "",
+			nameRomaji:     "Madonna",
+			expectPrefix:   false,
+			expectContains: "madonna.jpg",
+			description:    "Should handle single name actresses",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			data := &R18Response{
+				DVDID:     "TEST-001",
+				ContentID: "test00001",
+				Title:     "Test",
+				Actresses: []struct {
+					ID         int    `json:"id"`
+					ImageURL   string `json:"image_url"`
+					NameKana   string `json:"name_kana"`
+					NameKanji  string `json:"name_kanji"`
+					NameRomaji string `json:"name_romaji"`
+				}{
+					{
+						ID:         123,
+						ImageURL:   tt.imageURL,
+						NameRomaji: tt.nameRomaji,
+						NameKanji:  "テスト",
+					},
+				},
+			}
+
+			result, err := scraper.parseResponse(data, "https://r18.dev/test")
+			require.NoError(t, err, tt.description)
+			require.Len(t, result.Actresses, 1, tt.description)
+
+			thumbURL := result.Actresses[0].ThumbURL
+			assert.Contains(t, thumbURL, tt.expectContains, tt.description)
+
+			if tt.expectPrefix && tt.imageURL != "" && !strings.HasPrefix(tt.imageURL, "http") {
+				assert.Contains(t, thumbURL, "pics.dmm.co.jp", "Should contain DMM domain for relative paths")
+			}
+		})
+	}
+}
+
+// TestCategoryParsing verifies genre/category extraction
+func TestCategoryParsing(t *testing.T) {
+	cfg := createTestConfig(true)
+	scraper := New(cfg)
+
+	tests := []struct {
+		name       string
+		categories []struct {
+			Name string `json:"name"`
+		}
+		expectedCount int
+		expectedFirst string
+	}{
+		{
+			name: "Multiple categories",
+			categories: []struct {
+				Name string `json:"name"`
+			}{
+				{Name: "Drama"},
+				{Name: "Romance"},
+				{Name: "Action"},
+			},
+			expectedCount: 3,
+			expectedFirst: "Drama",
+		},
+		{
+			name: "Single category",
+			categories: []struct {
+				Name string `json:"name"`
+			}{
+				{Name: "Comedy"},
+			},
+			expectedCount: 1,
+			expectedFirst: "Comedy",
+		},
+		{
+			name: "Empty categories",
+			categories: []struct {
+				Name string `json:"name"`
+			}{},
+			expectedCount: 0,
+		},
+		{
+			name: "Category with empty name",
+			categories: []struct {
+				Name string `json:"name"`
+			}{
+				{Name: "Drama"},
+				{Name: ""},
+				{Name: "Romance"},
+			},
+			expectedCount: 2, // Empty names are filtered out by cleanString check
+			expectedFirst: "Drama",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			data := &R18Response{
+				DVDID:      "TEST-001",
+				ContentID:  "test00001",
+				Title:      "Test",
+				Categories: tt.categories,
+			}
+
+			result, err := scraper.parseResponse(data, "https://r18.dev/test")
+			require.NoError(t, err)
+
+			assert.Len(t, result.Genres, tt.expectedCount)
+			if tt.expectedCount > 0 {
+				assert.Equal(t, tt.expectedFirst, result.Genres[0])
+			}
+		})
+	}
+}
+
+// TestNormalizeID_SpecialCases verifies ID normalization with special cases
+func TestNormalizeID_SpecialCases(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{"With ASCII spaces", "IPX 535", "ipx535"},             // Should remove spaces to create valid API URLs
+		{"With tab character", "IPX\t535", "ipx535"},           // Should remove tabs
+		{"With non-breaking space", "IPX\u00a0535", "ipx535"},  // Should remove Unicode non-breaking space (U+00A0)
+		{"With newline", "IPX\n535", "ipx535"},                 // Should remove newlines
+		{"With carriage return", "IPX\r535", "ipx535"},         // Should remove carriage returns
+		{"With mixed whitespace", "IPX \t\u00a0535", "ipx535"}, // Should remove all Unicode whitespace
+		{"Multiple separators", "IPX--535", "ipx535"},
+		{"Trailing hyphen", "IPX-535-", "ipx535"},
+		{"Leading hyphen", "-IPX-535", "ipx535"},
+		{"Mixed separators", "IPX_535", "ipx_535"}, // Doesn't replace underscores (not common in IDs)
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := normalizeID(tt.input)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+// TestContentIDToID_SpecialPrefixes verifies content ID to ID conversion with special prefixes
+func TestContentIDToID_SpecialPrefixes(t *testing.T) {
+	tests := []struct {
+		name      string
+		contentID string
+		expected  string
+	}{
+		{"Single letter", "x00999", "X-999"},
+		{"Long prefix", "abcdef00123", "ABCDEF-123"},
+		{"Short number", "abc00001", "ABC-001"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := contentIDToID(tt.contentID)
+			assert.Equal(t, tt.expected, result)
 		})
 	}
 }

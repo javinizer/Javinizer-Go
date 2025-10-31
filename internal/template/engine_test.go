@@ -694,3 +694,450 @@ func TestTemplateEngine_ResolutionTag(t *testing.T) {
 		}
 	})
 }
+
+func TestTemplateEngine_NilContext(t *testing.T) {
+	engine := NewEngine()
+
+	result, err := engine.Execute("<ID> - <TITLE>", nil)
+	if err == nil {
+		t.Error("Expected error with nil context, got nil")
+	}
+	if result != "" {
+		t.Errorf("Expected empty result with nil context, got %q", result)
+	}
+	if err.Error() != "context cannot be nil" {
+		t.Errorf("Expected 'context cannot be nil' error, got %q", err.Error())
+	}
+}
+
+func TestTemplateEngine_UnknownTag(t *testing.T) {
+	engine := NewEngine()
+	ctx := &Context{ID: "TEST-001"}
+
+	tests := []struct {
+		name     string
+		template string
+		want     string
+	}{
+		{
+			name:     "Unknown tag - replaced with empty",
+			template: "<ID> - <UNKNOWNTAG>",
+			want:     "TEST-001 - ",
+		},
+		{
+			name:     "Unknown tag with modifier",
+			template: "<ID> - <UNKNOWNTAG:modifier>",
+			want:     "TEST-001 - ",
+		},
+		{
+			name:     "Multiple unknown tags - not replaced",
+			template: "<UNKNOWN1> <UNKNOWN2> <ID>",
+			want:     "<UNKNOWN1> <UNKNOWN2> TEST-001",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := engine.Execute(tt.template, ctx)
+			if err != nil {
+				t.Errorf("Execute() error = %v", err)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("Execute() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestTemplateEngine_EmptyModifiers(t *testing.T) {
+	engine := NewEngine()
+	ctx := &Context{
+		ID:    "TEST-001",
+		Title: "Test Movie Title",
+		Index: 5,
+	}
+
+	tests := []struct {
+		name     string
+		template string
+		want     string
+	}{
+		{
+			name:     "Title with empty modifier - not processed",
+			template: "<TITLE:>",
+			want:     "<TITLE:>",
+		},
+		{
+			name:     "Index with empty modifier - not processed",
+			template: "fanart<INDEX:>.jpg",
+			want:     "fanart<INDEX:>.jpg",
+		},
+		{
+			name:     "Title with invalid modifier",
+			template: "<TITLE:abc>",
+			want:     "Test Movie Title",
+		},
+		{
+			name:     "Index with invalid modifier - outputs format string",
+			template: "fanart<INDEX:xyz>.jpg",
+			want:     "fanart5yzd.jpg",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := engine.Execute(tt.template, ctx)
+			if err != nil {
+				t.Errorf("Execute() error = %v", err)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("Execute() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestTemplateEngine_AllTags(t *testing.T) {
+	engine := NewEngine()
+	releaseDate := time.Date(2020, 9, 13, 0, 0, 0, 0, time.UTC)
+
+	ctx := &Context{
+		ID:               "IPX-535",
+		ContentID:        "ipx00535",
+		Title:            "Test Movie Title",
+		OriginalTitle:    "テストムービータイトル",
+		ReleaseDate:      &releaseDate,
+		Runtime:          120,
+		Director:         "Test Director",
+		Maker:            "Test Studio",
+		Label:            "Test Label",
+		Series:           "Test Series",
+		Actresses:        []string{"Actress One", "Actress Two"},
+		Genres:           []string{"Genre1", "Genre2"},
+		OriginalFilename: "original_file.mp4",
+		FirstName:        "First",
+		LastName:         "Last",
+		Index:            3,
+	}
+
+	tests := []struct {
+		name     string
+		template string
+		want     string
+	}{
+		{
+			name:     "CONTENTID tag",
+			template: "<CONTENTID>",
+			want:     "ipx00535",
+		},
+		{
+			name:     "ORIGINALTITLE tag",
+			template: "<ORIGINALTITLE>",
+			want:     "テストムービータイトル",
+		},
+		{
+			name:     "MAKER synonym for STUDIO",
+			template: "<MAKER>",
+			want:     "Test Studio",
+		},
+		{
+			name:     "LABEL tag",
+			template: "<LABEL>",
+			want:     "Test Label",
+		},
+		{
+			name:     "SERIES tag",
+			template: "<SERIES>",
+			want:     "Test Series",
+		},
+		{
+			name:     "FILENAME tag",
+			template: "<FILENAME>",
+			want:     "original_file.mp4",
+		},
+		{
+			name:     "FIRSTNAME tag",
+			template: "<FIRSTNAME>",
+			want:     "First",
+		},
+		{
+			name:     "LASTNAME tag",
+			template: "<LASTNAME>",
+			want:     "Last",
+		},
+		{
+			name:     "ACTRESSES synonym for ACTORS",
+			template: "<ACTRESSES>",
+			want:     "Actress One, Actress Two",
+		},
+		{
+			name:     "GENRES with custom delimiter",
+			template: "<GENRES: / >",
+			want:     "Genre1 / Genre2",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := engine.Execute(tt.template, ctx)
+			if err != nil {
+				t.Errorf("Execute() error = %v", err)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("Execute() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestTemplateEngine_ZeroAndEmptyValues(t *testing.T) {
+	engine := NewEngine()
+
+	ctx := &Context{
+		ID:      "TEST-001",
+		Runtime: 0,
+		Index:   0,
+	}
+
+	tests := []struct {
+		name     string
+		template string
+		want     string
+	}{
+		{
+			name:     "Zero runtime",
+			template: "<ID> (<RUNTIME>min)",
+			want:     "TEST-001 (min)",
+		},
+		{
+			name:     "Zero index",
+			template: "fanart<INDEX>.jpg",
+			want:     "fanart.jpg",
+		},
+		{
+			name:     "Empty actresses array",
+			template: "<ID> - <ACTORS>",
+			want:     "TEST-001 - ",
+		},
+		{
+			name:     "Empty genres array",
+			template: "<ID> (<GENRES>)",
+			want:     "TEST-001 ()",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := engine.Execute(tt.template, ctx)
+			if err != nil {
+				t.Errorf("Execute() error = %v", err)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("Execute() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestTemplateEngine_DateFormatEdgeCases(t *testing.T) {
+	engine := NewEngine()
+
+	tests := []struct {
+		name     string
+		template string
+		date     *time.Time
+		want     string
+	}{
+		{
+			name:     "YYYY only",
+			template: "<RELEASEDATE:YYYY>",
+			date:     timePtr(2020, 9, 13),
+			want:     "2020",
+		},
+		{
+			name:     "YY only",
+			template: "<RELEASEDATE:YY>",
+			date:     timePtr(2020, 9, 13),
+			want:     "20",
+		},
+		{
+			name:     "MM only",
+			template: "<RELEASEDATE:MM>",
+			date:     timePtr(2020, 9, 13),
+			want:     "09",
+		},
+		{
+			name:     "DD only",
+			template: "<RELEASEDATE:DD>",
+			date:     timePtr(2020, 9, 13),
+			want:     "13",
+		},
+		{
+			name:     "Complex date format",
+			template: "<RELEASEDATE:YYYY/MM/DD>",
+			date:     timePtr(2020, 9, 13),
+			want:     "2020/09/13",
+		},
+		{
+			name:     "Date format with text",
+			template: "<RELEASEDATE:Released YYYY-MM-DD>",
+			date:     timePtr(2020, 9, 13),
+			want:     "Released 2020-09-13",
+		},
+		{
+			name:     "Nil date with format",
+			template: "<RELEASEDATE:YYYY-MM-DD>",
+			date:     nil,
+			want:     "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := &Context{
+				ReleaseDate: tt.date,
+			}
+			got, err := engine.Execute(tt.template, ctx)
+			if err != nil {
+				t.Errorf("Execute() error = %v", err)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("Execute() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestTemplateEngine_TruncateEdgeCases(t *testing.T) {
+	engine := NewEngine()
+
+	tests := []struct {
+		name     string
+		title    string
+		maxLen   int
+		expected string
+	}{
+		{
+			name:     "Truncate at exactly word boundary",
+			title:    "The Quick Brown Fox",
+			maxLen:   13,
+			expected: "The Quick...",
+		},
+		{
+			name:     "Single character limit",
+			title:    "Test",
+			maxLen:   1,
+			expected: "T",
+		},
+		{
+			name:     "Limit equals 3 (edge case)",
+			title:    "Test Movie",
+			maxLen:   3,
+			expected: "Tes",
+		},
+		{
+			name:     "Limit equals 4 (first ellipsis case)",
+			title:    "Test Movie",
+			maxLen:   4,
+			expected: "T...",
+		},
+		{
+			name:     "Japanese mixed with spaces",
+			title:    "これは テスト です 映画",
+			maxLen:   10,
+			expected: "これは テスト...",
+		},
+		{
+			name:     "Korean characters",
+			title:    "한국어 제목입니다",
+			maxLen:   8,
+			expected: "한국어 제...",
+		},
+		{
+			name:     "Chinese characters",
+			title:    "这是一个很长的中文标题",
+			maxLen:   10,
+			expected: "这是一个很长的...",
+		},
+		{
+			name:     "Title shorter than limit",
+			title:    "Short",
+			maxLen:   100,
+			expected: "Short",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := engine.TruncateTitle(tt.title, tt.maxLen)
+			if got != tt.expected {
+				t.Errorf("TruncateTitle() = %q, want %q", got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestTemplateEngine_NestedConditionals(t *testing.T) {
+	engine := NewEngine()
+
+	tests := []struct {
+		name     string
+		template string
+		ctx      *Context
+		want     string
+	}{
+		{
+			name:     "Conditional inside another template",
+			template: "<ID><IF:SERIES> - <SERIES></IF> - <TITLE>",
+			ctx: &Context{
+				ID:     "IPX-001",
+				Series: "",
+				Title:  "Test Movie",
+			},
+			want: "IPX-001 - Test Movie",
+		},
+		{
+			name:     "Multiple conditionals in sequence",
+			template: "<IF:DIRECTOR><DIRECTOR> presents </IF><IF:SERIES><SERIES>: </IF><TITLE>",
+			ctx: &Context{
+				Director: "John Doe",
+				Series:   "Test Series",
+				Title:    "Test Movie",
+			},
+			want: "John Doe presents Test Series: Test Movie",
+		},
+		{
+			name:     "Empty IF block",
+			template: "<ID><IF:SERIES></IF>",
+			ctx: &Context{
+				ID:     "IPX-001",
+				Series: "Test",
+			},
+			want: "IPX-001",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := engine.Execute(tt.template, tt.ctx)
+			if err != nil {
+				t.Errorf("Execute() error = %v", err)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("Execute() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// Helper function to create time pointers
+func timePtr(year, month, day int) *time.Time {
+	t := time.Date(year, time.Month(month), day, 0, 0, 0, 0, time.UTC)
+	return &t
+}

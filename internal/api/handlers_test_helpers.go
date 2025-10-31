@@ -9,6 +9,7 @@ import (
 // Test helpers for creating mock repositories
 
 // mockScraperWithResults implements Scraper and returns predefined results
+// For security testing, it echoes back the ID in the result to verify sanitization
 type mockScraperWithResults struct {
 	name    string
 	enabled bool
@@ -24,7 +25,11 @@ func (m *mockScraperWithResults) Search(id string) (*models.ScraperResult, error
 	if m.err != nil {
 		return nil, m.err
 	}
-	return m.result, nil
+	// Clone the result and set the ID to the searched ID
+	// This allows security tests to verify that malicious input is sanitized
+	result := *m.result
+	result.ID = id // Echo back the input ID for security testing
+	return &result, nil
 }
 
 func (m *mockScraperWithResults) GetURL(id string) (string, error) {

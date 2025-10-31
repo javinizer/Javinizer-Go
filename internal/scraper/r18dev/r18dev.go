@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/go-resty/resty/v2"
 	"github.com/javinizer/javinizer-go/internal/config"
@@ -311,9 +312,18 @@ func (s *Scraper) parseResponse(data *R18Response, sourceURL string) (*models.Sc
 // normalizeID normalizes the movie ID for R18.dev API
 func normalizeID(id string) string {
 	// R18.dev expects IDs in format like "ipx00535" or "ABP00420"
-	// Convert "IPX-535" to "ipx00535"
+	// Convert "IPX-535" to "ipx00535" and remove all Unicode whitespace (spaces, tabs, non-breaking spaces, etc.)
 	id = strings.ToLower(id)
 	id = strings.ReplaceAll(id, "-", "")
+
+	// Remove ALL Unicode whitespace characters to ensure valid API URLs
+	// This handles ASCII spaces, tabs, non-breaking spaces (\u00a0), etc.
+	id = strings.Map(func(r rune) rune {
+		if unicode.IsSpace(r) {
+			return -1 // Remove the character
+		}
+		return r
+	}, id)
 
 	return id
 }

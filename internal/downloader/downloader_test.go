@@ -1,6 +1,9 @@
 package downloader
 
 import (
+	"image"
+	"image/color"
+	"image/jpeg"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -147,19 +150,10 @@ func TestDownloader_DownloadCover_AlreadyExists(t *testing.T) {
 	}
 }
 
-func TestDownloader_DownloadScreenshots(t *testing.T) {
-	t.Skip("DownloadScreenshots method not implemented - test needs updating")
-}
-
-/*
- Disabled test code - kept for reference
-func TestDownloader_DownloadScreenshots_Original(t *testing.T) {
-	// Create test server
-	callCount := 0
+func TestDownloader_DownloadExtrafanart(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		callCount++
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(fmt.Sprintf("screenshot %d", callCount)))
+		w.Write([]byte("screenshot data"))
 	}))
 	defer server.Close()
 
@@ -172,14 +166,17 @@ func TestDownloader_DownloadScreenshots_Original(t *testing.T) {
 	}
 
 	cfg := &config.OutputConfig{
-		DownloadScreenshots: true,
+		DownloadExtrafanart: true,
+		ScreenshotFolder:    "extrafanart",
+		ScreenshotFormat:    "fanart<INDEX:2>.jpg",
+		ScreenshotPadding:   2,
 	}
 
 	downloader := NewDownloader(cfg, "test-agent")
 
-	results, err := downloader.DownloadScreenshots(movie, tmpDir)
+	results, err := downloader.DownloadExtrafanart(movie, tmpDir)
 	if err != nil {
-		t.Fatalf("DownloadScreenshots failed: %v", err)
+		t.Fatalf("DownloadExtrafanart failed: %v", err)
 	}
 
 	if len(results) != 3 {
@@ -192,21 +189,16 @@ func TestDownloader_DownloadScreenshots_Original(t *testing.T) {
 			t.Errorf("Screenshot %d was not downloaded", i+1)
 		}
 
-		if result.Type != MediaTypeScreenshot {
-			t.Errorf("Expected type %s, got %s", MediaTypeScreenshot, result.Type)
+		if result.Type != MediaTypeExtrafanart {
+			t.Errorf("Expected type %s, got %s", MediaTypeExtrafanart, result.Type)
 		}
 
-		expectedPath := filepath.Join(tmpDir, fmt.Sprintf("IPX-535-screenshot%02d.jpg", i+1))
-		if result.LocalPath != expectedPath {
-			t.Errorf("Expected path %s, got %s", expectedPath, result.LocalPath)
-		}
-
-		// Verify file exists
+		// Verify file exists in extrafanart subdirectory
 		if _, err := os.Stat(result.LocalPath); os.IsNotExist(err) {
-			t.Errorf("Screenshot file %d does not exist", i+1)
+			t.Errorf("Screenshot file %d does not exist at %s", i+1, result.LocalPath)
 		}
 	}
-*/
+}
 
 func TestDownloader_DownloadTrailer(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -623,5 +615,536 @@ func TestCleanupPartialDownloads(t *testing.T) {
 	// Verify normal file still exists
 	if _, err := os.Stat(normalFile); os.IsNotExist(err) {
 		t.Error("Normal file was removed")
+	}
+}
+
+func TestDownloader_SetDownloadExtrafanart(t *testing.T) {
+	cfg := &config.OutputConfig{
+		DownloadExtrafanart: false,
+	}
+
+	downloader := NewDownloader(cfg, "test-agent")
+
+	// Verify initial state
+	if downloader.config.DownloadExtrafanart {
+		t.Error("Expected DownloadExtrafanart to be false initially")
+	}
+
+	// Enable it
+	downloader.SetDownloadExtrafanart(true)
+	if !downloader.config.DownloadExtrafanart {
+		t.Error("Expected DownloadExtrafanart to be true after SetDownloadExtrafanart(true)")
+	}
+
+	// Disable it
+	downloader.SetDownloadExtrafanart(false)
+	if downloader.config.DownloadExtrafanart {
+		t.Error("Expected DownloadExtrafanart to be false after SetDownloadExtrafanart(false)")
+	}
+}
+
+func TestDownloader_DownloadPoster_WithPosterURL(t *testing.T) {
+	// Create a real JPEG image for testing
+	img := image.NewRGBA(image.Rect(0, 0, 800, 538))
+	// Fill with a simple pattern
+	for y := 0; y < 538; y++ {
+		for x := 0; x < 800; x++ {
+			img.Set(x, y, color.RGBA{uint8(x % 256), uint8(y % 256), 128, 255})
+		}
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/jpeg")
+		w.WriteHeader(http.StatusOK)
+		// Encode as JPEG
+		jpeg.Encode(w, img, &jpeg.Options{Quality: 85})
+	}))
+	defer server.Close()
+
+	tmpDir := t.TempDir()
+	movie := createTestMovie()
+	movie.PosterURL = server.URL + "/poster.jpg"
+
+	cfg := &config.OutputConfig{
+		DownloadPoster: true,
+		PosterFormat:   "<ID>-poster.jpg",
+	}
+
+	downloader := NewDownloader(cfg, "test-agent")
+
+	result, err := downloader.DownloadPoster(movie, tmpDir)
+	if err != nil {
+		t.Fatalf("DownloadPoster failed: %v", err)
+	}
+
+	if result.Type != MediaTypePoster {
+		t.Errorf("Expected type %s, got %s", MediaTypePoster, result.Type)
+	}
+
+	if !result.Downloaded {
+		t.Error("Expected Downloaded to be true")
+	}
+
+	expectedPath := filepath.Join(tmpDir, "IPX-535-poster.jpg")
+	if result.LocalPath != expectedPath {
+		t.Errorf("Expected path %s, got %s", expectedPath, result.LocalPath)
+	}
+
+	// Verify file exists and has content
+	info, err := os.Stat(result.LocalPath)
+	if err != nil {
+		t.Fatalf("Poster file does not exist: %v", err)
+	}
+
+	if info.Size() == 0 {
+		t.Error("Poster file has zero size")
+	}
+}
+
+func TestDownloader_DownloadPoster_Disabled(t *testing.T) {
+	tmpDir := t.TempDir()
+	movie := createTestMovie()
+
+	cfg := &config.OutputConfig{
+		DownloadPoster: false,
+	}
+
+	downloader := NewDownloader(cfg, "test-agent")
+
+	result, err := downloader.DownloadPoster(movie, tmpDir)
+	if err != nil {
+		t.Fatalf("DownloadPoster failed: %v", err)
+	}
+
+	if result.Downloaded {
+		t.Error("Expected Downloaded to be false when poster download disabled")
+	}
+
+	if result.Type != MediaTypePoster {
+		t.Errorf("Expected type %s, got %s", MediaTypePoster, result.Type)
+	}
+}
+
+func TestDownloader_DownloadExtrafanart_Disabled(t *testing.T) {
+	tmpDir := t.TempDir()
+	movie := createTestMovie()
+
+	cfg := &config.OutputConfig{
+		DownloadExtrafanart: false,
+	}
+
+	downloader := NewDownloader(cfg, "test-agent")
+
+	results, err := downloader.DownloadExtrafanart(movie, tmpDir)
+	if err != nil {
+		t.Fatalf("DownloadExtrafanart failed: %v", err)
+	}
+
+	if len(results) != 0 {
+		t.Errorf("Expected 0 results when disabled, got %d", len(results))
+	}
+}
+
+func TestDownloader_DownloadExtrafanart_EmptyScreenshots(t *testing.T) {
+	tmpDir := t.TempDir()
+	movie := createTestMovie()
+	movie.Screenshots = []string{}
+
+	cfg := &config.OutputConfig{
+		DownloadExtrafanart: true,
+		ScreenshotFolder:    "extrafanart",
+	}
+
+	downloader := NewDownloader(cfg, "test-agent")
+
+	results, err := downloader.DownloadExtrafanart(movie, tmpDir)
+	if err != nil {
+		t.Fatalf("DownloadExtrafanart failed: %v", err)
+	}
+
+	if len(results) != 0 {
+		t.Errorf("Expected 0 results for empty screenshots, got %d", len(results))
+	}
+}
+
+func TestDownloader_DownloadExtrafanart_PartialFailure(t *testing.T) {
+	callCount := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		if callCount == 2 {
+			// Fail the second request
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("screenshot data"))
+	}))
+	defer server.Close()
+
+	tmpDir := t.TempDir()
+	movie := createTestMovie()
+	movie.Screenshots = []string{
+		server.URL + "/screenshot1.jpg",
+		server.URL + "/screenshot2.jpg",
+		server.URL + "/screenshot3.jpg",
+	}
+
+	cfg := &config.OutputConfig{
+		DownloadExtrafanart: true,
+		ScreenshotFolder:    "extrafanart",
+	}
+
+	downloader := NewDownloader(cfg, "test-agent")
+
+	results, err := downloader.DownloadExtrafanart(movie, tmpDir)
+	if err != nil {
+		t.Fatalf("DownloadExtrafanart failed: %v", err)
+	}
+
+	if len(results) != 3 {
+		t.Errorf("Expected 3 results (including failures), got %d", len(results))
+	}
+
+	// Count successful vs failed downloads
+	successCount := 0
+	failureCount := 0
+	for _, result := range results {
+		if result.Downloaded {
+			successCount++
+		} else if result.Error != nil {
+			failureCount++
+		}
+	}
+
+	if successCount != 2 {
+		t.Errorf("Expected 2 successful downloads, got %d", successCount)
+	}
+
+	if failureCount != 1 {
+		t.Errorf("Expected 1 failed download, got %d", failureCount)
+	}
+}
+
+func TestDownloader_DownloadTrailer_Disabled(t *testing.T) {
+	tmpDir := t.TempDir()
+	movie := createTestMovie()
+
+	cfg := &config.OutputConfig{
+		DownloadTrailer: false,
+	}
+
+	downloader := NewDownloader(cfg, "test-agent")
+
+	result, err := downloader.DownloadTrailer(movie, tmpDir)
+	if err != nil {
+		t.Fatalf("DownloadTrailer failed: %v", err)
+	}
+
+	if result.Downloaded {
+		t.Error("Expected Downloaded to be false when disabled")
+	}
+}
+
+func TestDownloader_DownloadTrailer_EmptyURL(t *testing.T) {
+	tmpDir := t.TempDir()
+	movie := createTestMovie()
+	movie.TrailerURL = ""
+
+	cfg := &config.OutputConfig{
+		DownloadTrailer: true,
+	}
+
+	downloader := NewDownloader(cfg, "test-agent")
+
+	result, err := downloader.DownloadTrailer(movie, tmpDir)
+	if err != nil {
+		t.Fatalf("DownloadTrailer failed: %v", err)
+	}
+
+	if result.Downloaded {
+		t.Error("Expected Downloaded to be false for empty URL")
+	}
+}
+
+func TestDownloader_DownloadActressImages_Disabled(t *testing.T) {
+	tmpDir := t.TempDir()
+	movie := createTestMovie()
+
+	cfg := &config.OutputConfig{
+		DownloadActress: false,
+	}
+
+	downloader := NewDownloader(cfg, "test-agent")
+
+	results, err := downloader.DownloadActressImages(movie, tmpDir)
+	if err != nil {
+		t.Fatalf("DownloadActressImages failed: %v", err)
+	}
+
+	if len(results) != 0 {
+		t.Errorf("Expected 0 results when disabled, got %d", len(results))
+	}
+}
+
+func TestDownloader_DownloadActressImages_EmptyActresses(t *testing.T) {
+	tmpDir := t.TempDir()
+	movie := createTestMovie()
+	movie.Actresses = []models.Actress{}
+
+	cfg := &config.OutputConfig{
+		DownloadActress: true,
+		ActressFolder:   ".actors",
+	}
+
+	downloader := NewDownloader(cfg, "test-agent")
+
+	results, err := downloader.DownloadActressImages(movie, tmpDir)
+	if err != nil {
+		t.Fatalf("DownloadActressImages failed: %v", err)
+	}
+
+	if len(results) != 0 {
+		t.Errorf("Expected 0 results for empty actresses, got %d", len(results))
+	}
+}
+
+func TestDownloader_DownloadActressImages_SkipEmptyThumbURL(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("actress image"))
+	}))
+	defer server.Close()
+
+	tmpDir := t.TempDir()
+	movie := createTestMovie()
+	// First actress has URL, second doesn't
+	movie.Actresses[0].ThumbURL = server.URL + "/actress1.jpg"
+	movie.Actresses[1].ThumbURL = ""
+
+	cfg := &config.OutputConfig{
+		DownloadActress: true,
+		ActressFolder:   ".actors",
+	}
+
+	downloader := NewDownloader(cfg, "test-agent")
+
+	results, err := downloader.DownloadActressImages(movie, tmpDir)
+	if err != nil {
+		t.Fatalf("DownloadActressImages failed: %v", err)
+	}
+
+	// Should only download 1 (skip the actress with empty URL)
+	if len(results) != 1 {
+		t.Errorf("Expected 1 result (skipping empty URL), got %d", len(results))
+	}
+
+	if !results[0].Downloaded {
+		t.Error("Expected first actress image to be downloaded")
+	}
+}
+
+func TestDownloader_Download_InvalidURL(t *testing.T) {
+	tmpDir := t.TempDir()
+	movie := createTestMovie()
+	movie.CoverURL = "not-a-valid-url://invalid"
+
+	cfg := &config.OutputConfig{
+		DownloadCover: true,
+	}
+
+	downloader := NewDownloader(cfg, "test-agent")
+
+	result, err := downloader.DownloadCover(movie, tmpDir)
+	if err == nil {
+		t.Error("Expected error for invalid URL")
+	}
+
+	if result == nil || result.Error == nil {
+		t.Error("Expected result with Error set")
+	}
+
+	if result.Downloaded {
+		t.Error("Expected Downloaded to be false on error")
+	}
+}
+
+func TestDownloader_Download_ServerError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	tmpDir := t.TempDir()
+	movie := createTestMovie()
+	movie.CoverURL = server.URL + "/error.jpg"
+
+	cfg := &config.OutputConfig{
+		DownloadCover: true,
+	}
+
+	downloader := NewDownloader(cfg, "test-agent")
+
+	result, err := downloader.DownloadCover(movie, tmpDir)
+	if err == nil {
+		t.Error("Expected error for 500 status")
+	}
+
+	if result.Downloaded {
+		t.Error("Expected Downloaded to be false on server error")
+	}
+}
+
+func TestDownloader_Download_Timeout(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping timeout test in short mode")
+	}
+
+	// Create a server that delays response
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(3 * time.Second)
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("data"))
+	}))
+	defer server.Close()
+
+	tmpDir := t.TempDir()
+	movie := createTestMovie()
+	movie.CoverURL = server.URL + "/slow.jpg"
+
+	cfg := &config.OutputConfig{
+		DownloadCover:   true,
+		DownloadTimeout: 1, // 1 second timeout
+	}
+
+	downloader := NewDownloader(cfg, "test-agent")
+
+	result, err := downloader.DownloadCover(movie, tmpDir)
+	if err == nil {
+		t.Error("Expected timeout error")
+	}
+
+	if result.Downloaded {
+		t.Error("Expected Downloaded to be false on timeout")
+	}
+}
+
+func TestDownloader_Download_WithUserAgent(t *testing.T) {
+	userAgent := ""
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		userAgent = r.Header.Get("User-Agent")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("data"))
+	}))
+	defer server.Close()
+
+	tmpDir := t.TempDir()
+	movie := createTestMovie()
+	movie.CoverURL = server.URL + "/cover.jpg"
+
+	cfg := &config.OutputConfig{
+		DownloadCover: true,
+		FanartFormat:  "<ID>-fanart.jpg",
+	}
+
+	expectedUserAgent := "test-custom-agent/1.0"
+	downloader := NewDownloader(cfg, expectedUserAgent)
+
+	_, err := downloader.DownloadCover(movie, tmpDir)
+	if err != nil {
+		t.Fatalf("DownloadCover failed: %v", err)
+	}
+
+	if userAgent != expectedUserAgent {
+		t.Errorf("Expected User-Agent %q, got %q", expectedUserAgent, userAgent)
+	}
+}
+
+func TestDownloader_NewDownloader_DefaultTimeout(t *testing.T) {
+	cfg := &config.OutputConfig{
+		DownloadTimeout: 0, // Should default to 60
+	}
+
+	downloader := NewDownloader(cfg, "test-agent")
+
+	if downloader.httpClient.Timeout != 60*time.Second {
+		t.Errorf("Expected default timeout 60s, got %v", downloader.httpClient.Timeout)
+	}
+}
+
+func TestDownloader_NewDownloader_CustomTimeout(t *testing.T) {
+	cfg := &config.OutputConfig{
+		DownloadTimeout: 30,
+	}
+
+	downloader := NewDownloader(cfg, "test-agent")
+
+	if downloader.httpClient.Timeout != 30*time.Second {
+		t.Errorf("Expected timeout 30s, got %v", downloader.httpClient.Timeout)
+	}
+}
+
+func TestDownloader_DownloadAll_AllDisabled(t *testing.T) {
+	tmpDir := t.TempDir()
+	movie := createTestMovie()
+
+	cfg := &config.OutputConfig{
+		DownloadCover:       false,
+		DownloadPoster:      false,
+		DownloadExtrafanart: false,
+		DownloadTrailer:     false,
+		DownloadActress:     false,
+	}
+
+	downloader := NewDownloader(cfg, "test-agent")
+
+	results, err := downloader.DownloadAll(movie, tmpDir, 0)
+	if err != nil {
+		t.Fatalf("DownloadAll failed: %v", err)
+	}
+
+	// Even when disabled, the methods return DownloadResult with Downloaded=false
+	// Verify that none were actually downloaded
+	for _, result := range results {
+		if result.Downloaded {
+			t.Errorf("Expected no downloads when all disabled, but %s was downloaded", result.Type)
+		}
+	}
+}
+
+func TestCleanupPartialDownloads_NonExistentDir(t *testing.T) {
+	err := CleanupPartialDownloads("/nonexistent/directory")
+	if err == nil {
+		t.Error("Expected error for non-existent directory")
+	}
+}
+
+func TestCleanupPartialDownloads_WithSubdirectory(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create a subdirectory with a .tmp file
+	subDir := filepath.Join(tmpDir, "subdir")
+	if err := os.MkdirAll(subDir, 0755); err != nil {
+		t.Fatalf("Failed to create subdirectory: %v", err)
+	}
+
+	// Create .tmp file in root
+	tmpFile := filepath.Join(tmpDir, "file.tmp")
+	if err := os.WriteFile(tmpFile, []byte("temp"), 0644); err != nil {
+		t.Fatalf("Failed to create temp file: %v", err)
+	}
+
+	// Cleanup should ignore subdirectories
+	if err := CleanupPartialDownloads(tmpDir); err != nil {
+		t.Fatalf("CleanupPartialDownloads failed: %v", err)
+	}
+
+	// Verify .tmp file is gone
+	if _, err := os.Stat(tmpFile); !os.IsNotExist(err) {
+		t.Error("Temp file was not removed")
+	}
+
+	// Verify subdirectory still exists
+	if _, err := os.Stat(subDir); os.IsNotExist(err) {
+		t.Error("Subdirectory was removed")
 	}
 }
