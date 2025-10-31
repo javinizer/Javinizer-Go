@@ -76,9 +76,13 @@ RUN apk add --no-cache \
     sqlite \
     wget
 
-# Create non-root user with consistent UID/GID
-RUN addgroup -g 1000 javinizer && \
-    adduser -u 1000 -G javinizer -s /bin/sh -D javinizer
+# Create non-root user with configurable UID/GID (defaults to 1000)
+# Can be overridden at build time to match host user permissions
+ARG USER_ID=1000
+ARG GROUP_ID=1000
+
+RUN addgroup -g ${GROUP_ID} javinizer && \
+    adduser -u ${USER_ID} -G javinizer -s /bin/sh -D javinizer
 
 # Copy binary to /usr/local/bin for system-wide access
 COPY --from=go-builder /build/javinizer /usr/local/bin/javinizer

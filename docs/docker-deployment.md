@@ -351,12 +351,19 @@ docker inspect javinizer
 
 ### Running as Non-Root User
 
-The container runs as user `javinizer` (UID 1000) for security:
-```dockerfile
-USER javinizer
+The container runs as user `javinizer` for security. By default, the user is created with UID 1000 and GID 1000, but this can be customized to match your host user:
+
+```bash
+# Match container user to your host user (recommended)
+USER_ID=$(id -u) GROUP_ID=$(id -g) docker-compose up -d
+
+# Or set in .env file:
+echo "USER_ID=$(id -u)" > .env
+echo "GROUP_ID=$(id -g)" >> .env
+docker-compose up -d
 ```
 
-If you encounter permission issues with host volumes, ensure your host user has matching permissions.
+**Why this matters**: Matching the container UID/GID to your host user prevents permission issues when the container writes to mounted volumes (`./javinizer` and `/data`). Without this, you may see "permission denied" errors or files owned by the wrong user.
 
 ### Network Security
 
@@ -377,16 +384,18 @@ The default configuration binds to `0.0.0.0:8080` (all interfaces). For producti
 ### Recommended Setup
 
 ```yaml
-version: '3.8'
-
 services:
   javinizer:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        - USER_ID=${USER_ID:-1000}   # Match host user for permissions
+        - GROUP_ID=${GROUP_ID:-1000}
     image: javinizer:latest
     container_name: javinizer
     restart: unless-stopped
+    user: "${USER_ID:-1000}:${GROUP_ID:-1000}"
 
     ports:
       - "127.0.0.1:8080:8080"  # Localhost only
@@ -414,6 +423,12 @@ services:
         reservations:
           cpus: '0.5'
           memory: 256M
+```
+
+**Usage**:
+```bash
+# Set user/group to match your host user
+USER_ID=$(id -u) GROUP_ID=$(id -g) docker-compose up -d
 ```
 
 ---
