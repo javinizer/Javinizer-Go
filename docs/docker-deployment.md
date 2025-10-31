@@ -28,13 +28,16 @@ cd javinizer-go
 cp .env.example .env
 # Edit .env to set your USER_ID, GROUP_ID, and MEDIA_PATH
 
-# 3. Build the Docker image
+# 3. Copy the Docker Compose template
+cp docker-compose.yml.example docker-compose.yml
+
+# 4. Build the Docker image
 docker build -t javinizer:latest .
 
-# 4. Run with Docker Compose
+# 5. Run with Docker Compose
 docker-compose up -d
 
-# 5. Access the web UI
+# 6. Access the web UI
 open http://localhost:8080
 ```
 
@@ -79,7 +82,13 @@ The Dockerfile uses a multi-stage build:
 
 ### Basic Usage
 
-The `docker-compose.yml` file provides a production-ready setup:
+Copy the example file and customize as needed:
+
+```bash
+cp docker-compose.yml.example docker-compose.yml
+```
+
+The `docker-compose.yml` provides a production-ready setup:
 
 ```bash
 # Start the container
@@ -116,9 +125,10 @@ Javinizer uses a `.env` file to configure Docker Compose variables. This makes i
 
 ### Setup
 
-1. **Copy the example file**:
+1. **Copy the example files**:
    ```bash
    cp .env.example .env
+   cp docker-compose.yml.example docker-compose.yml
    ```
 
 2. **Edit `.env` with your settings**:
@@ -211,7 +221,7 @@ volumes:
 
 ### Environment Variables
 
-Configure via environment variables in `docker-compose.yml`:
+Configure via the `.env` file (recommended) or directly in `docker-compose.yml`:
 
 ```yaml
 environment:
@@ -263,7 +273,13 @@ docker-compose restart
 
 ### Port Mapping
 
-To use a different port, edit `docker-compose.yml`:
+To use a different port, set `HOST_PORT` in `.env`:
+
+```bash
+HOST_PORT=9090
+```
+
+Or edit `docker-compose.yml` directly:
 
 ```yaml
 ports:
@@ -297,9 +313,9 @@ docker-compose logs
 ```
 
 Common issues:
-- **Port 8080 in use**: Change port mapping in `docker-compose.yml`
-- **Permission denied**: Ensure the `./data` directory is writable
-- **Volume mount failed**: Check that your JAV library path exists
+- **Port 8080 in use**: Set `HOST_PORT=9090` in `.env` file
+- **Permission denied**: Ensure the `./data` directory is writable and check `USER_ID`/`GROUP_ID` in `.env`
+- **Volume mount failed**: Check that `MEDIA_PATH` in `.env` points to an existing directory
 
 ### Health Check Failing
 
