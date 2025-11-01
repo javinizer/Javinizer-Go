@@ -12,6 +12,7 @@ import (
 type Config struct {
 	Server      ServerConfig      `yaml:"server"`
 	API         APIConfig         `yaml:"api"`
+	System      SystemConfig      `yaml:"system"`
 	Scrapers    ScrapersConfig    `yaml:"scrapers"`
 	Metadata    MetadataConfig    `yaml:"metadata"`
 	Matching    MatchingConfig    `yaml:"file_matching"`
@@ -45,6 +46,13 @@ type SecurityConfig struct {
 	ScanTimeoutSeconds int `yaml:"scan_timeout_seconds"`
 	// Allowed origins for CORS and WebSocket connections (empty = same-origin only, "*" = allow all)
 	AllowedOrigins []string `yaml:"allowed_origins"`
+}
+
+// SystemConfig holds system-level settings
+type SystemConfig struct {
+	// Umask for file creation (e.g., "002" for rwxrwxr-x)
+	// Can be overridden with UMASK environment variable
+	Umask string `yaml:"umask"`
 }
 
 // ScrapersConfig holds scraper-specific settings

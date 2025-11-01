@@ -40,6 +40,12 @@ services:
       # Uncomment to override config.yaml
       # - LOG_LEVEL=${LOG_LEVEL:-info}
 
+      # File creation mask (optional: 002, 022, etc.)
+      # 002 = rwxrwxr-x (group can write)
+      # 022 = rwxr-xr-x (only owner can write)
+      # Uncomment to override config.yaml
+      # - UMASK=${UMASK:-002}
+
       # Timezone
       - TZ=${TZ:-UTC}
 
@@ -75,4 +81,5 @@ services:
       - JAVINIZER_DB=/javinizer/javinizer.db
       - JAVINIZER_LOG_DIR=/javinizer/logs
       - LOG_LEVEL=${LOG_LEVEL:-debug}
+      - UMASK=${UMASK:-002}
       - TZ=${TZ:-UTC}

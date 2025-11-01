@@ -18,6 +18,12 @@ api:
         max_files_per_scan: 10000
         # Timeout for scan operations (seconds)
         scan_timeout_seconds: 30
+system:
+    # File creation mask (umask) for created files and directories
+    # 002 = rwxrwxr-x (owner and group can write, others can read)
+    # 022 = rwxr-xr-x (only owner can write, others can read)
+    # Can be overridden with UMASK environment variable
+    umask: "002"
 scrapers:
     user_agent: Javinizer (+https://github.com/javinizer/Javinizer)
     priority:

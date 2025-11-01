@@ -5,7 +5,9 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/javinizer/javinizer-go/internal/aggregator"
@@ -311,6 +313,18 @@ func loadConfig() error {
 		}
 	}
 
+	// Apply umask if configured
+	if cfg.System.Umask != "" {
+		// Parse umask string (e.g., "002" or "0022") to integer
+		umaskValue, err := strconv.ParseUint(cfg.System.Umask, 8, 32)
+		if err != nil {
+			logging.Warnf("Invalid umask value '%s', using default: %v", cfg.System.Umask, err)
+		} else {
+			oldUmask := syscall.Umask(int(umaskValue))
+			logging.Debugf("Applied umask: %s (previous: %04o)", cfg.System.Umask, oldUmask)
+		}
+	}
+
 	return nil
 }
 
@@ -321,6 +335,11 @@ func applyEnvironmentOverrides(cfg *config.Config) {
 	// LOG_LEVEL - Override log level (debug, info, warn, error)
 	if envLogLevel := os.Getenv("LOG_LEVEL"); envLogLevel != "" {
 		cfg.Logging.Level = strings.ToLower(envLogLevel)
+	}
+
+	// UMASK - Override file creation mask
+	if envUmask := os.Getenv("UMASK"); envUmask != "" {
+		cfg.System.Umask = envUmask
 	}
 
 	// JAVINIZER_DB - Override database DSN path
