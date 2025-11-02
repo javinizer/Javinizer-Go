@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/chromedp/cdproto/network"
@@ -18,6 +19,29 @@ import (
 func basicAuth(username, password string) string {
 	auth := username + ":" + password
 	return base64.StdEncoding.EncodeToString([]byte(auth))
+}
+
+// isRunningInContainer detects if we're running inside a Docker container
+func isRunningInContainer() bool {
+	// Check for /.dockerenv file (Docker specific)
+	if _, err := os.Stat("/.dockerenv"); err == nil {
+		return true
+	}
+
+	// Check for container environment variable (set in Dockerfile)
+	if os.Getenv("CHROME_BIN") != "" || os.Getenv("CHROME_PATH") != "" {
+		return true
+	}
+
+	// Check /proc/1/cgroup for docker/containerd
+	if data, err := os.ReadFile("/proc/1/cgroup"); err == nil {
+		content := string(data)
+		if strings.Contains(content, "docker") || strings.Contains(content, "containerd") {
+			return true
+		}
+	}
+
+	return false
 }
 
 // FetchWithHeadless fetches a URL using headless Chrome with age verification cookies
@@ -36,6 +60,14 @@ func FetchWithHeadless(url string, timeout int, proxyConfig *config.ProxyConfig)
 		chromedp.Flag("no-first-run", true),
 		chromedp.Flag("disable-extensions", true),
 	)
+
+	// Check if running in Docker container
+	// Chrome's sandbox doesn't work in containers due to namespace restrictions
+	// Trade-off: We run as non-root user, and the container itself provides isolation
+	if isRunningInContainer() {
+		logging.Debug("DMM Headless: Detected container environment, disabling Chrome sandbox")
+		opts = append(opts, chromedp.Flag("no-sandbox", true))
+	}
 
 	// Only override Chrome binary path if explicitly set via environment variable
 	// This allows chromedp to use its built-in discovery on dev machines while
