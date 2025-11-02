@@ -5,6 +5,7 @@
 	import { apiClient } from '$lib/api/client';
 	import type { BatchJobResponse, FileResult, Movie, OrganizePreviewResponse } from '$lib/api/types';
 	import { toastStore } from '$lib/stores/toast';
+	import { websocketStore } from '$lib/stores/websocket';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Card from '$lib/components/ui/Card.svelte';
 	import MovieEditor from '$lib/components/MovieEditor.svelte';
@@ -23,7 +24,8 @@
 		FolderOpen,
 		Image as ImageIcon,
 		Loader2,
-		X
+		X,
+		Check
 	} from 'lucide-svelte';
 
 	let jobId = $derived($page.params.jobId as string);
@@ -39,6 +41,11 @@
 	let showDestinationBrowser = $state(false);
 	let showTrailerModal = $state(false);
 	let preview: OrganizePreviewResponse | null = $state(null);
+
+	// Organize operation state
+	let organizeProgress = $state(0);
+	let organizeStatus = $state<'idle' | 'organizing' | 'completed' | 'failed'>('idle');
+	let fileStatuses = $state<Map<string, {status: string, error?: string}>>(new Map());
 
 	// Determine which panels to show based on download settings
 	const showCoverPanel = $derived(config?.Output?.DownloadCover ?? true);
@@ -117,6 +124,56 @@
 		}
 	});
 
+	// Subscribe to WebSocket messages during organize operation
+	$effect(() => {
+		if (organizeStatus !== 'organizing') return;
+
+		const unsubscribe = websocketStore.subscribe((ws) => {
+			// Get the latest message
+			const msg = ws.messages.at(-1);
+			if (!msg || msg.job_id !== jobId) return;
+
+			if (msg.status === 'organizing') {
+				organizeProgress = msg.progress || 0;
+			}
+
+			if (msg.status === 'failed' && msg.file_path) {
+				fileStatuses.set(msg.file_path, {
+					status: 'failed',
+					error: msg.error
+				});
+				fileStatuses = new Map(fileStatuses); // trigger reactivity
+
+				// Show toast notification for immediate feedback
+				const fileName = msg.file_path.split(/[\\/]/).pop();
+				toastStore.error(`Failed to organize ${fileName}: ${msg.error}`, 7000);
+			}
+
+			if (msg.status === 'organized' && msg.file_path) {
+				fileStatuses.set(msg.file_path, {status: 'success'});
+				fileStatuses = new Map(fileStatuses);
+			}
+
+			if (msg.status === 'organization_completed') {
+				organizeStatus = 'completed';
+				organizeProgress = 100;
+				organizing = false;
+
+				// Count failures
+				const failures = Array.from(fileStatuses.values())
+					.filter(s => s.status === 'failed').length;
+
+				if (failures === 0) {
+					toastStore.success(msg.message || 'All files organized successfully', 5000);
+					setTimeout(() => goto('/browse'), 1000);
+				}
+				// If there are failures, stay on page to show them
+			}
+		});
+
+		return unsubscribe;
+	});
+
 	function updateCurrentMovie(movie: Movie) {
 		if (!currentResult) return;
 		editedMovies.set(currentResult.file_path, movie);
@@ -146,35 +203,32 @@
 			return;
 		}
 
+		// Clear old WebSocket messages to prevent stale completion messages
+		websocketStore.clearMessages();
+
+		organizeStatus = 'organizing';
 		organizing = true;
+		organizeProgress = 0;
+		fileStatuses = new Map();
+
 		try {
 			// Save all edited movies to backend first
 			if (editedMovies.size > 0) {
 				await saveAllEdits();
 			}
 
-			// Then call organize with destination
+			// Start organize (returns immediately)
 			await apiClient.organizeBatchJob(jobId, {
 				destination: destinationPath,
 				copy_only: copyOnly
 			});
 
-			const fileCount = movieResults.length;
-			const action = copyOnly ? 'copied' : 'organized';
-			toastStore.success(
-				`Successfully ${action} ${fileCount} file${fileCount !== 1 ? 's' : ''} to ${destinationPath}`,
-				7000
-			);
-
-			// Short delay to allow toast to be seen before navigation
-			setTimeout(() => {
-				goto('/browse');
-			}, 500);
+			// DON'T show success or navigate - wait for WebSocket messages
 		} catch (e) {
-			const errorMessage = e instanceof Error ? e.message : 'Failed to organize files';
-			error = errorMessage;
-			toastStore.error(errorMessage, 7000);
+			organizeStatus = 'failed';
 			organizing = false;
+			const errorMessage = e instanceof Error ? e.message : 'Failed to start organize';
+			toastStore.error(errorMessage, 7000);
 		}
 	}
 
@@ -280,6 +334,92 @@
 				</div>
 			</div>
 
+			<!-- Organize Progress UI -->
+			{#if organizeStatus === 'organizing'}
+				<Card class="p-6">
+					<h3 class="font-semibold mb-4">Organizing Files...</h3>
+
+					<!-- Progress bar -->
+					<div class="mb-4">
+						<div class="flex justify-between text-sm mb-1">
+							<span>Progress</span>
+							<span>{Math.round(organizeProgress)}%</span>
+						</div>
+						<div class="w-full bg-gray-200 rounded-full h-2">
+							<div
+								class="bg-blue-600 h-2 rounded-full transition-all duration-300"
+								style="width: {organizeProgress}%"
+							/>
+						</div>
+					</div>
+
+					<!-- File statuses -->
+					{#if fileStatuses.size > 0}
+						<div class="space-y-2 max-h-64 overflow-y-auto">
+							{#each Array.from(fileStatuses.entries()) as [filePath, status]}
+								<div class="flex items-start gap-2 text-sm p-2 rounded {status.status === 'failed' ? 'bg-red-50' : 'bg-green-50'}">
+									{#if status.status === 'failed'}
+										<AlertCircle class="h-4 w-4 text-red-600 flex-shrink-0 mt-0.5" />
+									{:else}
+										<Check class="h-4 w-4 text-green-600 flex-shrink-0 mt-0.5" />
+									{/if}
+									<div class="flex-1 min-w-0">
+										<div class="font-medium truncate">{filePath.split(/[\\/]/).pop()}</div>
+										{#if status.error}
+											<div class="text-red-700 text-xs mt-1">{status.error}</div>
+										{/if}
+									</div>
+								</div>
+							{/each}
+						</div>
+					{/if}
+				</Card>
+			{/if}
+
+			<!-- Organize Completed with Errors -->
+			{#if organizeStatus === 'completed'}
+				{@const failures = Array.from(fileStatuses.values()).filter(s => s.status === 'failed')}
+				{@const successes = Array.from(fileStatuses.values()).filter(s => s.status === 'success')}
+
+				{#if failures.length > 0}
+					<Card class="p-6 border-orange-500">
+						<div class="flex items-start gap-3">
+							<AlertCircle class="h-6 w-6 text-orange-600 flex-shrink-0" />
+							<div class="flex-1">
+								<h3 class="font-semibold mb-2">Organization Completed with Errors</h3>
+								<p class="text-sm text-muted-foreground mb-4">
+									{successes.length} file(s) organized successfully, {failures.length} failed
+								</p>
+
+								<!-- Failed files list -->
+								<div class="space-y-2 max-h-96 overflow-y-auto">
+									<h4 class="font-medium text-sm">Failed Files:</h4>
+									{#each Array.from(fileStatuses.entries()).filter(([_, s]) => s.status === 'failed') as [filePath, status]}
+										<div class="bg-red-50 p-3 rounded text-sm">
+											<div class="font-medium">{filePath.split(/[\\/]/).pop()}</div>
+											<div class="text-red-700 text-xs mt-1">{status.error}</div>
+										</div>
+									{/each}
+								</div>
+
+								<div class="mt-4 flex gap-2">
+									<Button onclick={() => organizeStatus = 'idle'}>
+										{#snippet children()}
+											Retry Failed
+										{/snippet}
+									</Button>
+									<Button variant="outline" onclick={() => goto('/browse')}>
+										{#snippet children()}
+											Continue Anyway
+										{/snippet}
+									</Button>
+								</div>
+							</div>
+						</div>
+					</Card>
+				{/if}
+			{/if}
+
 			<div class="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-6">
 				<!-- Left Sidebar: Media Preview -->
 				<div class="space-y-4">
@@ -323,7 +463,8 @@
 									<img
 										src={currentMovie.cover_url}
 										alt="Cover"
-										class="w-full rounded border aspect-video object-cover"
+										class="rounded border object-contain"
+										style="max-width: 100%; max-height: 400px; width: auto;"
 										onerror={(e) => {
 											(e.currentTarget as HTMLImageElement).src = 'https://via.placeholder.com/400x225?text=No+Cover';
 										}}
