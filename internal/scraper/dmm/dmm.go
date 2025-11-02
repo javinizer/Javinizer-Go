@@ -815,56 +815,65 @@ func (s *Scraper) extractGenres(doc *goquery.Document) []string {
 func (s *Scraper) extractActresses(doc *goquery.Document) []models.ActressInfo {
 	actresses := make([]models.ActressInfo, 0)
 
-	// Look for performer block
-	actressRegex := regexp.MustCompile(`<a.*?href="[^"]*\?actress=(\d+)".*?>([^<]+)</a>`)
-	html, _ := doc.Html()
-	matches := actressRegex.FindAllStringSubmatch(html, -1)
-
-	for _, match := range matches {
-		if len(match) > 2 {
-			// Extract actress ID from URL
-			actressID := 0
-			if len(match) > 1 {
-				actressID, _ = strconv.Atoi(match[1])
-			}
-
-			actressName := cleanString(match[2])
-
-			// Remove parenthetical content
-			actressName = regexp.MustCompile(`\(.*\)|（.*）`).ReplaceAllString(actressName, "")
-			actressName = strings.TrimSpace(actressName)
-
-			// Filter out known non-actress text patterns (DMM UI elements)
-			if strings.Contains(actressName, "購入前") ||
-				strings.Contains(actressName, "レビュー") ||
-				strings.Contains(actressName, "ポイント") ||
-				actressName == "" {
-				continue
-			}
-
-			// Determine if name is Japanese (using Unicode properties for Go 1.25+ compatibility)
-			isJapanese := regexp.MustCompile(`\p{Hiragana}|\p{Katakana}|\p{Han}`).MatchString(actressName)
-
-			actress := models.ActressInfo{
-				DMMID: actressID,
-			}
-
-			if isJapanese {
-				actress.JapaneseName = actressName
-			} else {
-				// Split English name
-				parts := strings.Fields(actressName)
-				if len(parts) == 1 {
-					actress.FirstName = parts[0]
-				} else if len(parts) >= 2 {
-					actress.LastName = parts[0]
-					actress.FirstName = parts[1]
-				}
-			}
-
-			actresses = append(actresses, actress)
+	// Use goquery to find actress links - support both URL formats:
+	// - ?actress=123 (older format)
+	// - /article=actress/id=123 (newer format)
+	doc.Find("a[href*='actress']").Each(func(i int, sel *goquery.Selection) {
+		href, exists := sel.Attr("href")
+		if !exists {
+			return
 		}
-	}
+
+		// Extract actress ID from URL
+		actressID := 0
+
+		// Try ?actress=123 format first
+		if matches := regexp.MustCompile(`\?actress=(\d+)`).FindStringSubmatch(href); len(matches) > 1 {
+			actressID, _ = strconv.Atoi(matches[1])
+		} else if matches := regexp.MustCompile(`/article=actress/id=(\d+)`).FindStringSubmatch(href); len(matches) > 1 {
+			// Try /article=actress/id=123 format
+			actressID, _ = strconv.Atoi(matches[1])
+		} else {
+			// No actress ID found in URL
+			return
+		}
+
+		actressName := cleanString(sel.Text())
+
+		// Remove parenthetical content
+		actressName = regexp.MustCompile(`\(.*\)|（.*）`).ReplaceAllString(actressName, "")
+		actressName = strings.TrimSpace(actressName)
+
+		// Filter out known non-actress text patterns (DMM UI elements)
+		if strings.Contains(actressName, "購入前") ||
+			strings.Contains(actressName, "レビュー") ||
+			strings.Contains(actressName, "ポイント") ||
+			actressName == "" {
+			return
+		}
+
+		// Determine if name is Japanese (using Unicode properties for Go 1.25+ compatibility)
+		isJapanese := regexp.MustCompile(`\p{Hiragana}|\p{Katakana}|\p{Han}`).MatchString(actressName)
+
+		actress := models.ActressInfo{
+			DMMID: actressID,
+		}
+
+		if isJapanese {
+			actress.JapaneseName = actressName
+		} else {
+			// Split English name
+			parts := strings.Fields(actressName)
+			if len(parts) == 1 {
+				actress.FirstName = parts[0]
+			} else if len(parts) >= 2 {
+				actress.LastName = parts[0]
+				actress.FirstName = parts[1]
+			}
+		}
+
+		actresses = append(actresses, actress)
+	})
 
 	return actresses
 }
