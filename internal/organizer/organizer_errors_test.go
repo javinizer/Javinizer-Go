@@ -236,6 +236,179 @@ func TestOrganizer_Execute_InPlaceErrors(t *testing.T) {
 	})
 }
 
+// TestOrganizer_Execute_PermissionErrors tests permission-related error handling
+func TestOrganizer_Execute_PermissionErrors(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("Skipping permission tests when running as root")
+	}
+
+	tmpDir := t.TempDir()
+
+	cfg := &config.OutputConfig{
+		FolderFormat: "<ID>",
+		FileFormat:   "<ID>",
+		RenameFile:   true,
+	}
+
+	org := NewOrganizer(cfg)
+	movie := createTestMovie()
+
+	t.Run("Execute with read-only destination directory", func(t *testing.T) {
+		// Create source file
+		sourceFile := filepath.Join(tmpDir, "readonly-dest.mp4")
+		require.NoError(t, os.WriteFile(sourceFile, []byte("test"), 0644))
+
+		// Create read-only destination directory
+		readonlyDir := filepath.Join(tmpDir, "readonly-dest")
+		require.NoError(t, os.MkdirAll(readonlyDir, 0755))
+		defer os.Chmod(readonlyDir, 0755) // Restore permissions for cleanup
+
+		// Make directory read-only (no write permission)
+		require.NoError(t, os.Chmod(readonlyDir, 0444))
+
+		match := matcher.MatchResult{
+			File: scanner.FileInfo{
+				Path:      sourceFile,
+				Name:      "readonly-dest.mp4",
+				Extension: ".mp4",
+			},
+			ID: "IPX-535",
+		}
+
+		// Try to plan (this should work)
+		plan, err := org.Plan(match, movie, readonlyDir, false)
+		require.NoError(t, err)
+
+		// Try to execute (this should fail due to permissions)
+		result, err := org.Execute(plan, false)
+
+		// Should get an error about permissions
+		assert.Error(t, err)
+		assert.NotNil(t, result)
+		assert.NotNil(t, result.Error)
+
+		// Error message should mention permission or mkdir failure
+		errMsg := err.Error()
+		assert.True(t,
+			strings.Contains(errMsg, "permission") ||
+				strings.Contains(errMsg, "mkdir") ||
+				strings.Contains(errMsg, "failed to create"),
+			"Expected permission-related error, got: %s", errMsg)
+	})
+
+	t.Run("Execute with unwritable source file", func(t *testing.T) {
+		// Create source file
+		sourceFile := filepath.Join(tmpDir, "unwritable-source.mp4")
+		require.NoError(t, os.WriteFile(sourceFile, []byte("test"), 0644))
+
+		// Make source file read-only
+		require.NoError(t, os.Chmod(sourceFile, 0444))
+		defer os.Chmod(sourceFile, 0644) // Restore for cleanup
+
+		match := matcher.MatchResult{
+			File: scanner.FileInfo{
+				Path:      sourceFile,
+				Name:      "unwritable-source.mp4",
+				Extension: ".mp4",
+			},
+			ID: "IPX-535",
+		}
+
+		destDir := filepath.Join(tmpDir, "normal-dest")
+		plan, err := org.Plan(match, movie, destDir, false)
+		require.NoError(t, err)
+
+		// Try to execute move operation
+		result, err := org.Execute(plan, false)
+
+		// Move might succeed even if file is read-only (depends on OS)
+		// But if it fails, error should be clear
+		if err != nil {
+			assert.NotNil(t, result)
+			assert.NotNil(t, result.Error)
+			errMsg := err.Error()
+			assert.NotEmpty(t, errMsg, "Error message should not be empty")
+		}
+	})
+
+	t.Run("Copy with unreadable source file", func(t *testing.T) {
+		// Create source file
+		sourceFile := filepath.Join(tmpDir, "unreadable-source.mp4")
+		require.NoError(t, os.WriteFile(sourceFile, []byte("test"), 0644))
+
+		// Make source file unreadable (no read permission)
+		require.NoError(t, os.Chmod(sourceFile, 0000))
+		defer os.Chmod(sourceFile, 0644) // Restore for cleanup
+
+		match := matcher.MatchResult{
+			File: scanner.FileInfo{
+				Path:      sourceFile,
+				Name:      "unreadable-source.mp4",
+				Extension: ".mp4",
+			},
+			ID: "IPX-535",
+		}
+
+		destDir := filepath.Join(tmpDir, "copy-dest-unreadable")
+		plan, err := org.Plan(match, movie, destDir, false)
+		require.NoError(t, err)
+
+		// Try to copy (should fail to open file)
+		result, err := org.Copy(plan, false)
+
+		assert.Error(t, err)
+		assert.NotNil(t, result)
+		assert.NotNil(t, result.Error)
+
+		// Error should mention permission or failed to open
+		errMsg := err.Error()
+		assert.True(t,
+			strings.Contains(errMsg, "permission") ||
+				strings.Contains(errMsg, "failed to open"),
+			"Expected permission-related error, got: %s", errMsg)
+	})
+
+	t.Run("Organize returns clear permission error message", func(t *testing.T) {
+		// Create source file
+		sourceFile := filepath.Join(tmpDir, "perm-test.mp4")
+		require.NoError(t, os.WriteFile(sourceFile, []byte("test"), 0644))
+
+		// Create read-only destination
+		readonlyDir := filepath.Join(tmpDir, "readonly-organize")
+		require.NoError(t, os.MkdirAll(readonlyDir, 0755))
+		defer os.Chmod(readonlyDir, 0755) // Restore permissions
+		require.NoError(t, os.Chmod(readonlyDir, 0444))
+
+		match := matcher.MatchResult{
+			File: scanner.FileInfo{
+				Path:      sourceFile,
+				Name:      "perm-test.mp4",
+				Extension: ".mp4",
+			},
+			ID: "IPX-535",
+		}
+
+		// Call the high-level Organize function
+		result, err := org.Organize(match, movie, readonlyDir, false, false, false)
+
+		// Should get an error
+		assert.Error(t, err)
+
+		// Result should contain the error
+		if result != nil {
+			assert.NotNil(t, result.Error)
+
+			// Error message should be descriptive
+			errMsg := result.Error.Error()
+			assert.NotEmpty(t, errMsg)
+
+			// Should not be a generic error - should give actual reason
+			assert.False(t, errMsg == "unknown error",
+				"Error message should be specific, got: %s", errMsg)
+		}
+	})
+}
+
 // TestOrganizer_Revert_Errors tests Revert error handling
 func TestOrganizer_Revert_Errors(t *testing.T) {
 	tmpDir := t.TempDir()
