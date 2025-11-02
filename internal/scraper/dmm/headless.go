@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/chromedp/cdproto/network"
@@ -31,9 +32,22 @@ func FetchWithHeadless(url string, timeout int, proxyConfig *config.ProxyConfig)
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
 		chromedp.Flag("headless", true),
 		chromedp.Flag("disable-gpu", true),
-		chromedp.Flag("no-sandbox", true),
 		chromedp.Flag("disable-dev-shm-usage", true),
+		chromedp.Flag("no-first-run", true),
+		chromedp.Flag("disable-extensions", true),
 	)
+
+	// Only override Chrome binary path if explicitly set via environment variable
+	// This allows chromedp to use its built-in discovery on dev machines while
+	// respecting the container's CHROME_BIN setting in production
+	chromeBin := os.Getenv("CHROME_BIN")
+	if chromeBin == "" {
+		chromeBin = os.Getenv("CHROME_PATH")
+	}
+	if chromeBin != "" {
+		logging.Debugf("DMM Headless: Using explicit Chrome binary: %s", chromeBin)
+		opts = append(opts, chromedp.ExecPath(chromeBin))
+	}
 
 	// Add proxy if configured
 	if proxyConfig != nil && proxyConfig.Enabled && proxyConfig.URL != "" {

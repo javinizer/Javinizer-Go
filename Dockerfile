@@ -69,12 +69,17 @@ LABEL maintainer="javinizer@example.com" \
 # Working directory is now /javinizer (app state location)
 WORKDIR /javinizer
 
-# Install runtime dependencies
+# Install runtime dependencies including Chromium for headless browser
 RUN apk add --no-cache \
     ca-certificates \
     tzdata \
     sqlite \
-    wget
+    wget \
+    chromium \
+    nss \
+    freetype \
+    harfbuzz \
+    ttf-freefont
 
 # Create non-root user with configurable UID/GID (defaults to 1000)
 # Can be overridden at build time to match host user permissions
@@ -114,6 +119,8 @@ ENV JAVINIZER_HOME=/javinizer \
     JAVINIZER_CONFIG=/javinizer/config.yaml \
     JAVINIZER_DB=/javinizer/javinizer.db \
     JAVINIZER_LOG_DIR=/javinizer/logs \
+    CHROME_BIN=/usr/bin/chromium-browser \
+    CHROME_PATH=/usr/bin/chromium-browser \
     PATH="/usr/local/bin:${PATH}"
 
 # Switch to non-root user
