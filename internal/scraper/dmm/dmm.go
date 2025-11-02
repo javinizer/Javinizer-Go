@@ -13,6 +13,7 @@ import (
 	"github.com/javinizer/javinizer-go/internal/config"
 	"github.com/javinizer/javinizer-go/internal/database"
 	"github.com/javinizer/javinizer-go/internal/httpclient"
+	"github.com/javinizer/javinizer-go/internal/imageutil"
 	"github.com/javinizer/javinizer-go/internal/logging"
 	"github.com/javinizer/javinizer-go/internal/models"
 )
@@ -627,8 +628,18 @@ func (s *Scraper) parseHTML(doc *goquery.Document, sourceURL string) (*models.Sc
 	// Extract cover URL
 	result.CoverURL = s.extractCoverURL(doc, isNewSite)
 
-	// Poster URL is the same as cover URL (both use large pl.jpg image)
-	result.PosterURL = result.CoverURL
+	// Try to get a high-quality poster from awsimgsrc
+	// If the awsimgsrc poster is too low quality, we'll use the cover for cropping
+	if result.CoverURL != "" {
+		posterURL, shouldCrop := imageutil.GetOptimalPosterURL(result.CoverURL, s.client.GetClient())
+		if shouldCrop {
+			// Use cover for both, poster will be cropped during organization
+			result.PosterURL = result.CoverURL
+		} else {
+			// Use the high-quality awsimgsrc poster directly
+			result.PosterURL = posterURL
+		}
+	}
 
 	// Extract screenshots
 	result.ScreenshotURL = s.extractScreenshots(doc, isNewSite)
