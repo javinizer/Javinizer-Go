@@ -57,6 +57,20 @@ func main() {
 	scrapeCmd.Flags().StringSliceVarP(&scrapersFlag, "scrapers", "s", nil, "Comma-separated list of scrapers to use (e.g., 'r18dev,dmm' or 'dmm')")
 	scrapeCmd.Flags().BoolP("force", "f", false, "Force refresh metadata from scrapers (clear cache)")
 
+	// DMM scraper configuration overrides
+	scrapeCmd.Flags().Bool("scrape-actress", false, "Enable actress scraping (overrides config)")
+	scrapeCmd.Flags().Bool("no-scrape-actress", false, "Disable actress scraping (overrides config)")
+	scrapeCmd.Flags().Bool("headless", false, "Enable headless browser for DMM (overrides config)")
+	scrapeCmd.Flags().Bool("no-headless", false, "Disable headless browser for DMM (overrides config)")
+	scrapeCmd.Flags().Int("headless-timeout", 0, "Headless browser timeout in seconds (overrides config, 0=use config)")
+
+	// Metadata configuration overrides
+	// Note: These flags set config values but may not affect runtime behavior yet
+	scrapeCmd.Flags().Bool("actress-db", false, "Enable actress database lookup (overrides config)")
+	scrapeCmd.Flags().Bool("no-actress-db", false, "Disable actress database lookup (overrides config)")
+	scrapeCmd.Flags().Bool("genre-replacement", false, "Enable genre replacement (overrides config)")
+	scrapeCmd.Flags().Bool("no-genre-replacement", false, "Disable genre replacement (overrides config)")
+
 	// Info command
 	infoCmd := &cobra.Command{
 		Use:   "info",
@@ -385,11 +399,67 @@ func applyEnvironmentOverrides(cfg *config.Config) {
 	// (No action taken - just documented for future use)
 }
 
+// applyScrapeFlagOverrides applies CLI flag overrides to the config for the scrape command.
+// This allows users to override key configuration settings without modifying config.yaml.
+func applyScrapeFlagOverrides(cmd *cobra.Command, cfg *config.Config) {
+	// DMM scraper overrides
+	if cmd.Flags().Changed("scrape-actress") {
+		scrapeActress, _ := cmd.Flags().GetBool("scrape-actress")
+		cfg.Scrapers.DMM.ScrapeActress = scrapeActress
+		logging.Debugf("CLI override: scrape_actress = %v", scrapeActress)
+	}
+	if cmd.Flags().Changed("no-scrape-actress") {
+		cfg.Scrapers.DMM.ScrapeActress = false
+		logging.Debugf("CLI override: scrape_actress = false")
+	}
+
+	if cmd.Flags().Changed("headless") {
+		headless, _ := cmd.Flags().GetBool("headless")
+		cfg.Scrapers.DMM.EnableHeadless = headless
+		logging.Debugf("CLI override: enable_headless = %v", headless)
+	}
+	if cmd.Flags().Changed("no-headless") {
+		cfg.Scrapers.DMM.EnableHeadless = false
+		logging.Debugf("CLI override: enable_headless = false")
+	}
+
+	if cmd.Flags().Changed("headless-timeout") {
+		timeout, _ := cmd.Flags().GetInt("headless-timeout")
+		if timeout > 0 {
+			cfg.Scrapers.DMM.HeadlessTimeout = timeout
+			logging.Debugf("CLI override: headless_timeout = %d", timeout)
+		}
+	}
+
+	// Metadata configuration overrides
+	if cmd.Flags().Changed("actress-db") {
+		actressDB, _ := cmd.Flags().GetBool("actress-db")
+		cfg.Metadata.ActressDatabase.Enabled = actressDB
+		logging.Debugf("CLI override: actress_database.enabled = %v", actressDB)
+	}
+	if cmd.Flags().Changed("no-actress-db") {
+		cfg.Metadata.ActressDatabase.Enabled = false
+		logging.Debugf("CLI override: actress_database.enabled = false")
+	}
+
+	if cmd.Flags().Changed("genre-replacement") {
+		genreRepl, _ := cmd.Flags().GetBool("genre-replacement")
+		cfg.Metadata.GenreReplacement.Enabled = genreRepl
+		logging.Debugf("CLI override: genre_replacement.enabled = %v", genreRepl)
+	}
+	if cmd.Flags().Changed("no-genre-replacement") {
+		cfg.Metadata.GenreReplacement.Enabled = false
+		logging.Debugf("CLI override: genre_replacement.enabled = false")
+	}
+}
+
 func runScrape(cmd *cobra.Command, args []string, deps *Dependencies) error {
 	id := args[0]
 
 	// Get force flag
 	forceRefresh, _ := cmd.Flags().GetBool("force")
+
+	// Note: CLI flag overrides are applied in runWithDeps before dependency initialization
 
 	// Initialize repositories
 	movieRepo := database.NewMovieRepository(deps.DB)
@@ -1696,6 +1766,9 @@ func percentage(part, total int64) float64 {
 // This wrapper uses Cobra's RunE to properly propagate errors and ensure
 // resources are cleaned up even on error paths.
 //
+// For the scrape command, CLI flag overrides are applied BEFORE creating
+// dependencies, ensuring scrapers are initialized with the correct config.
+//
 // Usage:
 //
 //	scrapeCmd := &cobra.Command{
@@ -1706,6 +1779,12 @@ func runWithDeps(fn func(*cobra.Command, []string, *Dependencies) error) func(*c
 	return func(cmd *cobra.Command, args []string) error {
 		if err := loadConfig(); err != nil {
 			return fmt.Errorf("failed to load config: %w", err)
+		}
+
+		// Apply scrape command overrides BEFORE creating dependencies
+		// This ensures scrapers are initialized with the overridden config
+		if cmd.Name() == "scrape" {
+			applyScrapeFlagOverrides(cmd, cfg)
 		}
 
 		deps, err := NewDependencies(cfg)
