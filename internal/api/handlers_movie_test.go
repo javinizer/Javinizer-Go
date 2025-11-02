@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"github.com/javinizer/javinizer-go/internal/aggregator"
 	"github.com/javinizer/javinizer-go/internal/config"
 	"github.com/javinizer/javinizer-go/internal/database"
 	"github.com/javinizer/javinizer-go/internal/models"
@@ -99,21 +98,18 @@ func TestScrapeMovie(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			registry := models.NewScraperRegistry()
-			mockRepo := newMockMovieRepo()
 			cfg := &config.Config{
 				Scrapers: config.ScrapersConfig{
 					Priority: []string{"r18dev"},
 				},
 			}
 
-			tt.setupData(mockRepo)
-			tt.setupScraper(registry)
-
-			agg := aggregator.New(cfg)
+			deps := createTestDeps(t, cfg, "")
+			tt.setupData(deps.MovieRepo)
+			tt.setupScraper(deps.Registry)
 
 			router := gin.New()
-			router.POST("/scrape", scrapeMovie(registry, agg, mockRepo, cfg))
+			router.POST("/scrape", scrapeMovie(deps))
 
 			var body []byte
 			var err error
@@ -175,11 +171,12 @@ func TestGetMovie(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mockRepo := newMockMovieRepo()
-			tt.setupData(mockRepo)
+			cfg := &config.Config{}
+			deps := createTestDeps(t, cfg, "")
+			tt.setupData(deps.MovieRepo)
 
 			router := gin.New()
-			router.GET("/movie/:id", getMovie(mockRepo))
+			router.GET("/movie/:id", getMovie(deps))
 
 			req := httptest.NewRequest("GET", "/movie/"+tt.movieID, nil)
 			w := httptest.NewRecorder()
@@ -229,11 +226,12 @@ func TestListMovies(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mockRepo := newMockMovieRepo()
-			tt.setupData(mockRepo)
+			cfg := &config.Config{}
+			deps := createTestDeps(t, cfg, "")
+			tt.setupData(deps.MovieRepo)
 
 			router := gin.New()
-			router.GET("/movies", listMovies(mockRepo))
+			router.GET("/movies", listMovies(deps))
 
 			req := httptest.NewRequest("GET", "/movies", nil)
 			w := httptest.NewRecorder()
@@ -265,7 +263,8 @@ func TestScrapeMovie_SQLInjectionPrevention(t *testing.T) {
 	for i, maliciousID := range maliciousIDs {
 		t.Run("SQLInjection:"+maliciousID, func(t *testing.T) {
 			// Create fresh registry and repo for each test to avoid UNIQUE conflicts
-			registry := models.NewScraperRegistry()
+			cfg := &config.Config{Scrapers: config.ScrapersConfig{Priority: []string{"r18dev"}}}
+			deps := createTestDeps(t, cfg, "")
 			stubScraper := &mockScraperWithResults{
 				name:    "r18dev",
 				enabled: true,
@@ -275,22 +274,14 @@ func TestScrapeMovie_SQLInjectionPrevention(t *testing.T) {
 				},
 				err: nil,
 			}
-			registry.Register(stubScraper)
-
-			mockRepo := newMockMovieRepo()
-			cfg := &config.Config{
-				Scrapers: config.ScrapersConfig{
-					Priority: []string{"r18dev"},
-				},
-			}
-			agg := aggregator.New(cfg)
+			deps.Registry.Register(stubScraper)
 
 			router := gin.New()
-			router.POST("/scrape", scrapeMovie(registry, agg, mockRepo, cfg))
+			router.POST("/scrape", scrapeMovie(deps))
 
 			// Get initial movie count (should be 0)
 			// CRITICAL: List(limit, offset) - not List(offset, limit)!
-			initialMovies, err := mockRepo.List(100, 0)
+			initialMovies, err := deps.MovieRepo.List(100, 0)
 			require.NoError(t, err)
 			initialCount := len(initialMovies)
 
@@ -325,7 +316,7 @@ func TestScrapeMovie_SQLInjectionPrevention(t *testing.T) {
 
 			// Verify database integrity - SQL injection should not corrupt data
 			// CRITICAL: List(limit, offset) - get up to 100 movies starting from offset 0
-			finalMovies, err := mockRepo.List(100, 0)
+			finalMovies, err := deps.MovieRepo.List(100, 0)
 			require.NoError(t, err)
 
 			// Verify no movies with malicious IDs were stored

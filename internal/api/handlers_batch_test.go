@@ -8,9 +8,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/javinizer/javinizer-go/internal/aggregator"
 	"github.com/javinizer/javinizer-go/internal/config"
-	"github.com/javinizer/javinizer-go/internal/matcher"
 	"github.com/javinizer/javinizer-go/internal/models"
 	"github.com/javinizer/javinizer-go/internal/worker"
 	"github.com/stretchr/testify/assert"
@@ -66,8 +64,6 @@ func TestBatchScrape(t *testing.T) {
 			// Initialize WebSocket hub to prevent nil pointer panic
 			initTestWebSocket(t)
 
-			registry := models.NewScraperRegistry()
-			mockRepo := newMockMovieRepo()
 			cfg := &config.Config{
 				Scrapers: config.ScrapersConfig{
 					Priority: []string{"r18dev"},
@@ -76,15 +72,14 @@ func TestBatchScrape(t *testing.T) {
 					RegexEnabled: false,
 				},
 			}
-			agg := aggregator.New(cfg)
-			mat, err := matcher.NewMatcher(&cfg.Matching)
-			require.NoError(t, err)
-			jobQueue := worker.NewJobQueue()
+
+			deps := createTestDeps(t, cfg, "")
 
 			router := gin.New()
-			router.POST("/batch/scrape", batchScrape(registry, agg, mockRepo, mat, jobQueue, cfg))
+			router.POST("/batch/scrape", batchScrape(deps))
 
 			var body []byte
+			var err error
 			if str, ok := tt.requestBody.(string); ok {
 				body = []byte(str)
 			} else {
@@ -141,11 +136,12 @@ func TestGetBatchJob(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			jobQueue := worker.NewJobQueue()
-			jobID := tt.setupJob(jobQueue)
+			cfg := &config.Config{}
+			deps := createTestDeps(t, cfg, "")
+			jobID := tt.setupJob(deps.JobQueue)
 
 			router := gin.New()
-			router.GET("/batch/:id", getBatchJob(jobQueue))
+			router.GET("/batch/:id", getBatchJob(deps))
 
 			req := httptest.NewRequest("GET", "/batch/"+jobID, nil)
 			w := httptest.NewRecorder()
@@ -189,11 +185,12 @@ func TestCancelBatchJob(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			jobQueue := worker.NewJobQueue()
-			jobID := tt.setupJob(jobQueue)
+			cfg := &config.Config{}
+			deps := createTestDeps(t, cfg, "")
+			jobID := tt.setupJob(deps.JobQueue)
 
 			router := gin.New()
-			router.POST("/batch/:id/cancel", cancelBatchJob(jobQueue))
+			router.POST("/batch/:id/cancel", cancelBatchJob(deps))
 
 			req := httptest.NewRequest("POST", "/batch/"+jobID+"/cancel", nil)
 			w := httptest.NewRecorder()
@@ -284,13 +281,13 @@ func TestUpdateBatchMovie(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			jobQueue := worker.NewJobQueue()
-			mockRepo := newMockMovieRepo()
+			cfg := &config.Config{}
+			deps := createTestDeps(t, cfg, "")
 
-			jobID, movieID := tt.setupJob(jobQueue)
+			jobID, movieID := tt.setupJob(deps.JobQueue)
 
 			router := gin.New()
-			router.PATCH("/batch/:id/movies/:movieId", updateBatchMovie(mockRepo, jobQueue))
+			router.PATCH("/batch/:id/movies/:movieId", updateBatchMovie(deps))
 
 			var body []byte
 			var err error
@@ -378,24 +375,20 @@ func TestOrganizeJob(t *testing.T) {
 			// Initialize WebSocket hub to prevent nil pointer panic
 			initTestWebSocket(t)
 
-			jobQueue := worker.NewJobQueue()
 			cfg := &config.Config{
 				Matching: config.MatchingConfig{
 					RegexEnabled: false,
 				},
 			}
-			mat, err := matcher.NewMatcher(&cfg.Matching)
-			require.NoError(t, err)
 
-			// We need a mock DB, but since we're not actually processing,
-			// we can pass nil for this test (the handler will launch in background)
-
-			jobID := tt.setupJob(jobQueue)
+			deps := createTestDeps(t, cfg, "")
+			jobID := tt.setupJob(deps.JobQueue)
 
 			router := gin.New()
-			router.POST("/batch/:id/organize", organizeJob(mat, jobQueue, nil, cfg))
+			router.POST("/batch/:id/organize", organizeJob(deps))
 
 			var body []byte
+			var err error
 			if str, ok := tt.requestBody.(string); ok {
 				body = []byte(str)
 			} else {
@@ -506,7 +499,6 @@ func TestPreviewOrganize(t *testing.T) {
 			// Initialize WebSocket hub to prevent nil pointer panic
 			initTestWebSocket(t)
 
-			jobQueue := worker.NewJobQueue()
 			cfg := &config.Config{
 				Output: config.OutputConfig{
 					FolderFormat: "<ID>",
@@ -514,10 +506,11 @@ func TestPreviewOrganize(t *testing.T) {
 				},
 			}
 
-			jobID, movieID := tt.setupJob(jobQueue)
+			deps := createTestDeps(t, cfg, "")
+			jobID, movieID := tt.setupJob(deps.JobQueue)
 
 			router := gin.New()
-			router.POST("/batch/:id/movies/:movieId/preview", previewOrganize(jobQueue, cfg))
+			router.POST("/batch/:id/movies/:movieId/preview", previewOrganize(deps))
 
 			var body []byte
 			var err error

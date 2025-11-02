@@ -4,11 +4,7 @@ import (
 	"fmt"
 
 	"github.com/gin-gonic/gin"
-	"github.com/javinizer/javinizer-go/internal/aggregator"
-	"github.com/javinizer/javinizer-go/internal/config"
-	"github.com/javinizer/javinizer-go/internal/database"
 	"github.com/javinizer/javinizer-go/internal/logging"
-	"github.com/javinizer/javinizer-go/internal/matcher"
 	"github.com/javinizer/javinizer-go/internal/models"
 	"github.com/javinizer/javinizer-go/internal/worker"
 )
@@ -23,7 +19,7 @@ import (
 // @Success 200 {object} BatchScrapeResponse
 // @Failure 400 {object} ErrorResponse
 // @Router /api/v1/batch/scrape [post]
-func batchScrape(registry *models.ScraperRegistry, agg *aggregator.Aggregator, movieRepo *database.MovieRepository, mat *matcher.Matcher, jobQueue *worker.JobQueue, cfg *config.Config) gin.HandlerFunc {
+func batchScrape(deps *ServerDependencies) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req BatchScrapeRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -32,10 +28,10 @@ func batchScrape(registry *models.ScraperRegistry, agg *aggregator.Aggregator, m
 		}
 
 		// Create job
-		job := jobQueue.CreateJob(req.Files)
+		job := deps.JobQueue.CreateJob(req.Files)
 
-		// Start processing in background
-		go processBatchJob(job, registry, agg, movieRepo, mat, req.Strict, req.Force, req.Destination, cfg)
+		// Start processing in background - read from deps to get latest config/registry
+		go processBatchJob(job, deps.Registry, deps.Aggregator, deps.MovieRepo, deps.Matcher, req.Strict, req.Force, req.Destination, deps.Config)
 
 		c.JSON(200, BatchScrapeResponse{
 			JobID: job.ID,
@@ -52,11 +48,11 @@ func batchScrape(registry *models.ScraperRegistry, agg *aggregator.Aggregator, m
 // @Success 200 {object} BatchJobResponse
 // @Failure 404 {object} ErrorResponse
 // @Router /api/v1/batch/{id} [get]
-func getBatchJob(jobQueue *worker.JobQueue) gin.HandlerFunc {
+func getBatchJob(deps *ServerDependencies) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		jobID := c.Param("id")
 
-		job, ok := jobQueue.GetJob(jobID)
+		job, ok := deps.JobQueue.GetJob(jobID)
 		if !ok {
 			c.JSON(404, ErrorResponse{Error: "Job not found"})
 			return
@@ -92,11 +88,11 @@ func getBatchJob(jobQueue *worker.JobQueue) gin.HandlerFunc {
 // @Success 200 {object} map[string]string
 // @Failure 404 {object} ErrorResponse
 // @Router /api/v1/batch/{id}/cancel [post]
-func cancelBatchJob(jobQueue *worker.JobQueue) gin.HandlerFunc {
+func cancelBatchJob(deps *ServerDependencies) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		jobID := c.Param("id")
 
-		job, ok := jobQueue.GetJob(jobID)
+		job, ok := deps.JobQueue.GetJob(jobID)
 		if !ok {
 			c.JSON(404, ErrorResponse{Error: "Job not found"})
 			return
@@ -121,7 +117,7 @@ func cancelBatchJob(jobQueue *worker.JobQueue) gin.HandlerFunc {
 // @Failure 400 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
 // @Router /api/v1/batch/{id}/movies/{movieId} [patch]
-func updateBatchMovie(movieRepo *database.MovieRepository, jobQueue *worker.JobQueue) gin.HandlerFunc {
+func updateBatchMovie(deps *ServerDependencies) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		jobID := c.Param("id")
 		movieID := c.Param("movieId")
@@ -133,7 +129,7 @@ func updateBatchMovie(movieRepo *database.MovieRepository, jobQueue *worker.JobQ
 		}
 
 		// Get the batch job
-		job, ok := jobQueue.GetJob(jobID)
+		job, ok := deps.JobQueue.GetJob(jobID)
 		if !ok {
 			c.JSON(404, ErrorResponse{Error: "Job not found"})
 			return
@@ -161,7 +157,7 @@ func updateBatchMovie(movieRepo *database.MovieRepository, jobQueue *worker.JobQ
 		job.UpdateFileResult(foundFilePath, foundResult)
 
 		// Also update in database if it exists
-		if err := movieRepo.Upsert(req.Movie); err != nil {
+		if err := deps.MovieRepo.Upsert(req.Movie); err != nil {
 			logging.Errorf("Failed to update movie in database: %v", err)
 			// Don't fail the request if DB update fails
 		}
@@ -182,7 +178,7 @@ func updateBatchMovie(movieRepo *database.MovieRepository, jobQueue *worker.JobQ
 // @Failure 400 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
 // @Router /api/v1/batch/{id}/organize [post]
-func organizeJob(mat *matcher.Matcher, jobQueue *worker.JobQueue, db *database.DB, cfg *config.Config) gin.HandlerFunc {
+func organizeJob(deps *ServerDependencies) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		jobID := c.Param("id")
 
@@ -192,7 +188,7 @@ func organizeJob(mat *matcher.Matcher, jobQueue *worker.JobQueue, db *database.D
 			return
 		}
 
-		job, ok := jobQueue.GetJob(jobID)
+		job, ok := deps.JobQueue.GetJob(jobID)
 		if !ok {
 			c.JSON(404, ErrorResponse{Error: "Job not found"})
 			return
@@ -205,8 +201,8 @@ func organizeJob(mat *matcher.Matcher, jobQueue *worker.JobQueue, db *database.D
 			return
 		}
 
-		// Start organization in background
-		go processOrganizeJob(job, mat, req.Destination, req.CopyOnly, db, cfg)
+		// Start organization in background - read from deps to get latest config
+		go processOrganizeJob(job, deps.Matcher, req.Destination, req.CopyOnly, deps.DB, deps.Config)
 
 		c.JSON(200, gin.H{"message": "Organization started"})
 	}
@@ -225,7 +221,7 @@ func organizeJob(mat *matcher.Matcher, jobQueue *worker.JobQueue, db *database.D
 // @Failure 400 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
 // @Router /api/v1/batch/{id}/movies/{movieId}/preview [post]
-func previewOrganize(jobQueue *worker.JobQueue, cfg *config.Config) gin.HandlerFunc {
+func previewOrganize(deps *ServerDependencies) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		jobID := c.Param("id")
 		movieID := c.Param("movieId")
@@ -237,7 +233,7 @@ func previewOrganize(jobQueue *worker.JobQueue, cfg *config.Config) gin.HandlerF
 		}
 
 		// Get the batch job
-		job, ok := jobQueue.GetJob(jobID)
+		job, ok := deps.JobQueue.GetJob(jobID)
 		if !ok {
 			c.JSON(404, ErrorResponse{Error: "Job not found"})
 			return
@@ -277,8 +273,8 @@ func previewOrganize(jobQueue *worker.JobQueue, cfg *config.Config) gin.HandlerF
 			return
 		}
 
-		// Use the helper function from processors.go
-		preview := generatePreview(movie, req.Destination, cfg)
+		// Use the helper function from processors.go - read config from deps
+		preview := generatePreview(movie, req.Destination, deps.Config)
 		c.JSON(200, preview)
 	}
 }

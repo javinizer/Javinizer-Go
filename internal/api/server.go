@@ -247,9 +247,9 @@ func NewServer(deps *ServerDependencies) *gin.Engine {
 	v1 := router.Group("/api/v1")
 	{
 		// Movie endpoints
-		v1.POST("/scrape", scrapeMovie(deps.Registry, deps.Aggregator, deps.MovieRepo, deps.Config))
-		v1.GET("/movie/:id", getMovie(deps.MovieRepo))
-		v1.GET("/movies", listMovies(deps.MovieRepo))
+		v1.POST("/scrape", scrapeMovie(deps))
+		v1.GET("/movie/:id", getMovie(deps))
+		v1.GET("/movies", listMovies(deps))
 
 		// Actress endpoints
 		v1.GET("/actresses/search", searchActresses(deps.ActressRepo))
@@ -265,12 +265,12 @@ func NewServer(deps *ServerDependencies) *gin.Engine {
 		v1.POST("/browse", browseDirectory(deps.Config))
 
 		// Batch endpoints
-		v1.POST("/batch/scrape", batchScrape(deps.Registry, deps.Aggregator, deps.MovieRepo, deps.Matcher, deps.JobQueue, deps.Config))
-		v1.GET("/batch/:id", getBatchJob(deps.JobQueue))
-		v1.POST("/batch/:id/cancel", cancelBatchJob(deps.JobQueue))
-		v1.PATCH("/batch/:id/movies/:movieId", updateBatchMovie(deps.MovieRepo, deps.JobQueue))
-		v1.POST("/batch/:id/movies/:movieId/preview", previewOrganize(deps.JobQueue, deps.Config))
-		v1.POST("/batch/:id/organize", organizeJob(deps.Matcher, deps.JobQueue, deps.DB, deps.Config))
+		v1.POST("/batch/scrape", batchScrape(deps))
+		v1.GET("/batch/:id", getBatchJob(deps))
+		v1.POST("/batch/:id/cancel", cancelBatchJob(deps))
+		v1.PATCH("/batch/:id/movies/:movieId", updateBatchMovie(deps))
+		v1.POST("/batch/:id/movies/:movieId/preview", previewOrganize(deps))
+		v1.POST("/batch/:id/organize", organizeJob(deps))
 	}
 
 	// Serve frontend static files (for Docker deployment)

@@ -4,9 +4,6 @@ import (
 	"fmt"
 
 	"github.com/gin-gonic/gin"
-	"github.com/javinizer/javinizer-go/internal/aggregator"
-	"github.com/javinizer/javinizer-go/internal/config"
-	"github.com/javinizer/javinizer-go/internal/database"
 	"github.com/javinizer/javinizer-go/internal/logging"
 	"github.com/javinizer/javinizer-go/internal/models"
 )
@@ -23,7 +20,7 @@ import (
 // @Failure 404 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
 // @Router /api/v1/scrape [post]
-func scrapeMovie(registry *models.ScraperRegistry, agg *aggregator.Aggregator, movieRepo *database.MovieRepository, cfg *config.Config) gin.HandlerFunc {
+func scrapeMovie(deps *ServerDependencies) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req ScrapeRequest
 
@@ -33,7 +30,7 @@ func scrapeMovie(registry *models.ScraperRegistry, agg *aggregator.Aggregator, m
 		}
 
 		// Check if already in database
-		existing, err := movieRepo.FindByID(req.ID)
+		existing, err := deps.MovieRepo.FindByID(req.ID)
 		if err == nil && existing != nil {
 			c.JSON(200, ScrapeResponse{
 				Cached: true,
@@ -42,11 +39,11 @@ func scrapeMovie(registry *models.ScraperRegistry, agg *aggregator.Aggregator, m
 			return
 		}
 
-		// Scrape from sources in priority order
+		// Scrape from sources in priority order - read from deps to get latest registry/config
 		results := []*models.ScraperResult{}
 		errors := []string{}
 
-		for _, scraper := range registry.GetByPriority(cfg.Scrapers.Priority) {
+		for _, scraper := range deps.Registry.GetByPriority(deps.Config.Scrapers.Priority) {
 			result, err := scraper.Search(req.ID)
 			if err != nil {
 				errors = append(errors, fmt.Sprintf("%s: %v", scraper.Name(), err))
@@ -64,7 +61,7 @@ func scrapeMovie(registry *models.ScraperRegistry, agg *aggregator.Aggregator, m
 		}
 
 		// Aggregate results
-		movie, err := agg.Aggregate(results)
+		movie, err := deps.Aggregator.Aggregate(results)
 		if err != nil {
 			c.JSON(500, ErrorResponse{Error: err.Error()})
 			return
@@ -73,7 +70,7 @@ func scrapeMovie(registry *models.ScraperRegistry, agg *aggregator.Aggregator, m
 		movie.OriginalFileName = req.ID
 
 		// Save to database (upsert: create or update)
-		if err := movieRepo.Upsert(movie); err != nil {
+		if err := deps.MovieRepo.Upsert(movie); err != nil {
 			logging.Errorf("Failed to save movie to database: %v", err)
 		}
 
@@ -95,11 +92,11 @@ func scrapeMovie(registry *models.ScraperRegistry, agg *aggregator.Aggregator, m
 // @Success 200 {object} MovieResponse
 // @Failure 404 {object} ErrorResponse
 // @Router /api/v1/movie/{id} [get]
-func getMovie(movieRepo *database.MovieRepository) gin.HandlerFunc {
+func getMovie(deps *ServerDependencies) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id := c.Param("id")
 
-		movie, err := movieRepo.FindByID(id)
+		movie, err := deps.MovieRepo.FindByID(id)
 		if err != nil {
 			c.JSON(404, ErrorResponse{Error: "Movie not found"})
 			return
@@ -117,12 +114,12 @@ func getMovie(movieRepo *database.MovieRepository) gin.HandlerFunc {
 // @Success 200 {object} MoviesResponse
 // @Failure 500 {object} ErrorResponse
 // @Router /api/v1/movies [get]
-func listMovies(movieRepo *database.MovieRepository) gin.HandlerFunc {
+func listMovies(deps *ServerDependencies) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		limit := 20
 		offset := 0
 
-		movies, err := movieRepo.List(limit, offset)
+		movies, err := deps.MovieRepo.List(limit, offset)
 		if err != nil {
 			c.JSON(500, ErrorResponse{Error: err.Error()})
 			return
