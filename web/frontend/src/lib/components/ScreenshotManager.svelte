@@ -92,19 +92,33 @@
 				/>
 			</div>
 			<div>
-				<div class="text-sm font-medium mb-1 block">Preview (Cropped)</div>
+				<div class="text-sm font-medium mb-1 block">
+					Preview{movie.should_crop_poster ? ' (Cropped)' : ''}
+				</div>
 				{#if posterUrl}
-					<!-- Crop to show only right 47.2% of image (removes promotional text on left) -->
 					<div class="w-full max-w-xs aspect-[2/3] overflow-hidden rounded border relative">
-						<img
-							src={posterUrl}
-							alt="Poster"
-							class="absolute h-full"
-							style="right: 0; width: auto; min-width: 211.8%; object-fit: cover; object-position: right center;"
-							onerror={(e) => {
-								(e.currentTarget as HTMLImageElement).src = 'https://via.placeholder.com/300x450?text=Invalid+URL';
-							}}
-						/>
+						{#if movie.should_crop_poster}
+							<!-- Crop to show only right 47.2% of image (removes promotional text on left) -->
+							<img
+								src={posterUrl}
+								alt="Poster"
+								class="absolute h-full"
+								style="right: 0; width: auto; min-width: 211.8%; object-fit: cover; object-position: right center;"
+								onerror={(e) => {
+									(e.currentTarget as HTMLImageElement).src = 'https://via.placeholder.com/300x450?text=Invalid+URL';
+								}}
+							/>
+						{:else}
+							<!-- Use poster directly without cropping -->
+							<img
+								src={posterUrl}
+								alt="Poster"
+								class="w-full h-full object-contain"
+								onerror={(e) => {
+									(e.currentTarget as HTMLImageElement).src = 'https://via.placeholder.com/300x450?text=Invalid+URL';
+								}}
+							/>
+						{/if}
 					</div>
 				{:else}
 					<div
