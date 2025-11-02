@@ -1258,58 +1258,58 @@ func TestExtractCandidateURLs_Priorities(t *testing.T) {
 		description      string
 	}{
 		{
-			name: "Monthly standard has highest priority",
-			html: `
-				<a href="https://www.dmm.co.jp/monthly/standard/-/detail/=/cid=61mdb087/">Monthly Standard</a>
-				<a href="https://www.dmm.co.jp/mono/dvd/-/detail/=/cid=mdb087/">Physical DVD</a>
-			`,
-			contentID:        "61mdb087",
-			expectedPriority: 5,
-			expectedURL:      "https://www.dmm.co.jp/monthly/standard/-/detail/=/cid=61mdb087/",
-			description:      "/monthly/standard/ should have priority 5 (highest)",
-		},
-		{
-			name: "Monthly premium has second priority",
-			html: `
-				<a href="https://www.dmm.co.jp/monthly/premium/-/detail/=/cid=61mdb087/">Monthly Premium</a>
-				<a href="https://www.dmm.co.jp/mono/dvd/-/detail/=/cid=mdb087/">Physical DVD</a>
-			`,
-			contentID:        "61mdb087",
-			expectedPriority: 4,
-			expectedURL:      "https://www.dmm.co.jp/monthly/premium/-/detail/=/cid=61mdb087/",
-			description:      "/monthly/premium/ should have priority 4",
-		},
-		{
-			name: "Physical DVD has third priority",
+			name: "Physical DVD has highest priority",
 			html: `
 				<a href="https://www.dmm.co.jp/mono/dvd/-/detail/=/cid=sone860/">Physical DVD</a>
-				<a href="https://www.dmm.co.jp/digital/videoa/-/detail/=/cid=4sone860/">Digital Video</a>
+				<a href="https://www.dmm.co.jp/monthly/standard/-/detail/=/cid=61mdb087/">Monthly Standard</a>
 			`,
-			contentID:        "4sone860",
-			expectedPriority: 3,
+			contentID:        "sone860",
+			expectedPriority: 6,
 			expectedURL:      "https://www.dmm.co.jp/mono/dvd/-/detail/=/cid=sone860/",
-			description:      "/mono/dvd/ should have priority 3",
+			description:      "/mono/dvd/ should have priority 6 (highest - full metadata)",
 		},
 		{
-			name: "Digital video has fourth priority",
+			name: "Digital video has second priority",
 			html: `
 				<a href="https://www.dmm.co.jp/digital/videoa/-/detail/=/cid=mdb087/">Digital Video</a>
+				<a href="https://www.dmm.co.jp/monthly/standard/-/detail/=/cid=61mdb087/">Monthly Standard</a>
+			`,
+			contentID:        "mdb087",
+			expectedPriority: 5,
+			expectedURL:      "https://www.dmm.co.jp/digital/videoa/-/detail/=/cid=mdb087/",
+			description:      "/digital/videoa/ should have priority 5 (full metadata)",
+		},
+		{
+			name: "Streaming video has third priority",
+			html: `
 				<a href="https://video.dmm.co.jp/av/content/?id=61mdb087">Streaming</a>
+				<a href="https://www.dmm.co.jp/monthly/standard/-/detail/=/cid=61mdb087/">Monthly Standard</a>
+			`,
+			contentID:        "61mdb087",
+			expectedPriority: 3,
+			expectedURL:      "https://video.dmm.co.jp/av/content/?id=61mdb087",
+			description:      "video.dmm.co.jp/av/ should have priority 3",
+		},
+		{
+			name: "Monthly premium has fourth priority",
+			html: `
+				<a href="https://www.dmm.co.jp/monthly/premium/-/detail/=/cid=61mdb087/">Monthly Premium</a>
+				<a href="https://www.dmm.co.jp/monthly/standard/-/detail/=/cid=mdb087/">Monthly Standard</a>
 			`,
 			contentID:        "61mdb087",
 			expectedPriority: 2,
-			expectedURL:      "https://www.dmm.co.jp/digital/videoa/-/detail/=/cid=mdb087/",
-			description:      "/digital/videoa/ should have priority 2",
+			expectedURL:      "https://www.dmm.co.jp/monthly/premium/-/detail/=/cid=61mdb087/",
+			description:      "/monthly/premium/ should have priority 2 (limited metadata)",
 		},
 		{
-			name: "Streaming video has fifth priority",
+			name: "Monthly standard has lowest priority",
 			html: `
-				<a href="https://video.dmm.co.jp/av/content/?id=61mdb087">Streaming</a>
+				<a href="https://www.dmm.co.jp/monthly/standard/-/detail/=/cid=61mdb087/">Monthly Standard</a>
 			`,
 			contentID:        "61mdb087",
 			expectedPriority: 1,
-			expectedURL:      "https://video.dmm.co.jp/av/content/?id=61mdb087",
-			description:      "video.dmm.co.jp should have priority 1",
+			expectedURL:      "https://www.dmm.co.jp/monthly/standard/-/detail/=/cid=61mdb087/",
+			description:      "/monthly/standard/ should have priority 1 (lowest - limited metadata)",
 		},
 	}
 
@@ -1498,11 +1498,11 @@ func TestExtractCandidateURLs_ExcludePatterns(t *testing.T) {
 // TestExtractCandidateURLs_PriorityOrder verifies correct priority ordering
 func TestExtractCandidateURLs_PriorityOrder(t *testing.T) {
 	html := `
-		<a href="https://video.dmm.co.jp/av/content/?id=61mdb087">Streaming (Priority 1)</a>
-		<a href="https://www.dmm.co.jp/digital/videoa/-/detail/=/cid=mdb087/">Digital Video (Priority 2)</a>
-		<a href="https://www.dmm.co.jp/mono/dvd/-/detail/=/cid=mdb087/">Physical DVD (Priority 3)</a>
-		<a href="https://www.dmm.co.jp/monthly/premium/-/detail/=/cid=61mdb087/">Monthly Premium (Priority 4)</a>
-		<a href="https://www.dmm.co.jp/monthly/standard/-/detail/=/cid=61mdb087/">Monthly Standard (Priority 5)</a>
+		<a href="https://www.dmm.co.jp/mono/dvd/-/detail/=/cid=mdb087/">Physical DVD (Priority 6 - full metadata)</a>
+		<a href="https://www.dmm.co.jp/digital/videoa/-/detail/=/cid=mdb087/">Digital Video (Priority 5 - full metadata)</a>
+		<a href="https://video.dmm.co.jp/av/content/?id=61mdb087">Streaming (Priority 3)</a>
+		<a href="https://www.dmm.co.jp/monthly/premium/-/detail/=/cid=61mdb087/">Monthly Premium (Priority 2 - limited metadata)</a>
+		<a href="https://www.dmm.co.jp/monthly/standard/-/detail/=/cid=61mdb087/">Monthly Standard (Priority 1 - limited metadata)</a>
 	`
 
 	cfg := &config.Config{
@@ -1527,9 +1527,9 @@ func TestExtractCandidateURLs_PriorityOrder(t *testing.T) {
 		priorityMap[c.priority] = c.url
 	}
 
-	assert.Contains(t, priorityMap[5], "/monthly/standard/", "Priority 5 should be monthly standard")
-	assert.Contains(t, priorityMap[4], "/monthly/premium/", "Priority 4 should be monthly premium")
-	assert.Contains(t, priorityMap[3], "/mono/dvd/", "Priority 3 should be physical DVD")
-	assert.Contains(t, priorityMap[2], "/digital/videoa/", "Priority 2 should be digital video")
-	assert.Contains(t, priorityMap[1], "video.dmm.co.jp", "Priority 1 should be streaming")
+	assert.Contains(t, priorityMap[6], "/mono/dvd/", "Priority 6 should be physical DVD (highest - full metadata)")
+	assert.Contains(t, priorityMap[5], "/digital/videoa/", "Priority 5 should be digital video (full metadata)")
+	assert.Contains(t, priorityMap[3], "video.dmm.co.jp", "Priority 3 should be streaming")
+	assert.Contains(t, priorityMap[2], "/monthly/premium/", "Priority 2 should be monthly premium (limited metadata)")
+	assert.Contains(t, priorityMap[1], "/monthly/standard/", "Priority 1 should be monthly standard (lowest - limited metadata)")
 }

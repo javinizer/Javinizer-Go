@@ -342,13 +342,13 @@ func (s *Scraper) GetURL(id string) (string, error) {
 				// Determine priority based on URL pattern
 				priority := 0
 				if strings.Contains(directURL, "/mono/dvd/") {
-					priority = 3
+					priority = 6 // Physical DVD pages - full metadata
 				} else if strings.Contains(directURL, "/digital/videoa/") {
-					priority = 2
-				} else if strings.Contains(directURL, "video.dmm.co.jp/av/content/") {
-					priority = 1 // New digital video format
+					priority = 5 // Digital video DVD - full metadata
 				} else if strings.Contains(directURL, "video.dmm.co.jp/amateur/content/") {
-					priority = 1 // Amateur video format (same priority as new digital)
+					priority = 4 // Amateur pages
+				} else if strings.Contains(directURL, "video.dmm.co.jp/av/content/") {
+					priority = 3 // Digital streaming video (av pages)
 				}
 
 				extractedID := extractContentIDFromURL(directURL)
@@ -404,12 +404,12 @@ func (s *Scraper) extractCandidateURLs(doc *goquery.Document, contentID string) 
 	}
 
 	// Priority order (higher = better):
-	// 1. video.dmm.co.jp/amateur/ (amateur pages have full metadata - highest for amateur)
-	// 2. /monthly/standard/ (monthly standard subscription - but limited metadata)
-	// 3. /monthly/premium/ (monthly premium subscription)
-	// 4. /digital/videoa/ or /digital/videoc/ (digital video DVD on www.dmm.co.jp)
-	// 5. /mono/dvd/ (physical DVD pages)
-	// 6. video.dmm.co.jp/av/ (digital streaming video pages)
+	// 6. /mono/dvd/ (physical DVD pages - full metadata including actress data)
+	// 5. /digital/videoa/ or /digital/videoc/ (digital video DVD - full metadata)
+	// 4. video.dmm.co.jp/amateur/ (amateur pages)
+	// 3. video.dmm.co.jp/av/ (digital streaming video pages)
+	// 2. /monthly/premium/ (monthly premium - LIMITED metadata, no actress data)
+	// 1. /monthly/standard/ (monthly standard - LIMITED metadata, no actress data)
 
 	// Extract base ID from content ID (e.g., "4sone860" -> "sone860", "61mdb087" -> "mdb087")
 	// Strip leading digits to get base ID, keep lowercase for URL matching
@@ -456,18 +456,18 @@ func (s *Scraper) extractCandidateURLs(doc *goquery.Document, contentID string) 
 
 		// Assign priority
 		priority := 0
-		if strings.Contains(fullURL, "video.dmm.co.jp/amateur/") {
-			priority = 6 // Highest for amateur: amateur pages have full metadata
-		} else if strings.Contains(fullURL, "/monthly/standard/") {
-			priority = 5 // Monthly standard subscription (but limited metadata for amateur)
-		} else if strings.Contains(fullURL, "/monthly/premium/") {
-			priority = 4 // Monthly premium subscription
-		} else if strings.Contains(fullURL, "/mono/dvd/") {
-			priority = 3 // Physical DVD pages
+		if strings.Contains(fullURL, "/mono/dvd/") {
+			priority = 6 // Highest: physical DVD pages with full metadata including actress data
 		} else if strings.Contains(fullURL, "/digital/videoa/") || strings.Contains(fullURL, "/digital/videoc/") {
-			priority = 2 // Digital video DVD
+			priority = 5 // Digital video DVD with full metadata
+		} else if strings.Contains(fullURL, "video.dmm.co.jp/amateur/") {
+			priority = 4 // Amateur pages
 		} else if strings.Contains(fullURL, "video.dmm.co.jp") {
-			priority = 1 // Digital streaming video (av pages)
+			priority = 3 // Digital streaming video (av pages)
+		} else if strings.Contains(fullURL, "/monthly/premium/") {
+			priority = 2 // Monthly premium - LIMITED metadata, no actress data
+		} else if strings.Contains(fullURL, "/monthly/standard/") {
+			priority = 1 // Lowest: monthly standard - LIMITED metadata, no actress data
 		}
 
 		// Extract content ID from URL for comparison
