@@ -615,18 +615,11 @@
 									</button>
 								{/if}
 							</div>
-							<div class="bg-accent rounded px-3 py-2">
-								<code class="text-xs block" title={currentResult.file_path}>
-									{truncatePath(currentResult.file_path)}
+							<div class="bg-accent rounded px-3 py-2 {showFullSourcePath ? 'overflow-x-auto' : ''}">
+								<code class="text-xs block {showFullSourcePath ? 'whitespace-nowrap' : ''}" title={currentResult.file_path}>
+									{showFullSourcePath ? currentResult.file_path : truncatePath(currentResult.file_path)}
 								</code>
 							</div>
-							{#if showFullSourcePath}
-								<div class="mt-2 bg-accent/70 rounded px-3 py-2 overflow-x-auto">
-									<code class="text-xs block whitespace-nowrap">
-										{currentResult.file_path}
-									</code>
-								</div>
-							{/if}
 						</div>
 					</Card>
 
