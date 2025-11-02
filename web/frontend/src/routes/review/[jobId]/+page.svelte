@@ -582,9 +582,9 @@
 
 					<!-- File Path Info -->
 					<Card class="p-4">
-						<div>
+						<div class="min-w-0">
 							<p class="text-sm font-medium mb-2">Source File</p>
-							<code class="text-xs bg-accent px-3 py-2 rounded block truncate">
+							<code class="text-xs bg-accent px-3 py-2 rounded block truncate" title={currentResult.file_path}>
 								{currentResult.file_path}
 							</code>
 						</div>
@@ -592,17 +592,18 @@
 
 					<!-- Destination Path -->
 					<Card class="p-4">
-						<div class="space-y-3">
+						<div class="space-y-3 min-w-0">
 							<div class="flex items-center gap-2">
 								<FolderOpen class="h-5 w-5 text-primary" />
 								<h3 class="font-semibold">Output Destination</h3>
 							</div>
-							<div class="flex gap-2">
+							<div class="flex gap-2 min-w-0">
 								<input
 									type="text"
 									bind:value={destinationPath}
 									placeholder="Enter destination path (e.g., /path/to/output)"
-									class="flex-1 px-3 py-2 border rounded-md focus:ring-2 focus:ring-primary focus:border-primary transition-all font-mono text-sm"
+									class="flex-1 min-w-0 px-3 py-2 border rounded-md focus:ring-2 focus:ring-primary focus:border-primary transition-all font-mono text-sm"
+									title={destinationPath}
 								/>
 								<Button onclick={openDestinationBrowser} variant="outline">
 									{#snippet children()}
@@ -630,23 +631,23 @@
 									.split('/')
 									.filter(p => p && !p.includes('.mp4'))}
 								{@const fileIndent = pathParts.length * 4}
-								<div class="mt-3 p-3 bg-accent/50 rounded border border-dashed">
+								<div class="mt-3 p-3 bg-accent/50 rounded border border-dashed overflow-hidden">
 									<p class="text-xs font-medium mb-2 text-muted-foreground">Preview:</p>
-									<div class="font-mono text-xs space-y-1">
-										<div class="text-muted-foreground">📁 {destinationPath}/</div>
+									<div class="font-mono text-xs space-y-1 overflow-x-auto">
+										<div class="text-muted-foreground break-all">📁 {destinationPath}/</div>
 										{#each pathParts as part, index}
-											<div class="text-muted-foreground" style="margin-left: {(index + 1) * 4}px">
+											<div class="text-muted-foreground break-all" style="margin-left: {(index + 1) * 4}px">
 												📁 {part}/
 											</div>
 										{/each}
-										<div style="margin-left: {fileIndent + 4}px">🎬 {preview.file_name}.mp4</div>
-										<div style="margin-left: {fileIndent + 4}px">📄 {preview.file_name}.nfo</div>
-										<div style="margin-left: {fileIndent + 4}px">🖼️ {preview.file_name}-poster.jpg</div>
-										<div style="margin-left: {fileIndent + 4}px">🖼️ {preview.file_name}-fanart.jpg</div>
+										<div class="break-all" style="margin-left: {fileIndent + 4}px">🎬 {preview.file_name}.mp4</div>
+										<div class="break-all" style="margin-left: {fileIndent + 4}px">📄 {preview.file_name}.nfo</div>
+										<div class="break-all" style="margin-left: {fileIndent + 4}px">🖼️ {preview.file_name}-poster.jpg</div>
+										<div class="break-all" style="margin-left: {fileIndent + 4}px">🖼️ {preview.file_name}-fanart.jpg</div>
 										{#if preview.screenshots && preview.screenshots.length > 0}
-											<div class="text-muted-foreground" style="margin-left: {fileIndent + 4}px">📁 extrafanart/</div>
+											<div class="text-muted-foreground break-all" style="margin-left: {fileIndent + 4}px">📁 extrafanart/</div>
 											{#each (showAllPreviewScreenshots ? preview.screenshots : preview.screenshots.slice(0, 3)) as screenshot}
-												<div style="margin-left: {fileIndent + 8}px">🖼️ {screenshot}</div>
+												<div class="break-all" style="margin-left: {fileIndent + 8}px">🖼️ {screenshot}</div>
 											{/each}
 											{#if preview.screenshots.length > 3 && !showAllPreviewScreenshots}
 												<button
