@@ -79,54 +79,54 @@ func TestSanitizeFolderPath_EdgeCases(t *testing.T) {
 		want  string
 	}{
 		{
-			name:  "Preserve multiple forward slashes",
+			name:  "Convert multiple forward slashes to underscores",
 			input: "Test//Folder///Path",
-			want:  "Test//Folder///Path",
+			want:  "Test__Folder___Path",
 		},
 		{
 			name:  "Complex Windows path",
 			input: `D:\Movies\JAV\IPX-535: "Test Movie" <1080p>`,
-			want:  `D -/Movies/JAV/IPX-535 - 'Test Movie' (1080p)`,
+			want:  `D -_Movies_JAV_IPX-535 - 'Test Movie' (1080p)`,
 		},
 		{
 			name:  "Network path",
 			input: `\\server\share\folder`,
-			want:  `//server/share/folder`,
+			want:  `__server_share_folder`,
 		},
 		{
 			name:  "Mixed slashes with trailing slash",
 			input: `Test\Folder/SubFolder\`,
-			want:  `Test/Folder/SubFolder/`,
+			want:  `Test_Folder_SubFolder_`,
 		},
 		{
 			name:  "Root path only",
 			input: "/",
-			want:  "/",
+			want:  "_",
 		},
 		{
 			name:  "Backslash only",
 			input: "\\",
-			want:  "/",
+			want:  "_",
 		},
 		{
 			name:  "Japanese folder names",
 			input: `映画\テスト\フォルダ`,
-			want:  `映画/テスト/フォルダ`,
+			want:  `映画_テスト_フォルダ`,
 		},
 		{
 			name:  "Path with query-like special chars",
 			input: `Test/Folder?param=value&other=test`,
-			want:  `Test/Folderparam=value&other=test`,
+			want:  `Test_Folderparam=value&other=test`,
 		},
 		{
 			name:  "Path with multiple colons",
 			input: `C:\Test: Movie: 2023`,
-			want:  `C -/Test - Movie - 2023`,
+			want:  `C -_Test - Movie - 2023`,
 		},
 		{
 			name:  "Null byte in path (non-printable)",
 			input: "Test\x00/Folder",
-			want:  "Test/Folder",
+			want:  "Test_Folder",
 		},
 	}
 

@@ -41,11 +41,12 @@ func SanitizeFilename(s string) string {
 	return trimmed
 }
 
-// SanitizeFolderPath sanitizes a folder path preserving slashes
+// SanitizeFolderPath sanitizes a folder name by replacing invalid filesystem characters
 func SanitizeFolderPath(s string) string {
-	// Replace invalid characters but preserve forward slashes
+	// Replace invalid characters including forward slashes to prevent unintended subdirectories
 	replacements := map[rune]string{
-		'\\': "/", // Convert backslash to forward slash
+		'\\': "_", // Convert backslash to underscore
+		'/':  "_", // Convert forward slash to underscore (prevents accidental subdirectories)
 		':':  " -",
 		'*':  "",
 		'?':  "",

@@ -522,19 +522,19 @@ func TestSanitizeFolderPath(t *testing.T) {
 		want  string
 	}{
 		{
-			name:  "Backslash converted to forward slash",
+			name:  "Backslash converted to underscore",
 			input: "Test\\Folder\\Path",
-			want:  "Test/Folder/Path",
+			want:  "Test_Folder_Path",
 		},
 		{
-			name:  "Forward slash preserved",
+			name:  "Forward slash converted to underscore",
 			input: "Test/Folder/Path",
-			want:  "Test/Folder/Path",
+			want:  "Test_Folder_Path",
 		},
 		{
-			name:  "Mixed slashes normalized",
+			name:  "Mixed slashes converted to underscores",
 			input: "Test\\Folder/SubFolder\\Final",
-			want:  "Test/Folder/SubFolder/Final",
+			want:  "Test_Folder_SubFolder_Final",
 		},
 		{
 			name:  "Colon replaced",
@@ -569,17 +569,17 @@ func TestSanitizeFolderPath(t *testing.T) {
 		{
 			name:  "Complex path with multiple special chars",
 			input: `2020\Test Studio\IPX-535: "Test Movie" <HD>`,
-			want:  `2020/Test Studio/IPX-535 - 'Test Movie' (HD)`,
+			want:  `2020_Test Studio_IPX-535 - 'Test Movie' (HD)`,
 		},
 		{
 			name:  "Windows absolute path",
 			input: `C:\Users\Test\Videos\Movie.mp4`,
-			want:  `C -/Users/Test/Videos/Movie.mp4`,
+			want:  `C -_Users_Test_Videos_Movie.mp4`,
 		},
 		{
 			name:  "Unix absolute path",
 			input: `/home/test/videos/movie.mp4`,
-			want:  `/home/test/videos/movie.mp4`,
+			want:  `_home_test_videos_movie.mp4`,
 		},
 		{
 			name:  "Empty string",
@@ -589,17 +589,17 @@ func TestSanitizeFolderPath(t *testing.T) {
 		{
 			name:  "Only special characters",
 			input: `\:*?"<>|`,
-			want:  `/ -'()-`,
+			want:  `_ -'()-`,
 		},
 		{
 			name:  "Unicode characters preserved",
 			input: "テスト/フォルダ/パス",
-			want:  "テスト/フォルダ/パス",
+			want:  "テスト_フォルダ_パス",
 		},
 		{
 			name:  "Mixed English and Japanese with special chars",
 			input: `Test\テスト: "Movie" 映画`,
-			want:  `Test/テスト - 'Movie' 映画`,
+			want:  `Test_テスト - 'Movie' 映画`,
 		},
 	}
 
