@@ -510,21 +510,6 @@ func TestSecurity_InputValidation(t *testing.T) {
 			},
 		},
 		{
-			name:           "config update with malicious template",
-			method:         "PUT",
-			path:           "/api/v1/config",
-			body:           map[string]interface{}{"output": map[string]string{"folder_format": "{{.Exec `rm -rf /`}}"}},
-			expectedStatus: 200,
-			securityCheck: func(t *testing.T, w *httptest.ResponseRecorder) {
-				// Should accept config - template engine prevents exec during rendering
-				// Verify response indicates success
-				var resp map[string]string
-				err := json.Unmarshal(w.Body.Bytes(), &resp)
-				require.NoError(t, err)
-				assert.Contains(t, resp["message"], "successfully")
-			},
-		},
-		{
 			name:           "extremely long movie ID",
 			method:         "POST",
 			path:           "/api/v1/scrape",
@@ -540,6 +525,21 @@ func TestSecurity_InputValidation(t *testing.T) {
 			securityCheck: func(t *testing.T, w *httptest.ResponseRecorder) {
 				body := w.Body.String()
 				assert.NotContains(t, body, "\x00")
+			},
+		},
+		{
+			name:           "config update with malicious template",
+			method:         "PUT",
+			path:           "/api/v1/config",
+			body:           map[string]interface{}{"output": map[string]string{"folder_format": "{{.Exec `rm -rf /`}}"}},
+			expectedStatus: 200,
+			securityCheck: func(t *testing.T, w *httptest.ResponseRecorder) {
+				// Should accept config - template engine prevents exec during rendering
+				// Verify response indicates success
+				var resp map[string]string
+				err := json.Unmarshal(w.Body.Bytes(), &resp)
+				require.NoError(t, err)
+				assert.Contains(t, resp["message"], "successfully")
 			},
 		},
 	}

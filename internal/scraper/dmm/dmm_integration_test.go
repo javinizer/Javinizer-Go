@@ -228,7 +228,7 @@ func TestExtractCoverURL_BothSites(t *testing.T) {
 			doc, err := parseHTMLString(tt.html)
 			require.NoError(t, err)
 
-			result := scraper.extractCoverURL(doc, tt.isNewSite)
+			result := scraper.extractCoverURL(doc, tt.isNewSite, "")
 
 			if tt.shouldFind {
 				assert.NotEmpty(t, result)

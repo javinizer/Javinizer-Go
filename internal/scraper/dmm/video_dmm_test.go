@@ -107,7 +107,7 @@ func TestExtractCoverURLNewSite(t *testing.T) {
 			doc, err := parseHTMLString(tt.html)
 			require.NoError(t, err)
 
-			result := scraper.extractCoverURLNewSite(doc)
+			result := scraper.extractCoverURLNewSite(doc, "")
 			assert.Equal(t, tt.expected, result)
 		})
 	}

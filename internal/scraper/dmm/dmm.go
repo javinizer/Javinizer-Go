@@ -626,7 +626,7 @@ func (s *Scraper) parseHTML(doc *goquery.Document, sourceURL string) (*models.Sc
 	}
 
 	// Extract cover URL
-	result.CoverURL = s.extractCoverURL(doc, isNewSite)
+	result.CoverURL = s.extractCoverURL(doc, isNewSite, result.ContentID)
 
 	// Try to get a high-quality poster from awsimgsrc
 	// If the awsimgsrc poster is too low quality, we'll use the cover for cropping
@@ -1217,9 +1217,9 @@ func (s *Scraper) extractRomajiVariantsFromActressPage(dmmID int) []string {
 }
 
 // extractCoverURL extracts the cover image URL
-func (s *Scraper) extractCoverURL(doc *goquery.Document, isNewSite bool) string {
+func (s *Scraper) extractCoverURL(doc *goquery.Document, isNewSite bool, contentID string) string {
 	if isNewSite {
-		return s.extractCoverURLNewSite(doc)
+		return s.extractCoverURLNewSite(doc, contentID)
 	}
 
 	coverRegex := regexp.MustCompile(`(https://pics\.dmm\.co\.jp/(?:mono/movie/adult|digital/(?:video|amateur))/(.*)/(.*).jpg)`)

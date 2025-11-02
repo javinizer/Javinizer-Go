@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/PuerkitoBio/goquery"
+	"github.com/javinizer/javinizer-go/internal/logging"
 )
 
 // video_dmm.go contains extraction functions specific to video.dmm.co.jp (new site format).
@@ -111,9 +112,10 @@ func (s *Scraper) extractDescriptionNewSite(doc *goquery.Document) string {
 }
 
 // extractCoverURLNewSite extracts cover image from video.dmm.co.jp
-func (s *Scraper) extractCoverURLNewSite(doc *goquery.Document) string {
+func (s *Scraper) extractCoverURLNewSite(doc *goquery.Document, contentID string) string {
 	// Try og:image meta tag
 	coverURL, exists := doc.Find(`meta[property="og:image"]`).Attr("content")
+	logging.Debugf("DMM Streaming: og:image exists=%v, value=%s", exists, coverURL)
 	if exists && coverURL != "" {
 		// Convert to regular pics.dmm.co.jp URL if needed
 		coverURL = strings.Replace(coverURL, "awsimgsrc.dmm.co.jp/pics_dig", "pics.dmm.co.jp", 1)
@@ -123,20 +125,45 @@ func (s *Scraper) extractCoverURLNewSite(doc *goquery.Document) string {
 		if idx := strings.Index(coverURL, "?"); idx != -1 {
 			coverURL = coverURL[:idx]
 		}
+		logging.Debugf("DMM Streaming: Final cover URL from og:image: %s", coverURL)
 		return coverURL
 	}
 
 	// As fallback, try to extract from img tags
+	logging.Debug("DMM Streaming: og:image not found, trying img tag fallback")
 	coverURL, _ = doc.Find(`img[src*="pl.jpg"]`).First().Attr("src")
+	logging.Debugf("DMM Streaming: img[src*='pl.jpg'] found: %s", coverURL)
 	if coverURL != "" {
 		// Convert to regular pics.dmm.co.jp URL and remove query parameters
 		coverURL = strings.Replace(coverURL, "awsimgsrc.dmm.co.jp/pics_dig", "pics.dmm.co.jp", 1)
 		if idx := strings.Index(coverURL, "?"); idx != -1 {
 			coverURL = coverURL[:idx]
 		}
+		logging.Debugf("DMM Streaming: Final cover URL from img tag: %s", coverURL)
 		return coverURL
 	}
 
+	// Debug: List all img tags to see what's available
+	imgCount := 0
+	doc.Find("img").Each(func(i int, sel *goquery.Selection) {
+		src, _ := sel.Attr("src")
+		if imgCount < 5 { // Only log first 5 to avoid spam
+			logging.Debugf("DMM Streaming: Found img[%d]: %s", i, src)
+		}
+		imgCount++
+	})
+	logging.Debugf("DMM Streaming: Total img tags found: %d", imgCount)
+
+	// Final fallback for amateur videos: construct URL from content ID
+	// Amateur videos use pattern: https://pics.dmm.co.jp/digital/amateur/{contentid}/{contentid}pl.jpg
+	if contentID != "" {
+		// Try amateur video pattern
+		coverURL = "https://pics.dmm.co.jp/digital/amateur/" + contentID + "/" + contentID + "pl.jpg"
+		logging.Debugf("DMM Streaming: Constructed amateur cover URL from content ID '%s': %s", contentID, coverURL)
+		return coverURL
+	}
+
+	logging.Debug("DMM Streaming: No cover URL found")
 	return ""
 }
 

@@ -1075,7 +1075,7 @@ func TestExtractCoverURL_EdgeCases(t *testing.T) {
 			doc, err := parseHTMLString(fmt.Sprintf("<html><body>%s</body></html>", tt.html))
 			require.NoError(t, err)
 
-			result := scraper.extractCoverURL(doc, tt.isNewSite)
+			result := scraper.extractCoverURL(doc, tt.isNewSite, "")
 			assert.Equal(t, tt.expected, result, tt.description)
 		})
 	}
