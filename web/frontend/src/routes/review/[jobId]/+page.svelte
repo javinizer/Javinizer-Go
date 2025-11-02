@@ -62,6 +62,21 @@
 	// Sidebar screenshot expansion state
 	let showAllSidebarScreenshots = $state(false);
 
+	// Source file path expansion state
+	let showFullSourcePath = $state(false);
+
+	// Smart path truncation - show beginning and end with ... in middle
+	function truncatePath(path: string, maxLength: number = 80): string {
+		if (path.length <= maxLength) return path;
+
+		const ellipsis = '...';
+		const charsToShow = maxLength - ellipsis.length;
+		const frontChars = Math.ceil(charsToShow * 0.4); // 40% at start
+		const backChars = Math.floor(charsToShow * 0.6); // 60% at end (filename is more important)
+
+		return path.slice(0, frontChars) + ellipsis + path.slice(-backChars);
+	}
+
 	// Image panel collapse state
 	let showImagePanelContent = $state(true);
 
@@ -122,6 +137,12 @@
 		} else {
 			preview = null;
 		}
+	});
+
+	// Reset full path display when navigating between movies
+	$effect(() => {
+		currentMovieIndex; // track dependency
+		showFullSourcePath = false;
 	});
 
 	// Subscribe to WebSocket messages during organize operation
@@ -538,7 +559,7 @@
 				</div>
 
 				<!-- Right: Main Content -->
-				<div class="space-y-6">
+				<div class="space-y-6 min-w-0">
 					<!-- Movie Navigation -->
 					<Card class="p-4">
 						<div class="flex items-center justify-between">
@@ -583,10 +604,29 @@
 					<!-- File Path Info -->
 					<Card class="p-4">
 						<div class="min-w-0">
-							<p class="text-sm font-medium mb-2">Source File</p>
-							<code class="text-xs bg-accent px-3 py-2 rounded block truncate" title={currentResult.file_path}>
-								{currentResult.file_path}
-							</code>
+							<div class="flex items-center justify-between mb-2">
+								<p class="text-sm font-medium">Source File</p>
+								{#if currentResult.file_path.length > 80}
+									<button
+										onclick={() => showFullSourcePath = !showFullSourcePath}
+										class="text-xs text-primary hover:text-primary/80 transition-colors cursor-pointer"
+									>
+										{showFullSourcePath ? 'Hide' : 'Show full path'}
+									</button>
+								{/if}
+							</div>
+							<div class="bg-accent rounded px-3 py-2">
+								<code class="text-xs block" title={currentResult.file_path}>
+									{truncatePath(currentResult.file_path)}
+								</code>
+							</div>
+							{#if showFullSourcePath}
+								<div class="mt-2 bg-accent/70 rounded px-3 py-2 overflow-x-auto">
+									<code class="text-xs block whitespace-nowrap">
+										{currentResult.file_path}
+									</code>
+								</div>
+							{/if}
 						</div>
 					</Card>
 
