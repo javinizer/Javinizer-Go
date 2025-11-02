@@ -392,7 +392,12 @@ func (s *Scraper) extractCandidateURLs(doc *goquery.Document, contentID string) 
 
 	// URL patterns to exclude (unsupported page structures)
 	excludePatterns := []string{
-		"/rental/", // Rental pages
+		"/rental/",             // Rental pages
+		"/search/",             // Search results pages
+		"/list/",               // List/search pages
+		"/-/search/",           // Mono search pages
+		"/-/list/",             // Monthly list pages
+		"/service/-/exchange/", // Exchange/redirect pages
 	}
 
 	// Only exclude video.dmm.co.jp if headless browser is disabled
@@ -596,14 +601,23 @@ func (s *Scraper) parseHTML(doc *goquery.Document, sourceURL string) (*models.Sc
 	// Extract genres
 	result.Genres = s.extractGenres(doc)
 
-	// Extract actresses (only if scrape_actress is enabled AND not a monthly page)
-	// Monthly pages (/monthly/standard/, /monthly/premium/) don't have actress info in HTML
+	// Extract actresses (only if scrape_actress is enabled AND not a limited metadata page)
+	// Pages with limited/incorrect actress data:
+	// - Monthly pages (/monthly/standard/, /monthly/premium/) - no actress info in HTML
+	// - Streaming pages (video.dmm.co.jp) - actresses from recommendations, not the actual movie
 	isMonthlyPage := strings.Contains(sourceURL, "/monthly/")
-	if s.scrapeActress && !isMonthlyPage {
+	isStreamingPage := strings.Contains(sourceURL, "video.dmm.co.jp")
+	hasLimitedActressData := isMonthlyPage || isStreamingPage
+
+	if s.scrapeActress && !hasLimitedActressData {
 		result.Actresses = s.extractActresses(doc)
 		logging.Debugf("DMM: Extracted %d actresses", len(result.Actresses))
-	} else if isMonthlyPage {
-		logging.Debug("DMM: Skipping actress extraction (monthly page - no actress data)")
+	} else if hasLimitedActressData {
+		if isMonthlyPage {
+			logging.Debug("DMM: Skipping actress extraction (monthly page - no actress data)")
+		} else if isStreamingPage {
+			logging.Debug("DMM: Skipping actress extraction (streaming page - actresses from recommendations)")
+		}
 	} else {
 		logging.Debug("DMM: Skipping actress extraction (scrape_actress=false)")
 	}
