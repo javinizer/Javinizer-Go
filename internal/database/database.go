@@ -1,7 +1,9 @@
 package database
 
 import (
+	"errors"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -35,7 +37,7 @@ func parseLogLevel(level string) logger.LogLevel {
 		return logger.Silent
 	default:
 		// Invalid log level provided - warn and default to silent
-		fmt.Printf("Warning: invalid database log_level '%s', defaulting to 'silent'. Valid options: silent, error, warn, info\n", level)
+		log.Printf("Warning: invalid database log_level '%s', defaulting to 'silent'. Valid options: silent, error, warn, info\n", level)
 		return logger.Silent
 	}
 }
@@ -113,44 +115,159 @@ func (r *MovieRepository) Update(movie *models.Movie) error {
 
 // Upsert creates a new movie or updates if it already exists (by ID)
 func (r *MovieRepository) Upsert(movie *models.Movie) error {
-	// Check if movie exists
-	existing, err := r.FindByID(movie.ID)
-	if err != nil {
-		// Movie doesn't exist, create it with associations
-		// First, ensure genres and actresses exist or get their IDs
-		if err := r.ensureGenresExist(movie.Genres); err != nil {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		// Validate and normalize ContentID (primary key)
+		if strings.TrimSpace(movie.ContentID) == "" {
+			if strings.TrimSpace(movie.ID) == "" {
+				return fmt.Errorf("content_id is required when using ContentID as primary key")
+			}
+			// Pragmatic fallback: derive from display ID
+			movie.ContentID = strings.ToLower(strings.ReplaceAll(movie.ID, "-", ""))
+		}
+
+		// Check if movie exists - prefer ContentID (primary key) with fallback to display ID
+		var existing models.Movie
+		var existingFound bool
+		if movie.ContentID != "" {
+			err := tx.Select("content_id", "created_at").First(&existing, "content_id = ?", movie.ContentID).Error
+			if err == nil {
+				existingFound = true
+			} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+				return err
+			}
+		}
+		if !existingFound && movie.ID != "" {
+			// Fallback to display ID for backward compatibility
+			err := tx.Select("content_id", "created_at").First(&existing, "id = ?", movie.ID).Error
+			if err == nil {
+				existingFound = true
+				// CRITICAL: Synchronize ContentID to ensure we update the existing record
+				movie.ContentID = existing.ContentID
+			} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+				return err
+			}
+		}
+
+		if !existingFound {
+			// Movie doesn't exist, create it with associations
+			// First, ensure genres and actresses exist or get their IDs
+			if err := r.ensureGenresExistTx(tx, movie.Genres); err != nil {
+				return err
+			}
+			if err := r.ensureActressesExistTx(tx, movie.Actresses); err != nil {
+				return err
+			}
+
+			// Save translations separately to avoid UNIQUE constraint violations
+			translations := movie.Translations
+			movie.Translations = nil
+
+			// Create the movie record (without translations)
+			if err := tx.Create(movie).Error; err != nil {
+				// Handle race condition: another transaction may have inserted the same ContentID
+				if errors.Is(err, gorm.ErrDuplicatedKey) {
+					// Reload the existing record and switch to update path
+					var existingMovie models.Movie
+					if loadErr := tx.Select("created_at").First(&existingMovie, "content_id = ?", movie.ContentID).Error; loadErr == nil {
+						// Record exists, preserve CreatedAt and proceed with update
+						movie.CreatedAt = existingMovie.CreatedAt
+
+						// Update the movie record (without translations)
+						if err := tx.Save(movie).Error; err != nil {
+							return err
+						}
+
+						// Replace associations
+						if err := tx.Model(movie).Association("Genres").Replace(movie.Genres); err != nil {
+							return err
+						}
+						if err := tx.Model(movie).Association("Actresses").Replace(movie.Actresses); err != nil {
+							return err
+						}
+
+						// Upsert translations individually
+						translationRepo := NewMovieTranslationRepository(r.db)
+						for i := range translations {
+							translations[i].MovieID = movie.ContentID
+							if err := translationRepo.UpsertTx(tx, &translations[i]); err != nil {
+								return err
+							}
+						}
+
+						// Restore translations to movie object
+						movie.Translations = translations
+						return nil
+					}
+				}
+				return err
+			}
+
+			// Create associations
+			if len(movie.Genres) > 0 {
+				if err := tx.Model(movie).Association("Genres").Replace(movie.Genres); err != nil {
+					return err
+				}
+			}
+			if len(movie.Actresses) > 0 {
+				if err := tx.Model(movie).Association("Actresses").Replace(movie.Actresses); err != nil {
+					return err
+				}
+			}
+
+			// Upsert translations individually to avoid UNIQUE constraint violations
+			translationRepo := NewMovieTranslationRepository(r.db)
+			for i := range translations {
+				translations[i].MovieID = movie.ContentID
+				if err := translationRepo.UpsertTx(tx, &translations[i]); err != nil {
+					return err
+				}
+			}
+
+			// Restore translations to movie object
+			movie.Translations = translations
+
+			return nil
+		}
+
+		// Movie exists, update it
+		// Preserve the CreatedAt timestamp from the existing record
+		movie.CreatedAt = existing.CreatedAt
+
+		// Set the MovieID for all translations
+		for i := range movie.Translations {
+			movie.Translations[i].MovieID = movie.ContentID
+		}
+
+		// Ensure genres and actresses exist
+		if err := r.ensureGenresExistTx(tx, movie.Genres); err != nil {
 			return err
 		}
-		if err := r.ensureActressesExist(movie.Actresses); err != nil {
+		if err := r.ensureActressesExistTx(tx, movie.Actresses); err != nil {
 			return err
 		}
 
-		// Save translations separately to avoid UNIQUE constraint violations
+		// Save translations separately - temporarily remove them to avoid Save() trying to insert them
 		translations := movie.Translations
 		movie.Translations = nil
 
-		// Create the movie record (without translations)
-		if err := r.db.Create(movie).Error; err != nil {
+		// Update the movie record (without translations)
+		if err := tx.Save(movie).Error; err != nil {
 			return err
 		}
 
-		// Create associations
-		if len(movie.Genres) > 0 {
-			if err := r.db.Model(movie).Association("Genres").Replace(movie.Genres); err != nil {
-				return err
-			}
+		// Replace associations
+		if err := tx.Model(movie).Association("Genres").Replace(movie.Genres); err != nil {
+			return err
 		}
-		if len(movie.Actresses) > 0 {
-			if err := r.db.Model(movie).Association("Actresses").Replace(movie.Actresses); err != nil {
-				return err
-			}
+		if err := tx.Model(movie).Association("Actresses").Replace(movie.Actresses); err != nil {
+			return err
 		}
 
 		// Upsert translations individually to avoid UNIQUE constraint violations
 		translationRepo := NewMovieTranslationRepository(r.db)
 		for i := range translations {
-			translations[i].MovieID = movie.ID
-			if err := translationRepo.Upsert(&translations[i]); err != nil {
+			translations[i].MovieID = movie.ContentID
+			if err := translationRepo.UpsertTx(tx, &translations[i]); err != nil {
 				return err
 			}
 		}
@@ -159,75 +276,35 @@ func (r *MovieRepository) Upsert(movie *models.Movie) error {
 		movie.Translations = translations
 
 		return nil
-	}
-
-	// Movie exists, update it
-	// Preserve the CreatedAt timestamp from the existing record
-	movie.CreatedAt = existing.CreatedAt
-
-	// Set the MovieID for all translations
-	for i := range movie.Translations {
-		movie.Translations[i].MovieID = movie.ID
-	}
-
-	// Ensure genres and actresses exist
-	if err := r.ensureGenresExist(movie.Genres); err != nil {
-		return err
-	}
-	if err := r.ensureActressesExist(movie.Actresses); err != nil {
-		return err
-	}
-
-	// Save translations separately - temporarily remove them to avoid Save() trying to insert them
-	translations := movie.Translations
-	movie.Translations = nil
-
-	// Update the movie record (without translations)
-	if err := r.db.Save(movie).Error; err != nil {
-		return err
-	}
-
-	// Replace associations
-	if err := r.db.Model(movie).Association("Genres").Replace(movie.Genres); err != nil {
-		return err
-	}
-	if err := r.db.Model(movie).Association("Actresses").Replace(movie.Actresses); err != nil {
-		return err
-	}
-
-	// Upsert translations individually to avoid UNIQUE constraint violations
-	translationRepo := NewMovieTranslationRepository(r.db)
-	for i := range translations {
-		translations[i].MovieID = movie.ID
-		if err := translationRepo.Upsert(&translations[i]); err != nil {
-			return err
-		}
-	}
-
-	// Restore translations to movie object
-	movie.Translations = translations
-
-	return nil
+	})
 }
 
 // ensureGenresExist ensures all genres exist in DB, gets or creates them
 func (r *MovieRepository) ensureGenresExist(genres []models.Genre) error {
+	return r.ensureGenresExistTx(r.db.DB, genres)
+}
+
+// ensureGenresExistTx ensures all genres exist in DB using the provided transaction
+func (r *MovieRepository) ensureGenresExistTx(tx *gorm.DB, genres []models.Genre) error {
 	for i := range genres {
 		var existing models.Genre
-		err := r.db.Where("name = ?", genres[i].Name).First(&existing).Error
+		err := tx.Where("name = ?", genres[i].Name).First(&existing).Error
 		if err == nil {
 			// Genre exists, use its ID
 			genres[i] = existing
-		} else {
+		} else if errors.Is(err, gorm.ErrRecordNotFound) {
 			// Genre doesn't exist, create it
-			if err := r.db.Create(&genres[i]).Error; err != nil {
+			if err := tx.Create(&genres[i]).Error; err != nil {
 				// Might be a race condition, try to find it again
-				if err := r.db.Where("name = ?", genres[i].Name).First(&existing).Error; err == nil {
+				if err := tx.Where("name = ?", genres[i].Name).First(&existing).Error; err == nil {
 					genres[i] = existing
 				} else {
 					return err
 				}
 			}
+		} else {
+			// Database error (connection, timeout, etc.) - fail fast
+			return err
 		}
 	}
 	return nil
@@ -258,19 +335,30 @@ func (r *MovieRepository) mergeActressData(existing *models.Actress, new models.
 }
 
 func (r *MovieRepository) ensureActressesExist(actresses []models.Actress) error {
+	return r.ensureActressesExistTx(r.db.DB, actresses)
+}
+
+func (r *MovieRepository) ensureActressesExistTx(tx *gorm.DB, actresses []models.Actress) error {
 	for i := range actresses {
 		var existing models.Actress
 		var err error
 
 		// Try to find actress using DMMID if available (primary unique identifier)
 		if actresses[i].DMMID != 0 {
-			err = r.db.Where("dmm_id = ?", actresses[i].DMMID).First(&existing).Error
+			err = tx.Where("dmm_id = ?", actresses[i].DMMID).First(&existing).Error
 		} else if actresses[i].JapaneseName != "" {
 			// Fall back to japanese_name if DMMID is not available
-			err = r.db.Where("japanese_name = ?", actresses[i].JapaneseName).First(&existing).Error
+			err = tx.Where("japanese_name = ?", actresses[i].JapaneseName).First(&existing).Error
 		} else if actresses[i].FirstName != "" || actresses[i].LastName != "" {
 			// Fall back to first_name and last_name if neither DMMID nor japanese_name is available
-			err = r.db.Where("first_name = ? AND last_name = ?", actresses[i].FirstName, actresses[i].LastName).First(&existing).Error
+			// Build query based on which fields are present
+			if actresses[i].FirstName != "" && actresses[i].LastName != "" {
+				err = tx.Where("first_name = ? AND last_name = ?", actresses[i].FirstName, actresses[i].LastName).First(&existing).Error
+			} else if actresses[i].FirstName != "" {
+				err = tx.Where("first_name = ?", actresses[i].FirstName).First(&existing).Error
+			} else {
+				err = tx.Where("last_name = ?", actresses[i].LastName).First(&existing).Error
+			}
 		} else {
 			// Skip actresses with no identifying information
 			continue
@@ -279,19 +367,19 @@ func (r *MovieRepository) ensureActressesExist(actresses []models.Actress) error
 		if err == nil {
 			// Actress exists, merge new data and update if needed
 			if r.mergeActressData(&existing, actresses[i]) {
-				if err := r.db.Save(&existing).Error; err != nil {
+				if err := tx.Save(&existing).Error; err != nil {
 					return err
 				}
 			}
 			actresses[i] = existing
-		} else {
+		} else if errors.Is(err, gorm.ErrRecordNotFound) {
 			// Actress doesn't exist, create them
-			if err := r.db.Create(&actresses[i]).Error; err != nil {
+			if err := tx.Create(&actresses[i]).Error; err != nil {
 				// Might be a race condition, try to find again
 				if actresses[i].DMMID != 0 {
-					if err := r.db.Where("dmm_id = ?", actresses[i].DMMID).First(&existing).Error; err == nil {
+					if err := tx.Where("dmm_id = ?", actresses[i].DMMID).First(&existing).Error; err == nil {
 						if r.mergeActressData(&existing, actresses[i]) {
-							if err := r.db.Save(&existing).Error; err != nil {
+							if err := tx.Save(&existing).Error; err != nil {
 								return err
 							}
 						}
@@ -299,9 +387,9 @@ func (r *MovieRepository) ensureActressesExist(actresses []models.Actress) error
 						continue
 					}
 				} else if actresses[i].JapaneseName != "" {
-					if err := r.db.Where("japanese_name = ?", actresses[i].JapaneseName).First(&existing).Error; err == nil {
+					if err := tx.Where("japanese_name = ?", actresses[i].JapaneseName).First(&existing).Error; err == nil {
 						if r.mergeActressData(&existing, actresses[i]) {
-							if err := r.db.Save(&existing).Error; err != nil {
+							if err := tx.Save(&existing).Error; err != nil {
 								return err
 							}
 						}
@@ -309,9 +397,18 @@ func (r *MovieRepository) ensureActressesExist(actresses []models.Actress) error
 						continue
 					}
 				} else if actresses[i].FirstName != "" || actresses[i].LastName != "" {
-					if err := r.db.Where("first_name = ? AND last_name = ?", actresses[i].FirstName, actresses[i].LastName).First(&existing).Error; err == nil {
+					var retryErr error
+					// Build query based on which fields are present
+					if actresses[i].FirstName != "" && actresses[i].LastName != "" {
+						retryErr = tx.Where("first_name = ? AND last_name = ?", actresses[i].FirstName, actresses[i].LastName).First(&existing).Error
+					} else if actresses[i].FirstName != "" {
+						retryErr = tx.Where("first_name = ?", actresses[i].FirstName).First(&existing).Error
+					} else {
+						retryErr = tx.Where("last_name = ?", actresses[i].LastName).First(&existing).Error
+					}
+					if retryErr == nil {
 						if r.mergeActressData(&existing, actresses[i]) {
-							if err := r.db.Save(&existing).Error; err != nil {
+							if err := tx.Save(&existing).Error; err != nil {
 								return err
 							}
 						}
@@ -321,6 +418,9 @@ func (r *MovieRepository) ensureActressesExist(actresses []models.Actress) error
 				}
 				return err
 			}
+		} else {
+			// Database error (connection, timeout, etc.) - fail fast
+			return err
 		}
 	}
 	return nil
@@ -339,7 +439,7 @@ func (r *MovieRepository) FindByID(id string) (*models.Movie, error) {
 // FindByContentID finds a movie by its content ID
 func (r *MovieRepository) FindByContentID(contentID string) (*models.Movie, error) {
 	var movie models.Movie
-	err := r.db.Preload("Actresses").Preload("Genres").First(&movie, "content_id = ?", contentID).Error
+	err := r.db.Preload("Actresses").Preload("Genres").Preload("Translations").First(&movie, "content_id = ?", contentID).Error
 	if err != nil {
 		return nil, err
 	}
@@ -348,12 +448,46 @@ func (r *MovieRepository) FindByContentID(contentID string) (*models.Movie, erro
 
 // Delete deletes a movie by ID
 func (r *MovieRepository) Delete(id string) error {
-	// Delete translations first (foreign key constraint)
-	if err := r.db.Delete(&models.MovieTranslation{}, "movie_id = ?", id).Error; err != nil {
-		return err
-	}
-	// Then delete the movie
-	return r.db.Delete(&models.Movie{}, "id = ?", id).Error
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		// Lightweight query: fetch only ContentID (avoid expensive Preloads)
+		var movie models.Movie
+		if err := tx.Model(&models.Movie{}).
+			Select("content_id").
+			Where("id = ?", id).
+			First(&movie).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return nil // Already deleted
+			}
+			return err
+		}
+
+		// If contentID is empty, the movie doesn't exist
+		if movie.ContentID == "" {
+			return nil // Already deleted
+		}
+
+		// Clear many-to-many associations (CRITICAL for data integrity)
+		stub := &models.Movie{ContentID: movie.ContentID}
+		if err := tx.Model(stub).Association("Actresses").Clear(); err != nil {
+			return err
+		}
+		if err := tx.Model(stub).Association("Genres").Clear(); err != nil {
+			return err
+		}
+
+		// Delete translations (MovieID references ContentID)
+		if err := tx.Delete(&models.MovieTranslation{}, "movie_id = ?", movie.ContentID).Error; err != nil {
+			return err
+		}
+
+		// Delete tags (MovieID references ContentID)
+		if err := tx.Delete(&models.MovieTag{}, "movie_id = ?", movie.ContentID).Error; err != nil {
+			return err
+		}
+
+		// Finally, delete the movie by primary key
+		return tx.Delete(&models.Movie{}, "content_id = ?", movie.ContentID).Error
+	})
 }
 
 // List returns a paginated list of movies
@@ -448,17 +582,38 @@ func NewMovieTranslationRepository(db *DB) *MovieTranslationRepository {
 
 // Upsert creates a new translation or updates if it already exists (by MovieID + Language)
 func (r *MovieTranslationRepository) Upsert(translation *models.MovieTranslation) error {
+	return r.UpsertTx(r.db.DB, translation)
+}
+
+// UpsertTx creates a new translation or updates if it already exists using the provided transaction
+func (r *MovieTranslationRepository) UpsertTx(tx *gorm.DB, translation *models.MovieTranslation) error {
 	// Try to find existing translation for this movie and language
-	existing, err := r.FindByMovieAndLanguage(translation.MovieID, translation.Language)
+	var existing models.MovieTranslation
+	err := tx.First(&existing, "movie_id = ? AND language = ?", translation.MovieID, translation.Language).Error
 	if err != nil {
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
 		// Translation doesn't exist, create it
-		return r.db.Create(translation).Error
+		if err := tx.Create(translation).Error; err != nil {
+			// Handle race condition: another transaction may have inserted the same translation
+			if errors.Is(err, gorm.ErrDuplicatedKey) {
+				// Reload the existing record and switch to update path
+				if loadErr := tx.First(&existing, "movie_id = ? AND language = ?", translation.MovieID, translation.Language).Error; loadErr == nil {
+					translation.ID = existing.ID
+					translation.CreatedAt = existing.CreatedAt
+					return tx.Save(translation).Error
+				}
+			}
+			return err
+		}
+		return nil
 	}
 
 	// Translation exists, update it
 	translation.ID = existing.ID
 	translation.CreatedAt = existing.CreatedAt
-	return r.db.Save(translation).Error
+	return tx.Save(translation).Error
 }
 
 // FindByMovieAndLanguage finds a translation for a specific movie and language
@@ -526,6 +681,9 @@ func (r *GenreReplacementRepository) Create(replacement *models.GenreReplacement
 func (r *GenreReplacementRepository) Upsert(replacement *models.GenreReplacement) error {
 	existing, err := r.FindByOriginal(replacement.Original)
 	if err != nil {
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
 		// Doesn't exist, create it
 		return r.Create(replacement)
 	}
@@ -702,6 +860,9 @@ func (r *ActressAliasRepository) Create(alias *models.ActressAlias) error {
 func (r *ActressAliasRepository) Upsert(alias *models.ActressAlias) error {
 	existing, err := r.FindByAliasName(alias.AliasName)
 	if err != nil {
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
 		// Doesn't exist, create it
 		return r.Create(alias)
 	}
