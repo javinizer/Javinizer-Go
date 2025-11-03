@@ -544,8 +544,6 @@ func (s *Scraper) parseHTML(doc *goquery.Document, sourceURL string) (*models.Sc
 		Language:  "ja", // DMM provides Japanese metadata
 	}
 
-	var japaneseTitle string
-
 	// Extract Content ID from URL
 	if cid := extractContentIDFromURL(sourceURL); cid != "" {
 		result.ContentID = cid
@@ -555,30 +553,56 @@ func (s *Scraper) parseHTML(doc *goquery.Document, sourceURL string) (*models.Sc
 	// Detect if this is video.dmm.co.jp (new site format)
 	isNewSite := strings.Contains(sourceURL, "video.dmm.co.jp")
 
-	// Extract title (different selectors for new site)
+	// For new site (video.dmm.co.jp), try to extract metadata from JSON-LD first
+	// JSON-LD provides cleaner, more reliable data than HTML scraping
+	var jsonldMetadata map[string]interface{}
 	if isNewSite {
-		// video.dmm.co.jp uses simple h1 tags or og:title meta tag
-		japaneseTitle = cleanString(doc.Find("h1").First().Text())
-		if japaneseTitle == "" {
-			// Fallback to og:title meta tag
-			ogTitle, _ := doc.Find(`meta[property="og:title"]`).Attr("content")
-			japaneseTitle = cleanString(ogTitle)
+		jsonldMetadata = extractMetadataFromJSONLD(doc)
+	}
+
+	// Extract title - prioritize JSON-LD for new site
+	var japaneseTitle string
+	if isNewSite {
+		if title := getStringFromMetadata(jsonldMetadata, "title"); title != "" {
+			japaneseTitle = title
+		} else {
+			// Fallback to HTML extraction
+			japaneseTitle = cleanString(doc.Find("h1").First().Text())
+			if japaneseTitle == "" {
+				ogTitle, _ := doc.Find(`meta[property="og:title"]`).Attr("content")
+				japaneseTitle = cleanString(ogTitle)
+			}
 		}
 	} else {
 		// www.dmm.co.jp uses h1#title.item
 		japaneseTitle = cleanString(doc.Find("h1#title.item").Text())
 	}
 
-	// For DMM, both Title and OriginalTitle are the Japanese title
 	result.Title = japaneseTitle
 	result.OriginalTitle = japaneseTitle
 
-	// Extract description
-	result.Description = s.extractDescription(doc, isNewSite)
+	// Extract description - prioritize JSON-LD for new site
+	if isNewSite {
+		if desc := getStringFromMetadata(jsonldMetadata, "description"); desc != "" {
+			result.Description = desc
+		} else {
+			result.Description = s.extractDescription(doc, isNewSite)
+		}
+	} else {
+		result.Description = s.extractDescription(doc, isNewSite)
+	}
 
-	// Extract release date
-	if date := s.extractReleaseDate(doc); date != nil {
-		result.ReleaseDate = date
+	// Extract release date - prioritize JSON-LD for new site
+	if isNewSite {
+		if date := getTimeFromMetadata(jsonldMetadata, "release_date"); date != nil {
+			result.ReleaseDate = date
+		} else if date := s.extractReleaseDate(doc); date != nil {
+			result.ReleaseDate = date
+		}
+	} else {
+		if date := s.extractReleaseDate(doc); date != nil {
+			result.ReleaseDate = date
+		}
 	}
 
 	// Extract runtime
@@ -587,8 +611,16 @@ func (s *Scraper) parseHTML(doc *goquery.Document, sourceURL string) (*models.Sc
 	// Extract director
 	result.Director = s.extractDirector(doc)
 
-	// Extract maker/studio
-	result.Maker = s.extractMaker(doc, isNewSite)
+	// Extract maker/studio - prioritize JSON-LD for new site
+	if isNewSite {
+		if maker := getStringFromMetadata(jsonldMetadata, "maker"); maker != "" {
+			result.Maker = maker
+		} else {
+			result.Maker = s.extractMaker(doc, isNewSite)
+		}
+	} else {
+		result.Maker = s.extractMaker(doc, isNewSite)
+	}
 
 	// Extract label
 	result.Label = s.extractLabel(doc)
@@ -596,11 +628,32 @@ func (s *Scraper) parseHTML(doc *goquery.Document, sourceURL string) (*models.Sc
 	// Extract series
 	result.Series = s.extractSeries(doc, isNewSite)
 
-	// Extract rating
-	result.Rating = s.extractRating(doc, isNewSite)
+	// Extract rating - prioritize JSON-LD for new site
+	if isNewSite {
+		ratingValue := getFloat64FromMetadata(jsonldMetadata, "rating_value")
+		ratingCount := getIntFromMetadata(jsonldMetadata, "rating_count")
+		if ratingValue > 0 || ratingCount > 0 {
+			result.Rating = &models.Rating{
+				Score: ratingValue,
+				Votes: ratingCount,
+			}
+		} else {
+			result.Rating = s.extractRating(doc, isNewSite)
+		}
+	} else {
+		result.Rating = s.extractRating(doc, isNewSite)
+	}
 
-	// Extract genres
-	result.Genres = s.extractGenres(doc)
+	// Extract genres - prioritize JSON-LD for new site
+	if isNewSite {
+		if genres := getStringSliceFromMetadata(jsonldMetadata, "genres"); len(genres) > 0 {
+			result.Genres = genres
+		} else {
+			result.Genres = s.extractGenres(doc)
+		}
+	} else {
+		result.Genres = s.extractGenres(doc)
+	}
 
 	// Extract actresses (only if scrape_actress is enabled AND not a limited metadata page)
 	// Pages with limited/incorrect actress data:
@@ -625,8 +678,16 @@ func (s *Scraper) parseHTML(doc *goquery.Document, sourceURL string) (*models.Sc
 		logging.Debug("DMM: Skipping actress extraction (scrape_actress=false)")
 	}
 
-	// Extract cover URL
-	result.CoverURL = s.extractCoverURL(doc, isNewSite, result.ContentID)
+	// Extract cover URL - prioritize JSON-LD for new site
+	if isNewSite {
+		if coverURL := getStringFromMetadata(jsonldMetadata, "cover_url"); coverURL != "" {
+			result.CoverURL = coverURL
+		} else {
+			result.CoverURL = s.extractCoverURL(doc, isNewSite, result.ContentID)
+		}
+	} else {
+		result.CoverURL = s.extractCoverURL(doc, isNewSite, result.ContentID)
+	}
 
 	// Try to get a high-quality poster from awsimgsrc
 	// If the awsimgsrc poster is too low quality, we'll use the cover for cropping
@@ -642,11 +703,27 @@ func (s *Scraper) parseHTML(doc *goquery.Document, sourceURL string) (*models.Sc
 		}
 	}
 
-	// Extract screenshots
-	result.ScreenshotURL = s.extractScreenshots(doc, isNewSite)
+	// Extract screenshots - prioritize JSON-LD for new site
+	if isNewSite {
+		if screenshots := getStringSliceFromMetadata(jsonldMetadata, "screenshots"); len(screenshots) > 0 {
+			result.ScreenshotURL = screenshots
+		} else {
+			result.ScreenshotURL = s.extractScreenshots(doc, isNewSite)
+		}
+	} else {
+		result.ScreenshotURL = s.extractScreenshots(doc, isNewSite)
+	}
 
-	// Extract trailer URL
-	result.TrailerURL = s.extractTrailerURL(doc, sourceURL)
+	// Extract trailer URL - prioritize JSON-LD for new site
+	if isNewSite {
+		if trailerURL := getStringFromMetadata(jsonldMetadata, "trailer_url"); trailerURL != "" {
+			result.TrailerURL = trailerURL
+		} else {
+			result.TrailerURL = s.extractTrailerURL(doc, sourceURL)
+		}
+	} else {
+		result.TrailerURL = s.extractTrailerURL(doc, sourceURL)
+	}
 
 	return result, nil
 }
@@ -1254,10 +1331,64 @@ func (s *Scraper) extractScreenshots(doc *goquery.Document, isNewSite bool) []st
 
 // extractTrailerURL extracts the trailer video URL
 func (s *Scraper) extractTrailerURL(doc *goquery.Document, sourceURL string) string {
-	// This would require additional requests to iframe URLs
-	// Simplified implementation - returns empty for now
-	// Full implementation would need to parse the sample player iframe
-	return ""
+	// Check if this is a new site (video.dmm.co.jp)
+	isNewSite := strings.Contains(sourceURL, "video.dmm.co.jp")
+
+	if isNewSite {
+		return s.extractTrailerURLNewSite(doc)
+	}
+
+	// For www.dmm.co.jp, extract from onclick attribute of sample video button
+	// Pattern: onclick="gaEventVideoStart('{&quot;video_url&quot;:&quot;https:\/\/...\/xxx.mp4&quot;'..."
+	var trailerURL string
+
+	doc.Find("a.fn-sampleVideoBtn").Each(func(i int, sel *goquery.Selection) {
+		if trailerURL != "" {
+			return // Already found
+		}
+
+		onclick, exists := sel.Attr("onclick")
+		if !exists {
+			return
+		}
+
+		// Extract video_url from the onclick JSON-like data
+		// The onclick contains HTML-encoded JSON: &quot; = "
+		// Pattern: "video_url":"https:\/\/cc3001.dmm.co.jp\/...\/xxxhhb.mp4"
+		if idx := strings.Index(onclick, `video_url`); idx != -1 {
+			// Find the URL value after "video_url"
+			remaining := onclick[idx:]
+
+			// Look for the URL pattern (after &quot; or ")
+			// URLs are escaped with \/ instead of /
+			urlStart := -1
+			if idx := strings.Index(remaining, `https:`); idx != -1 {
+				urlStart = idx
+			} else if idx := strings.Index(remaining, `http:`); idx != -1 {
+				urlStart = idx
+			}
+
+			if urlStart != -1 {
+				urlPart := remaining[urlStart:]
+				// Find the end of the URL (before &quot; or " or ')
+				endMarkers := []string{`\&quot;`, `&quot;`, `"`, `'`}
+				urlEnd := len(urlPart)
+
+				for _, marker := range endMarkers {
+					if idx := strings.Index(urlPart, marker); idx != -1 && idx < urlEnd {
+						urlEnd = idx
+					}
+				}
+
+				rawURL := urlPart[:urlEnd]
+				// Unescape the URL: \/ -> /
+				trailerURL = strings.ReplaceAll(rawURL, `\/`, `/`)
+				logging.Debugf("DMM: Found trailer URL from onclick: %s", trailerURL)
+			}
+		}
+	})
+
+	return trailerURL
 }
 
 // normalizeContentID converts movie ID to DMM content ID format

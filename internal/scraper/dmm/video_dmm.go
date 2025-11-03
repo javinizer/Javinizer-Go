@@ -213,7 +213,100 @@ func (s *Scraper) extractScreenshotsNewSite(doc *goquery.Document) []string {
 	screenshots := make([]string, 0)
 	seen := make(map[string]bool)
 
-	// video.dmm.co.jp uses awsimgsrc.dmm.co.jp with numbered screenshots
+	// Strategy 1: Try to extract from JSON-LD structured data (highest quality)
+	// JSON-LD contains an "image" array with high-quality screenshot URLs
+	// Example: "image": ["https://pics.dmm.co.jp/.../xxx-jp-001.jpg", "https://pics.dmm.co.jp/.../xxx-jp-002.jpg"]
+	doc.Find(`script[type="application/ld+json"]`).Each(func(i int, sel *goquery.Selection) {
+		jsonText := sel.Text()
+
+		// Check if this JSON contains an image array
+		if !strings.Contains(jsonText, `"image"`) {
+			return
+		}
+
+		// Extract the image array
+		// Look for pattern: "image":[...]
+		if idx := strings.Index(jsonText, `"image":`); idx != -1 {
+			start := idx + len(`"image":`)
+			remaining := jsonText[start:]
+
+			// Skip whitespace
+			for len(remaining) > 0 && (remaining[0] == ' ' || remaining[0] == '\n' || remaining[0] == '\t') {
+				remaining = remaining[1:]
+			}
+
+			// Check if it's an array
+			if len(remaining) > 0 && remaining[0] == '[' {
+				// Find the closing bracket
+				bracketCount := 0
+				arrayEnd := -1
+				for i, ch := range remaining {
+					if ch == '[' {
+						bracketCount++
+					} else if ch == ']' {
+						bracketCount--
+						if bracketCount == 0 {
+							arrayEnd = i
+							break
+						}
+					}
+				}
+
+				if arrayEnd > 0 {
+					arrayContent := remaining[1:arrayEnd] // Skip opening [ and closing ]
+
+					// Extract individual image URLs from the array
+					// Pattern: "https://pics.dmm.co.jp/.../xxx-jp-001.jpg"
+					urlStart := 0
+					for {
+						// Find next quote
+						quoteIdx := strings.Index(arrayContent[urlStart:], `"`)
+						if quoteIdx == -1 {
+							break
+						}
+						quoteIdx += urlStart
+						urlStart = quoteIdx + 1
+
+						// Find the closing quote
+						closeQuoteIdx := strings.Index(arrayContent[urlStart:], `"`)
+						if closeQuoteIdx == -1 {
+							break
+						}
+
+						imageURL := arrayContent[urlStart : urlStart+closeQuoteIdx]
+						urlStart = urlStart + closeQuoteIdx + 1
+
+						// Check if this is a valid image URL
+						if strings.HasPrefix(imageURL, "http") && strings.Contains(imageURL, "pics.dmm.co.jp") {
+							// Unescape if needed
+							imageURL = strings.ReplaceAll(imageURL, `\/`, `/`)
+
+							// Remove query parameters
+							if qIdx := strings.Index(imageURL, "?"); qIdx != -1 {
+								imageURL = imageURL[:qIdx]
+							}
+
+							// Add to screenshots if not seen
+							if !seen[imageURL] {
+								seen[imageURL] = true
+								screenshots = append(screenshots, imageURL)
+								logging.Debugf("DMM Streaming: Extracted screenshot from JSON-LD: %s", imageURL)
+							}
+						}
+					}
+				}
+			}
+		}
+	})
+
+	// If we found screenshots in JSON-LD, return them (they're higher quality)
+	if len(screenshots) > 0 {
+		logging.Debugf("DMM Streaming: Found %d screenshots in JSON-LD data", len(screenshots))
+		return screenshots
+	}
+
+	// Strategy 2: Fallback to extracting from img tags (lower quality)
+	logging.Debug("DMM Streaming: No screenshots in JSON-LD, falling back to img tag extraction")
 	doc.Find(`img[src*="awsimgsrc.dmm.co.jp"]`).Each(func(i int, sel *goquery.Selection) {
 		src, exists := sel.Attr("src")
 		if !exists {
@@ -237,6 +330,12 @@ func (s *Scraper) extractScreenshotsNewSite(doc *goquery.Document) []string {
 			screenshots = append(screenshots, src)
 		}
 	})
+
+	if len(screenshots) > 0 {
+		logging.Debugf("DMM Streaming: Found %d screenshots from img tags", len(screenshots))
+	} else {
+		logging.Debug("DMM Streaming: No screenshots found")
+	}
 
 	return screenshots
 }
@@ -394,6 +493,132 @@ func normalizeImageURL(url string) string {
 	}
 
 	// Remove query parameters
+	if idx := strings.Index(url, "?"); idx != -1 {
+		url = url[:idx]
+	}
+
+	return url
+}
+
+// extractTrailerURLNewSite extracts trailer video URL from video.dmm.co.jp
+func (s *Scraper) extractTrailerURLNewSite(doc *goquery.Document) string {
+	var trailerURL string
+
+	// Strategy 1: Look for video tags or source tags with sample/trailer URLs
+	doc.Find("video source").Each(func(i int, sel *goquery.Selection) {
+		if trailerURL != "" {
+			return
+		}
+		src, exists := sel.Attr("src")
+		if exists && (strings.Contains(src, "litevideo") || strings.Contains(src, "sample") || strings.Contains(src, ".mp4")) {
+			trailerURL = src
+			logging.Debugf("DMM Streaming: Found trailer URL from video source: %s", trailerURL)
+		}
+	})
+
+	if trailerURL != "" {
+		return normalizeTrailerURL(trailerURL)
+	}
+
+	// Strategy 2: Look for data attributes on video elements
+	doc.Find("video").Each(func(i int, sel *goquery.Selection) {
+		if trailerURL != "" {
+			return
+		}
+		// Check various data attributes that might contain the video URL
+		for _, attr := range []string{"data-src", "data-video-url", "data-sample-url", "src"} {
+			if src, exists := sel.Attr(attr); exists {
+				if strings.Contains(src, ".mp4") {
+					trailerURL = src
+					logging.Debugf("DMM Streaming: Found trailer URL from video[%s]: %s", attr, trailerURL)
+					return
+				}
+			}
+		}
+	})
+
+	if trailerURL != "" {
+		return normalizeTrailerURL(trailerURL)
+	}
+
+	// Strategy 3: Look for onclick attributes with video URLs (similar to old site)
+	doc.Find("a[onclick*='video']").Each(func(i int, sel *goquery.Selection) {
+		if trailerURL != "" {
+			return
+		}
+
+		onclick, exists := sel.Attr("onclick")
+		if !exists {
+			return
+		}
+
+		// Extract URL from onclick
+		if idx := strings.Index(onclick, "http"); idx != -1 {
+			remaining := onclick[idx:]
+			endIdx := strings.IndexAny(remaining, `"'&`)
+			if endIdx != -1 {
+				url := remaining[:endIdx]
+				url = strings.ReplaceAll(url, `\/`, `/`)
+				if strings.Contains(url, ".mp4") {
+					trailerURL = url
+					logging.Debugf("DMM Streaming: Found trailer URL from onclick: %s", trailerURL)
+				}
+			}
+		}
+	})
+
+	if trailerURL != "" {
+		return normalizeTrailerURL(trailerURL)
+	}
+
+	// Strategy 4: Look for script tags with video URL in JSON
+	doc.Find("script").Each(func(i int, sel *goquery.Selection) {
+		if trailerURL != "" {
+			return
+		}
+
+		scriptContent := sel.Text()
+		// Look for patterns like "sampleUrl":"https://..." or 'sampleUrl':'https://...'
+		for _, pattern := range []string{`"sampleUrl"`, `'sampleUrl'`, `"videoUrl"`, `'videoUrl'`} {
+			if idx := strings.Index(scriptContent, pattern); idx != -1 {
+				remaining := scriptContent[idx:]
+				if urlIdx := strings.Index(remaining, "http"); urlIdx != -1 {
+					urlPart := remaining[urlIdx:]
+					endIdx := strings.IndexAny(urlPart, `"',}]`)
+					if endIdx != -1 {
+						url := urlPart[:endIdx]
+						url = strings.ReplaceAll(url, `\/`, `/`)
+						if strings.Contains(url, ".mp4") {
+							trailerURL = url
+							logging.Debugf("DMM Streaming: Found trailer URL from script JSON: %s", trailerURL)
+							return
+						}
+					}
+				}
+			}
+		}
+	})
+
+	if trailerURL != "" {
+		return normalizeTrailerURL(trailerURL)
+	}
+
+	logging.Debug("DMM Streaming: No trailer URL found")
+	return ""
+}
+
+// normalizeTrailerURL normalizes trailer URLs from DMM
+// Handles protocol-relative URLs and unescapes slashes
+func normalizeTrailerURL(url string) string {
+	// Handle protocol-relative URLs
+	if strings.HasPrefix(url, "//") {
+		url = "https:" + url
+	}
+
+	// Unescape slashes
+	url = strings.ReplaceAll(url, `\/`, `/`)
+
+	// Remove query parameters if any
 	if idx := strings.Index(url, "?"); idx != -1 {
 		url = url[:idx]
 	}
