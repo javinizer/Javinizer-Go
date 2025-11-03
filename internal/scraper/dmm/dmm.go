@@ -1446,39 +1446,39 @@ func normalizeContentID(id string) string {
 	return idNoHyphen
 }
 
-// normalizeID converts content ID back to standard ID format
-// Example: "abp00420" -> "ABP-420"
-// Amateur IDs like "oreco183", "cap123" are returned in uppercase without modification
+// normalizeID converts content ID back to standard DVD-ID format with hyphen
+// Examples: "ipx00535" -> "IPX-535", "sone860" -> "SONE-860", "oreco183" -> "ORECO-183"
 //
-// Strategy: Use same conservative heuristic as normalizeContentID to detect amateur IDs.
-// Heuristic: If contentID matches 4-6 letters + 3-4 digits pattern, treat as amateur (no hyphen).
-// Otherwise, insert hyphen for standard JAV format.
+// Strategy:
+//  1. Split by word-digit boundary (letters vs numbers)
+//  2. Remove leading zeros from number (e.g., "00535" -> "535")
+//  3. Ensure at least 3 digits remain (pad with zeros if needed)
+//  4. Always add hyphen between prefix and number for consistency
 func normalizeID(contentID string) string {
+	// Match pattern: optional leading digits, letter prefix, number, optional suffix
+	// Examples: "4sone860", "sone860", "ipx00535", "oreco183"
 	re := regexp.MustCompile(`^(\d*)([a-z]+)(\d+)(.*)$`)
 	matches := re.FindStringSubmatch(strings.ToLower(contentID))
 
 	if len(matches) > 3 {
-		prefix := matches[2]
+		prefix := strings.ToUpper(matches[2])
 		number := matches[3]
 		suffix := ""
 		if len(matches) > 4 {
 			suffix = strings.ToUpper(matches[4])
 		}
 
-		// Conservative heuristic: If prefix is 4-6 chars and number is 3-4 digits, treat as amateur
-		// Amateur IDs: oreco183 (5+3), luxu456 (4+3), maan789 (4+3)
-		// Standard IDs get hyphen: ipx00535 (3+5) -> IPX-535, cap00123 (3+5) -> CAP-123
-		if len(prefix) >= 4 && len(prefix) <= 6 && len(number) >= 3 && len(number) <= 4 {
-			// Likely amateur - return in uppercase without hyphen
-			return strings.ToUpper(prefix + number + suffix)
+		// Remove leading zeros from number, but keep at least 3 digits
+		// Examples: "00535" -> "535", "860" -> "860", "01" -> "001"
+		numberInt, err := strconv.Atoi(number)
+		if err == nil {
+			// Format with minimum 3 digits (pad with zeros if needed)
+			number = fmt.Sprintf("%03d", numberInt)
 		}
 
-		// Standard JAV ID or ambiguous: insert hyphen
-		prefix = strings.ToUpper(prefix)
-		numberInt, _ := strconv.Atoi(number)
-		paddedNumber := fmt.Sprintf("%03d", numberInt)
-
-		return prefix + "-" + paddedNumber + suffix
+		// Always add hyphen between prefix and number for consistency
+		// This works for all JAV IDs: standard, amateur, and studio series
+		return prefix + "-" + number + suffix
 	}
 
 	return strings.ToUpper(contentID)

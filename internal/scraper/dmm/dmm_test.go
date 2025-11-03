@@ -180,31 +180,32 @@ func TestNormalizeID(t *testing.T) {
 		input    string
 		expected string
 	}{
-		// Standard content IDs (5 digits after prefix = get hyphen)
+		// Standard content IDs - all get hyphens with 3-digit padding
 		{"content ID with 5 digits", "abp00420", "ABP-420"},
 		{"with leading zeros", "ipx00535", "IPX-535"},
 		{"with suffix", "ipx00535z", "IPX-535Z"},
-		{"T28 format with many digits", "t28123", "T-28123"}, // t + 28123 (5 digits), becomes T-28123
+		{"T28 format with many digits", "t28123", "T-28123"}, // t + 28123 (5 digits), keeps all digits
 		{"short number", "mdb00087", "MDB-087"},
+		{"SONE series", "sone860", "SONE-860"},       // Major studio series
+		{"SONE with zeros", "sone00860", "SONE-860"}, // Leading zeros removed
 
-		// Amateur-like IDs (4-6 letter prefix + 3-4 digit number = no hyphen)
-		// Conservative heuristic: Only 4-6 letters treated as amateur
-		{"amateur oreco", "oreco183", "ORECO183"},                     // 5 letters + 3 digits = no hyphen
-		{"amateur ORECO uppercase", "ORECO183", "ORECO183"},           // 5 letters + 3 digits = no hyphen
-		{"amateur luxu", "luxu456", "LUXU456"},                        // 4 letters + 3 digits = no hyphen
-		{"amateur siro", "siro789", "SIRO789"},                        // 4 letters + 3 digits = no hyphen
-		{"amateur maan", "maan321", "MAAN321"},                        // 4 letters + 3 digits = no hyphen
-		{"3 letter cap gets hyphen", "cap00123", "CAP-123"},           // 3 letters + 5 digits = hyphen inserted
-		{"3 letter CAP uppercase gets hyphen", "CAP00123", "CAP-123"}, // 3 letters + 5 digits = hyphen
-		{"3 letter ntk gets hyphen", "ntk00456", "NTK-456"},           // 3 letters + 5 digits = hyphen
-		{"3 letter ara gets hyphen", "ara00789", "ARA-789"},           // 3 letters + 5 digits = hyphen
-		{"4 digit amateur", "oreco1234", "ORECO1234"},                 // 5 letters + 4 digits = no hyphen
-		{"6 letter prefix", "abcdef123", "ABCDEF123"},                 // 6 letters + 3 digits = no hyphen
+		// Amateur IDs - now also get hyphens for consistency
+		{"amateur oreco", "oreco183", "ORECO-183"},           // Amateur prefix + 3 digits
+		{"amateur ORECO uppercase", "ORECO183", "ORECO-183"}, // Input already uppercase
+		{"amateur luxu", "luxu456", "LUXU-456"},              // Amateur prefix + 3 digits
+		{"amateur siro", "siro789", "SIRO-789"},              // Amateur prefix + 3 digits
+		{"amateur maan", "maan321", "MAAN-321"},              // Amateur prefix + 3 digits
+		{"3 letter cap", "cap00123", "CAP-123"},              // Standard 3-letter prefix
+		{"3 letter CAP uppercase", "CAP00123", "CAP-123"},    // Input already uppercase
+		{"3 letter ntk", "ntk00456", "NTK-456"},              // Standard 3-letter prefix
+		{"3 letter ara", "ara00789", "ARA-789"},              // Standard 3-letter prefix
+		{"4 digit amateur", "oreco1234", "ORECO-1234"},       // Amateur + 4 digits (keeps all)
+		{"6 letter prefix", "abcdef123", "ABCDEF-123"},       // Long prefix + 3 digits
 
-		// Edge cases: Outside heuristic range
-		{"5 digit number gets hyphen", "abc12345", "ABC-12345"},        // 5 digits = hyphen inserted but all 5 shown
-		{"2 digit number gets hyphen", "abc00012", "ABC-012"},          // 12 with leading zeros removed = 012
-		{"7 letter prefix gets hyphen", "abcdefg00123", "ABCDEFG-123"}, // 7 letters = hyphen
+		// Edge cases
+		{"5 digit number", "abc12345", "ABC-12345"},        // 5 digits kept as-is
+		{"2 digit number padded", "abc00012", "ABC-012"},   // 12 padded to 012
+		{"7 letter prefix", "abcdefg00123", "ABCDEFG-123"}, // Very long prefix
 	}
 
 	for _, tt := range tests {

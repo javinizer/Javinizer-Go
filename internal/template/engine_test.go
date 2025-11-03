@@ -1136,6 +1136,95 @@ func TestTemplateEngine_NestedConditionals(t *testing.T) {
 	}
 }
 
+func TestTemplateEngine_CaseModifiers(t *testing.T) {
+	engine := NewEngine()
+
+	ctx := &Context{
+		ID:        "IPX-535",
+		ContentID: "ipx00535",
+	}
+
+	tests := []struct {
+		name     string
+		template string
+		want     string
+	}{
+		{
+			name:     "ID with UPPERCASE modifier",
+			template: "<ID:UPPERCASE>",
+			want:     "IPX-535",
+		},
+		{
+			name:     "ID with LOWERCASE modifier",
+			template: "<ID:LOWERCASE>",
+			want:     "ipx-535",
+		},
+		{
+			name:     "ID with UPPER shorthand",
+			template: "<ID:UPPER>",
+			want:     "IPX-535",
+		},
+		{
+			name:     "ID with LOWER shorthand",
+			template: "<ID:LOWER>",
+			want:     "ipx-535",
+		},
+		{
+			name:     "CONTENTID with UPPERCASE modifier",
+			template: "<CONTENTID:UPPERCASE>",
+			want:     "IPX00535",
+		},
+		{
+			name:     "CONTENTID with LOWERCASE modifier",
+			template: "<CONTENTID:LOWERCASE>",
+			want:     "ipx00535",
+		},
+		{
+			name:     "ID without modifier (default case)",
+			template: "<ID>",
+			want:     "IPX-535",
+		},
+		{
+			name:     "CONTENTID without modifier (default case)",
+			template: "<CONTENTID>",
+			want:     "ipx00535",
+		},
+		{
+			name:     "ID with unknown modifier (returns value as-is)",
+			template: "<ID:UNKNOWN>",
+			want:     "IPX-535",
+		},
+		{
+			name:     "Case insensitive modifier - lowercase input",
+			template: "<ID:lowercase>",
+			want:     "ipx-535",
+		},
+		{
+			name:     "Case insensitive modifier - mixed case input",
+			template: "<ID:LoWeRcAsE>",
+			want:     "ipx-535",
+		},
+		{
+			name:     "Complex template with multiple case modifiers",
+			template: "<ID:UPPERCASE> - <CONTENTID:LOWERCASE>",
+			want:     "IPX-535 - ipx00535",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := engine.Execute(tt.template, ctx)
+			if err != nil {
+				t.Errorf("Execute() error = %v", err)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("Execute() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 // Helper function to create time pointers
 func timePtr(year, month, day int) *time.Time {
 	t := time.Date(year, time.Month(month), day, 0, 0, 0, 0, time.UTC)

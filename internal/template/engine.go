@@ -109,10 +109,18 @@ func (e *Engine) processConditionals(template string, ctx *Context) string {
 func (e *Engine) resolveTag(tagName, modifier string, ctx *Context) (string, error) {
 	switch tagName {
 	case "ID":
-		return ctx.ID, nil
+		value := ctx.ID
+		if modifier != "" {
+			return e.applyCaseModifier(value, modifier), nil
+		}
+		return value, nil
 
 	case "CONTENTID":
-		return ctx.ContentID, nil
+		value := ctx.ContentID
+		if modifier != "" {
+			return e.applyCaseModifier(value, modifier), nil
+		}
+		return value, nil
 
 	case "TITLE":
 		value := ctx.Title
@@ -358,4 +366,17 @@ func (e *Engine) formatDate(date *time.Time, pattern string) string {
 	pattern = strings.ReplaceAll(pattern, "ss", "05")
 
 	return date.Format(pattern)
+}
+
+// applyCaseModifier applies case conversion modifiers (UPPERCASE, LOWERCASE)
+func (e *Engine) applyCaseModifier(value, modifier string) string {
+	switch strings.ToUpper(modifier) {
+	case "UPPERCASE", "UPPER":
+		return strings.ToUpper(value)
+	case "LOWERCASE", "LOWER":
+		return strings.ToLower(value)
+	default:
+		// Unknown modifier, return value as-is
+		return value
+	}
 }
