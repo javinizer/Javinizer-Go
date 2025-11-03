@@ -129,8 +129,45 @@ func (s *Scraper) extractCoverURLNewSite(doc *goquery.Document, contentID string
 		return coverURL
 	}
 
+	// Try to extract from CSS background-image style attributes
+	// Some amateur videos use: style="background-image: url(//pics.dmm.co.jp/digital/amateur/oreco183/oreco183jp.jpg);"
+	logging.Debug("DMM Streaming: og:image not found, trying CSS background-image")
+	var bgImageURL string
+	doc.Find("*[style*='background-image']").Each(func(i int, sel *goquery.Selection) {
+		if bgImageURL != "" {
+			return // Already found one
+		}
+		style, exists := sel.Attr("style")
+		if !exists {
+			return
+		}
+		// Extract URL from background-image: url(...)
+		// Handle both url(...) and url("...") and url('...')
+		// Also handle protocol-relative URLs starting with //
+		bgURL := extractBackgroundImageURL(style)
+		if bgURL != "" {
+			logging.Debugf("DMM Streaming: Found background-image URL: %s", bgURL)
+			bgImageURL = bgURL
+		}
+	})
+
+	if bgImageURL != "" {
+		// Normalize the URL
+		coverURL = normalizeImageURL(bgImageURL)
+		// For amateur videos, keep jp.jpg suffix (pl.jpg doesn't exist for amateur videos)
+		// For regular videos, convert to pl.jpg for larger image
+		if !strings.Contains(coverURL, "/amateur/") {
+			// Replace 'jp.jpg' with 'pl.jpg' for larger image (non-amateur videos)
+			coverURL = strings.Replace(coverURL, "jp.jpg", "pl.jpg", 1)
+			// Also handle standard 'ps.jpg' -> 'pl.jpg' conversion
+			coverURL = strings.Replace(coverURL, "ps.jpg", "pl.jpg", 1)
+		}
+		logging.Debugf("DMM Streaming: Final cover URL from background-image: %s", coverURL)
+		return coverURL
+	}
+
 	// As fallback, try to extract from img tags
-	logging.Debug("DMM Streaming: og:image not found, trying img tag fallback")
+	logging.Debug("DMM Streaming: background-image not found, trying img tag fallback")
 	coverURL, _ = doc.Find(`img[src*="pl.jpg"]`).First().Attr("src")
 	logging.Debugf("DMM Streaming: img[src*='pl.jpg'] found: %s", coverURL)
 	if coverURL != "" {
@@ -155,13 +192,14 @@ func (s *Scraper) extractCoverURLNewSite(doc *goquery.Document, contentID string
 	logging.Debugf("DMM Streaming: Total img tags found: %d", imgCount)
 
 	// Final fallback for amateur videos: construct URL from content ID
-	// Amateur videos use pattern: https://pics.dmm.co.jp/digital/amateur/{contentid}/{contentid}pl.jpg
+	// Amateur videos use pattern: https://pics.dmm.co.jp/digital/amateur/{contentid}/{contentid}jp.jpg
+	// Note: Amateur videos use 'jp.jpg' suffix, not 'pl.jpg' (pl.jpg doesn't exist for amateur videos)
 	// DMM serves cover assets on lowercase paths, so normalize to lowercase
 	if contentID != "" {
 		// Normalize to lowercase to match DMM's URL structure
 		normalizedID := strings.ToLower(contentID)
-		// Try amateur video pattern
-		coverURL = "https://pics.dmm.co.jp/digital/amateur/" + normalizedID + "/" + normalizedID + "pl.jpg"
+		// Try amateur video pattern (amateur videos use jp.jpg, not pl.jpg)
+		coverURL = "https://pics.dmm.co.jp/digital/amateur/" + normalizedID + "/" + normalizedID + "jp.jpg"
 		logging.Debugf("DMM Streaming: Constructed amateur cover URL from content ID '%s': %s", contentID, coverURL)
 		return coverURL
 	}
@@ -293,4 +331,72 @@ func (s *Scraper) extractRatingNewSite(doc *goquery.Document) (float64, int) {
 	})
 
 	return rating, votes
+}
+
+// extractBackgroundImageURL extracts URL from CSS background-image property
+// Handles formats: url(...), url("..."), url('...')
+// Returns empty string if no URL found
+func extractBackgroundImageURL(style string) string {
+	// Look for background-image: url(...)
+	startIdx := strings.Index(style, "background-image:")
+	if startIdx == -1 {
+		return ""
+	}
+
+	// Find url( part
+	urlIdx := strings.Index(style[startIdx:], "url(")
+	if urlIdx == -1 {
+		return ""
+	}
+
+	// Start after "url("
+	start := startIdx + urlIdx + 4
+	if start >= len(style) {
+		return ""
+	}
+
+	// Skip any leading quotes or whitespace
+	for start < len(style) && (style[start] == '"' || style[start] == '\'' || style[start] == ' ') {
+		start++
+	}
+
+	// Find the end (closing paren, quote, or semicolon)
+	end := start
+	for end < len(style) {
+		ch := style[end]
+		if ch == ')' || ch == '"' || ch == '\'' || ch == ';' || ch == ' ' {
+			break
+		}
+		end++
+	}
+
+	if end <= start {
+		return ""
+	}
+
+	url := style[start:end]
+	return strings.TrimSpace(url)
+}
+
+// normalizeImageURL normalizes image URLs from DMM
+// Handles protocol-relative URLs (//pics.dmm.co.jp/...) and converts them to HTTPS
+// Ensures lowercase paths for amateur videos
+func normalizeImageURL(url string) string {
+	// Handle protocol-relative URLs
+	if strings.HasPrefix(url, "//") {
+		url = "https:" + url
+	}
+
+	// Normalize to lowercase for amateur video paths
+	// DMM serves amateur video assets on lowercase paths
+	if strings.Contains(url, "/digital/amateur/") {
+		url = strings.ToLower(url)
+	}
+
+	// Remove query parameters
+	if idx := strings.Index(url, "?"); idx != -1 {
+		url = url[:idx]
+	}
+
+	return url
 }

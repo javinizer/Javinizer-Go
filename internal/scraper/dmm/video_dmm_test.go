@@ -69,9 +69,10 @@ func TestExtractDescriptionNewSite(t *testing.T) {
 // TestExtractCoverURLNewSite verifies cover URL extraction from video.dmm.co.jp
 func TestExtractCoverURLNewSite(t *testing.T) {
 	tests := []struct {
-		name     string
-		html     string
-		expected string
+		name      string
+		html      string
+		contentID string
+		expected  string
 	}{
 		{
 			name:     "from og:image",
@@ -84,12 +85,48 @@ func TestExtractCoverURLNewSite(t *testing.T) {
 			expected: "https://pics.dmm.co.jp/video/ipx00535/ipx00535pl.jpg",
 		},
 		{
+			name:     "from CSS background-image with protocol-relative URL (amateur video keeps jp.jpg)",
+			html:     `<html><body><div style="background-image: url(//pics.dmm.co.jp/digital/amateur/oreco183/oreco183jp.jpg);"></div></body></html>`,
+			expected: "https://pics.dmm.co.jp/digital/amateur/oreco183/oreco183jp.jpg",
+		},
+		{
+			name:     "from CSS background-image with quoted URL (amateur video keeps jp.jpg)",
+			html:     `<html><body><div style='background-image: url("//pics.dmm.co.jp/digital/amateur/oreco183/oreco183jp.jpg");'></div></body></html>`,
+			expected: "https://pics.dmm.co.jp/digital/amateur/oreco183/oreco183jp.jpg",
+		},
+		{
+			name:     "from CSS background-image with single-quoted URL (amateur video keeps jp.jpg)",
+			html:     `<html><body><div style="background-image: url('//pics.dmm.co.jp/digital/amateur/oreco183/oreco183jp.jpg');"></div></body></html>`,
+			expected: "https://pics.dmm.co.jp/digital/amateur/oreco183/oreco183jp.jpg",
+		},
+		{
+			name:     "from CSS background-image with HTTPS URL (amateur video keeps jp.jpg)",
+			html:     `<html><body><div style="background-image: url(https://pics.dmm.co.jp/digital/amateur/oreco183/oreco183jp.jpg);"></div></body></html>`,
+			expected: "https://pics.dmm.co.jp/digital/amateur/oreco183/oreco183jp.jpg",
+		},
+		{
+			name:     "from CSS background-image with mixed case (amateur video normalizes to lowercase, keeps jp.jpg)",
+			html:     `<html><body><div style="background-image: url(//pics.dmm.co.jp/digital/amateur/ORECO183/ORECO183jp.jpg);"></div></body></html>`,
+			expected: "https://pics.dmm.co.jp/digital/amateur/oreco183/oreco183jp.jpg",
+		},
+		{
+			name:     "from CSS background-image with regular video (converts jp.jpg to pl.jpg)",
+			html:     `<html><body><div style="background-image: url(//pics.dmm.co.jp/digital/video/ipx00535/ipx00535jp.jpg);"></div></body></html>`,
+			expected: "https://pics.dmm.co.jp/digital/video/ipx00535/ipx00535pl.jpg",
+		},
+		{
 			name:     "from img tag",
 			html:     `<html><head></head><body><img src="https://awsimgsrc.dmm.co.jp/pics_dig/video/ipx00535/ipx00535pl.jpg?v=1" /></body></html>`,
 			expected: "https://pics.dmm.co.jp/video/ipx00535/ipx00535pl.jpg",
 		},
 		{
-			name:     "no cover found",
+			name:      "fallback to constructed URL from content ID (amateur video uses jp.jpg)",
+			html:      `<html><head></head><body></body></html>`,
+			contentID: "oreco183",
+			expected:  "https://pics.dmm.co.jp/digital/amateur/oreco183/oreco183jp.jpg",
+		},
+		{
+			name:     "no cover found and no content ID",
 			html:     `<html><head></head><body></body></html>`,
 			expected: "",
 		},
@@ -107,7 +144,7 @@ func TestExtractCoverURLNewSite(t *testing.T) {
 			doc, err := parseHTMLString(tt.html)
 			require.NoError(t, err)
 
-			result := scraper.extractCoverURLNewSite(doc, "")
+			result := scraper.extractCoverURLNewSite(doc, tt.contentID)
 			assert.Equal(t, tt.expected, result)
 		})
 	}
@@ -294,6 +331,110 @@ func TestExtractRatingNewSite(t *testing.T) {
 			rating, votes := scraper.extractRatingNewSite(doc)
 			assert.Equal(t, tt.expectedScore, rating)
 			assert.Equal(t, tt.expectedVotes, votes)
+		})
+	}
+}
+
+// TestExtractBackgroundImageURL verifies CSS background-image URL extraction
+func TestExtractBackgroundImageURL(t *testing.T) {
+	tests := []struct {
+		name     string
+		style    string
+		expected string
+	}{
+		{
+			name:     "unquoted URL",
+			style:    "background-image: url(//pics.dmm.co.jp/digital/amateur/oreco183/oreco183jp.jpg);",
+			expected: "//pics.dmm.co.jp/digital/amateur/oreco183/oreco183jp.jpg",
+		},
+		{
+			name:     "double-quoted URL",
+			style:    `background-image: url("//pics.dmm.co.jp/digital/amateur/oreco183/oreco183jp.jpg");`,
+			expected: "//pics.dmm.co.jp/digital/amateur/oreco183/oreco183jp.jpg",
+		},
+		{
+			name:     "single-quoted URL",
+			style:    `background-image: url('//pics.dmm.co.jp/digital/amateur/oreco183/oreco183jp.jpg');`,
+			expected: "//pics.dmm.co.jp/digital/amateur/oreco183/oreco183jp.jpg",
+		},
+		{
+			name:     "HTTPS URL",
+			style:    "background-image: url(https://pics.dmm.co.jp/digital/amateur/oreco183/oreco183jp.jpg);",
+			expected: "https://pics.dmm.co.jp/digital/amateur/oreco183/oreco183jp.jpg",
+		},
+		{
+			name:     "with extra whitespace",
+			style:    "background-image: url( //pics.dmm.co.jp/digital/amateur/oreco183/oreco183jp.jpg );",
+			expected: "//pics.dmm.co.jp/digital/amateur/oreco183/oreco183jp.jpg",
+		},
+		{
+			name:     "multiple CSS properties",
+			style:    "width: 100%; background-image: url(//pics.dmm.co.jp/test.jpg); height: 200px;",
+			expected: "//pics.dmm.co.jp/test.jpg",
+		},
+		{
+			name:     "no background-image",
+			style:    "width: 100%; height: 200px;",
+			expected: "",
+		},
+		{
+			name:     "malformed URL",
+			style:    "background-image: url();",
+			expected: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := extractBackgroundImageURL(tt.style)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+// TestNormalizeImageURL verifies URL normalization
+func TestNormalizeImageURL(t *testing.T) {
+	tests := []struct {
+		name     string
+		url      string
+		expected string
+	}{
+		{
+			name:     "protocol-relative URL",
+			url:      "//pics.dmm.co.jp/digital/amateur/oreco183/oreco183jp.jpg",
+			expected: "https://pics.dmm.co.jp/digital/amateur/oreco183/oreco183jp.jpg",
+		},
+		{
+			name:     "HTTPS URL",
+			url:      "https://pics.dmm.co.jp/digital/amateur/oreco183/oreco183jp.jpg",
+			expected: "https://pics.dmm.co.jp/digital/amateur/oreco183/oreco183jp.jpg",
+		},
+		{
+			name:     "amateur video with mixed case (lowercase normalization)",
+			url:      "https://pics.dmm.co.jp/digital/amateur/ORECO183/ORECO183jp.jpg",
+			expected: "https://pics.dmm.co.jp/digital/amateur/oreco183/oreco183jp.jpg",
+		},
+		{
+			name:     "protocol-relative amateur video with mixed case",
+			url:      "//pics.dmm.co.jp/digital/amateur/ORECO183/ORECO183jp.jpg",
+			expected: "https://pics.dmm.co.jp/digital/amateur/oreco183/oreco183jp.jpg",
+		},
+		{
+			name:     "with query parameters",
+			url:      "https://pics.dmm.co.jp/digital/amateur/oreco183/oreco183jp.jpg?size=large",
+			expected: "https://pics.dmm.co.jp/digital/amateur/oreco183/oreco183jp.jpg",
+		},
+		{
+			name:     "non-amateur video (no lowercase normalization)",
+			url:      "https://pics.dmm.co.jp/digital/video/IPX535/IPX535pl.jpg",
+			expected: "https://pics.dmm.co.jp/digital/video/IPX535/IPX535pl.jpg",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := normalizeImageURL(tt.url)
+			assert.Equal(t, tt.expected, result)
 		})
 	}
 }
