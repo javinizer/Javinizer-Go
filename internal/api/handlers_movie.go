@@ -39,11 +39,11 @@ func scrapeMovie(deps *ServerDependencies) gin.HandlerFunc {
 			return
 		}
 
-		// Scrape from sources in priority order - read from deps to get latest registry/config
+		// Scrape from sources in priority order - use getters for thread-safe access
 		results := []*models.ScraperResult{}
 		errors := []string{}
 
-		for _, scraper := range deps.Registry.GetByPriority(deps.Config.Scrapers.Priority) {
+		for _, scraper := range deps.GetRegistry().GetByPriority(deps.GetConfig().Scrapers.Priority) {
 			result, err := scraper.Search(req.ID)
 			if err != nil {
 				errors = append(errors, fmt.Sprintf("%s: %v", scraper.Name(), err))
@@ -60,8 +60,8 @@ func scrapeMovie(deps *ServerDependencies) gin.HandlerFunc {
 			return
 		}
 
-		// Aggregate results
-		movie, err := deps.Aggregator.Aggregate(results)
+		// Aggregate results - use getter for thread-safe access
+		movie, err := deps.GetAggregator().Aggregate(results)
 		if err != nil {
 			c.JSON(500, ErrorResponse{Error: err.Error()})
 			return

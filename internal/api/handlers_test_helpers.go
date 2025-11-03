@@ -122,8 +122,7 @@ func createTestDeps(t *testing.T, cfg *config.Config, configFile string) *Server
 	// Initialize job queue
 	jobQueue := worker.NewJobQueue()
 
-	return &ServerDependencies{
-		Config:      cfg,
+	deps := &ServerDependencies{
 		ConfigFile:  configFile,
 		Registry:    registry,
 		DB:          db,
@@ -133,4 +132,8 @@ func createTestDeps(t *testing.T, cfg *config.Config, configFile string) *Server
 		Matcher:     mat,
 		JobQueue:    jobQueue,
 	}
+	// Initialize atomic config pointer
+	deps.SetConfig(cfg)
+
+	return deps
 }

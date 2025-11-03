@@ -118,7 +118,6 @@ func runAPI(hostFlag string, portFlag int) {
 
 	// Create server dependencies
 	deps := &api.ServerDependencies{
-		Config:      cfg,
 		ConfigFile:  cfgFile,
 		Registry:    registry,
 		DB:          db,
@@ -128,15 +127,18 @@ func runAPI(hostFlag string, portFlag int) {
 		Matcher:     mat,
 		JobQueue:    jobQueue,
 	}
+	// Initialize atomic config pointer
+	deps.SetConfig(cfg)
 
 	// Create and configure the server
 	router := api.NewServer(deps)
 
 	// Log server info
-	api.LogServerInfo(cfg)
+	api.LogServerInfo(deps.GetConfig())
 
 	// Start server
-	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
+	currentCfg := deps.GetConfig()
+	addr := fmt.Sprintf("%s:%d", currentCfg.Server.Host, currentCfg.Server.Port)
 	if err := router.Run(addr); err != nil {
 		log.Fatalf("Failed to start server: %v", err)
 	}

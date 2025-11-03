@@ -6,11 +6,19 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 
 	"github.com/sirupsen/logrus"
 )
 
-var globalLogger *logrus.Logger
+// loggerState holds the logger instance and associated file closers
+type loggerState struct {
+	logger  *logrus.Logger
+	closers []io.Closer // files to close (excludes stdout/stderr)
+}
+
+// current holds the active logger state (thread-safe via atomic.Value)
+var current atomic.Value // holds *loggerState
 
 // Config represents logging configuration
 type Config struct {
@@ -19,7 +27,9 @@ type Config struct {
 	Output string `yaml:"output"` // stdout, file path, or "stdout,/path/to/file.log"
 }
 
-// InitLogger initializes the global logger based on configuration
+// InitLogger initializes or reloads the global logger based on configuration.
+// It atomically swaps in the new logger and closes previous file handles to prevent leaks.
+// This function is safe to call multiple times for config reloading.
 func InitLogger(cfg *Config) error {
 	if cfg == nil {
 		cfg = &Config{
@@ -29,6 +39,7 @@ func InitLogger(cfg *Config) error {
 		}
 	}
 
+	// 1. Build new logger and open files
 	logger := logrus.New()
 
 	// Set log level
@@ -56,6 +67,7 @@ func InitLogger(cfg *Config) error {
 	// Set log output(s)
 	outputs := strings.Split(cfg.Output, ",")
 	var writers []io.Writer
+	var closers []io.Closer // Track files to close (excludes stdout/stderr)
 
 	for _, output := range outputs {
 		output = strings.TrimSpace(output)
@@ -71,16 +83,25 @@ func InitLogger(cfg *Config) error {
 			// It's a file path - create directory if needed
 			dir := filepath.Dir(output)
 			if err := os.MkdirAll(dir, 0777); err != nil {
+				// Close any files we've opened so far
+				for _, c := range closers {
+					_ = c.Close()
+				}
 				return fmt.Errorf("failed to create log directory %q: %w", dir, err)
 			}
 
 			// Open file in append mode
 			file, err := os.OpenFile(output, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 			if err != nil {
+				// Close any files we've opened so far
+				for _, c := range closers {
+					_ = c.Close()
+				}
 				return fmt.Errorf("failed to open log file %q: %w", output, err)
 			}
 
 			writers = append(writers, file)
+			closers = append(closers, file) // Track for cleanup
 		}
 	}
 
@@ -96,17 +117,86 @@ func InitLogger(cfg *Config) error {
 		logger.SetOutput(io.MultiWriter(writers...))
 	}
 
-	globalLogger = logger
+	// 2. Create new state
+	newState := &loggerState{
+		logger:  logger,
+		closers: closers,
+	}
+
+	// 3. Atomically swap in the new logger
+	prevValue := current.Swap(newState)
+
+	// 4. Close previous file handles to prevent leaks
+	if prevValue != nil {
+		prevState, ok := prevValue.(*loggerState)
+		// Guard against typed nil pointer (can happen after CloseLogger)
+		if ok && prevState != nil {
+			// Close old files asynchronously to avoid blocking this call
+			go func(state *loggerState) {
+				for _, c := range state.closers {
+					if err := c.Close(); err != nil {
+						// Log to new logger (or stderr as fallback)
+						fmt.Fprintf(os.Stderr, "Warning: failed to close old log file: %v\n", err)
+					}
+				}
+			}(prevState)
+		}
+	}
+
 	return nil
 }
 
-// GetLogger returns the global logger instance
-func GetLogger() *logrus.Logger {
-	if globalLogger == nil {
-		// Initialize with defaults if not already initialized
+// L returns the current logger instance. Callers should NOT cache the returned
+// pointer across config reloads; instead, call logging.L() when you need to log.
+// This ensures you always get the current logger after config reloads.
+func L() *logrus.Logger {
+	v := current.Load()
+	if v == nil {
+		// Fallback: initialize with defaults if not already initialized
 		_ = InitLogger(nil)
+		v = current.Load()
 	}
-	return globalLogger
+
+	// Check if we have a valid state (handles both nil interface and typed nil pointer)
+	if v == nil {
+		return logrus.StandardLogger()
+	}
+
+	state, ok := v.(*loggerState)
+	if !ok || state == nil {
+		return logrus.StandardLogger()
+	}
+
+	return state.logger
+}
+
+// GetLogger returns the current logger instance (deprecated: use L() instead)
+// This function is kept for backward compatibility but L() is preferred.
+func GetLogger() *logrus.Logger {
+	return L()
+}
+
+// CloseLogger closes current logger's file handles and clears the logger.
+// Call during shutdown to release file descriptors. Safe to call multiple times.
+func CloseLogger() {
+	v := current.Load()
+	if v == nil {
+		return
+	}
+	prevValue := current.Swap((*loggerState)(nil))
+	if prevValue == nil {
+		return
+	}
+	// Guard against typed nil pointer
+	prevState, ok := prevValue.(*loggerState)
+	if !ok || prevState == nil {
+		return
+	}
+	for _, c := range prevState.closers {
+		if err := c.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to close log file during shutdown: %v\n", err)
+		}
+	}
 }
 
 // Debug logs a debug message

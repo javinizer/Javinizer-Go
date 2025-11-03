@@ -110,8 +110,14 @@ func TestScanDirectory(t *testing.T) {
 			mat, err := matcher.NewMatcher(&cfg.Matching)
 			require.NoError(t, err)
 
+			// Create minimal ServerDependencies for test
+			deps := &ServerDependencies{
+				Matcher: mat,
+			}
+			deps.SetConfig(cfg)
+
 			router := gin.New()
-			router.POST("/scan", scanDirectory(mat, cfg))
+			router.POST("/scan", scanDirectory(deps))
 
 			var reqBody interface{}
 			if fn, ok := tt.requestBody.(func(string) ScanRequest); ok {
@@ -154,8 +160,14 @@ func TestScanDirectory_PathTraversalPrevention(t *testing.T) {
 	mat, err := matcher.NewMatcher(&cfg.Matching)
 	require.NoError(t, err)
 
+	// Create minimal ServerDependencies for test
+	deps := &ServerDependencies{
+		Matcher: mat,
+	}
+	deps.SetConfig(cfg)
+
 	router := gin.New()
-	router.POST("/scan", scanDirectory(mat, cfg))
+	router.POST("/scan", scanDirectory(deps))
 
 	tests := []struct {
 		name             string
@@ -249,8 +261,12 @@ func TestGetCurrentWorkingDirectory(t *testing.T) {
 		cfg := config.DefaultConfig()
 		cfg.API.Security.AllowedDirectories = []string{} // No allowed directories
 
+		// Create minimal ServerDependencies for test
+		deps := &ServerDependencies{}
+		deps.SetConfig(cfg)
+
 		router := gin.New()
-		router.GET("/cwd", getCurrentWorkingDirectory(cfg))
+		router.GET("/cwd", getCurrentWorkingDirectory(deps))
 
 		req := httptest.NewRequest("GET", "/cwd", nil)
 		w := httptest.NewRecorder()
@@ -275,8 +291,12 @@ func TestGetCurrentWorkingDirectory(t *testing.T) {
 		cfg := config.DefaultConfig()
 		cfg.API.Security.AllowedDirectories = []string{"/media", "/data"}
 
+		// Create minimal ServerDependencies for test
+		deps := &ServerDependencies{}
+		deps.SetConfig(cfg)
+
 		router := gin.New()
-		router.GET("/cwd", getCurrentWorkingDirectory(cfg))
+		router.GET("/cwd", getCurrentWorkingDirectory(deps))
 
 		req := httptest.NewRequest("GET", "/cwd", nil)
 		w := httptest.NewRecorder()
@@ -388,8 +408,13 @@ func TestBrowseDirectory(t *testing.T) {
 			browsePath := tt.setupFiles(tempDir)
 
 			cfg := config.DefaultConfig()
+
+			// Create minimal ServerDependencies for test
+			deps := &ServerDependencies{}
+			deps.SetConfig(cfg)
+
 			router := gin.New()
-			router.POST("/browse", browseDirectory(cfg))
+			router.POST("/browse", browseDirectory(deps))
 
 			var reqBody interface{}
 			if fn, ok := tt.requestBody.(func(string) BrowseRequest); ok {
@@ -434,8 +459,12 @@ func TestBrowseDirectory_PathTraversalPrevention(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.API.Security.AllowedDirectories = []string{tempDir} // Only allow tempDir
 
+	// Create minimal ServerDependencies for test
+	deps := &ServerDependencies{}
+	deps.SetConfig(cfg)
+
 	router := gin.New()
-	router.POST("/browse", browseDirectory(cfg))
+	router.POST("/browse", browseDirectory(deps))
 
 	maliciousPaths := []string{
 		// Relative traversal attempts (from tempDir context)
@@ -492,8 +521,12 @@ func TestBrowseDirectory_ParentPathCalculation(t *testing.T) {
 	os.Mkdir(subDir, 0755)
 
 	cfg := config.DefaultConfig()
+	// Create minimal ServerDependencies for test
+	deps := &ServerDependencies{}
+	deps.SetConfig(cfg)
+
 	router := gin.New()
-	router.POST("/browse", browseDirectory(cfg))
+	router.POST("/browse", browseDirectory(deps))
 
 	// Browse subdirectory
 	reqBody := BrowseRequest{Path: subDir}
@@ -540,8 +573,14 @@ func TestScanDirectory_LargeDirectory(t *testing.T) {
 	mat, err := matcher.NewMatcher(&cfg.Matching)
 	require.NoError(t, err)
 
+	// Create minimal ServerDependencies for test
+	deps := &ServerDependencies{
+		Matcher: mat,
+	}
+	deps.SetConfig(cfg)
+
 	router := gin.New()
-	router.POST("/scan", scanDirectory(mat, cfg))
+	router.POST("/scan", scanDirectory(deps))
 
 	reqBody := ScanRequest{Path: tempDir}
 	body, err := json.Marshal(reqBody)

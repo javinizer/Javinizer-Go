@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/javinizer/javinizer-go/internal/config"
 	"github.com/javinizer/javinizer-go/internal/matcher"
 	"github.com/javinizer/javinizer-go/internal/scanner"
 )
@@ -23,13 +22,16 @@ import (
 // @Failure 400 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
 // @Router /api/v1/scan [post]
-func scanDirectory(mat *matcher.Matcher, cfg *config.Config) gin.HandlerFunc {
+func scanDirectory(deps *ServerDependencies) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req ScanRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(400, ErrorResponse{Error: err.Error()})
 			return
 		}
+
+		// Read current config (respects config reloads)
+		cfg := deps.GetConfig()
 
 		// Validate and sanitize the path for security
 		validPath, err := validateScanPath(req.Path, &cfg.API.Security)
@@ -62,8 +64,8 @@ func scanDirectory(mat *matcher.Matcher, cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 
-		// Match IDs
-		matchResults := mat.Match(result.Files)
+		// Match IDs - use getter for thread-safe access
+		matchResults := deps.GetMatcher().Match(result.Files)
 
 		// Build response
 		files := make([]FileInfo, 0, len(result.Files))
@@ -104,9 +106,12 @@ func scanDirectory(mat *matcher.Matcher, cfg *config.Config) gin.HandlerFunc {
 // @Produce json
 // @Success 200 {object} map[string]string
 // @Router /api/v1/cwd [get]
-func getCurrentWorkingDirectory(cfg *config.Config) gin.HandlerFunc {
+func getCurrentWorkingDirectory(deps *ServerDependencies) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var defaultPath string
+
+		// Read current config (respects config reloads)
+		cfg := deps.GetConfig()
 
 		// Prefer first allowed directory if configured (for Docker environments)
 		if len(cfg.API.Security.AllowedDirectories) > 0 {
@@ -135,7 +140,7 @@ func getCurrentWorkingDirectory(cfg *config.Config) gin.HandlerFunc {
 // @Success 200 {object} BrowseResponse
 // @Failure 400 {object} ErrorResponse
 // @Router /api/v1/browse [post]
-func browseDirectory(cfg *config.Config) gin.HandlerFunc {
+func browseDirectory(deps *ServerDependencies) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req BrowseRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -147,6 +152,9 @@ func browseDirectory(cfg *config.Config) gin.HandlerFunc {
 		if req.Path == "" {
 			req.Path, _ = os.Getwd()
 		}
+
+		// Read current config (respects config reloads)
+		cfg := deps.GetConfig()
 
 		// Validate and sanitize the path for security
 		validPath, err := validateScanPath(req.Path, &cfg.API.Security)

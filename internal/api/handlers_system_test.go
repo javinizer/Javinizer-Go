@@ -80,8 +80,14 @@ func TestHealthCheck(t *testing.T) {
 				registry.Register(scraper)
 			}
 
+			// Create minimal ServerDependencies for test
+			deps := &ServerDependencies{
+				Registry: registry,
+			}
+			deps.SetConfig(config.DefaultConfig())
+
 			router := gin.New()
-			router.GET("/health", healthCheck(registry))
+			router.GET("/health", healthCheck(deps))
 
 			req := httptest.NewRequest("GET", "/health", nil)
 			w := httptest.NewRecorder()
@@ -130,8 +136,12 @@ func TestGetConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Create minimal ServerDependencies for test
+			deps := &ServerDependencies{}
+			deps.SetConfig(tt.config)
+
 			router := gin.New()
-			router.GET("/config", getConfig(tt.config))
+			router.GET("/config", getConfig(deps))
 
 			req := httptest.NewRequest("GET", "/config", nil)
 			w := httptest.NewRecorder()
@@ -214,8 +224,14 @@ func TestGetAvailableScrapers(t *testing.T) {
 				registry.Register(scraper)
 			}
 
+			// Create minimal ServerDependencies for test
+			deps := &ServerDependencies{
+				Registry: registry,
+			}
+			deps.SetConfig(config.DefaultConfig())
+
 			router := gin.New()
-			router.GET("/scrapers", getAvailableScrapers(registry))
+			router.GET("/scrapers", getAvailableScrapers(deps))
 
 			req := httptest.NewRequest("GET", "/scrapers", nil)
 			w := httptest.NewRecorder()
@@ -371,8 +387,14 @@ func TestGetAvailableScrapers_OptionsValidation(t *testing.T) {
 	registry := models.NewScraperRegistry()
 	registry.Register(&mockScraper{name: "dmm", enabled: true})
 
+	// Create minimal ServerDependencies for test
+	deps := &ServerDependencies{
+		Registry: registry,
+	}
+	deps.SetConfig(config.DefaultConfig())
+
 	router := gin.New()
-	router.GET("/scrapers", getAvailableScrapers(registry))
+	router.GET("/scrapers", getAvailableScrapers(deps))
 
 	req := httptest.NewRequest("GET", "/scrapers", nil)
 	w := httptest.NewRecorder()

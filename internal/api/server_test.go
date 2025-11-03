@@ -35,7 +35,6 @@ func TestNewServer(t *testing.T) {
 	require.NoError(t, err)
 
 	deps := &ServerDependencies{
-		Config:      cfg,
 		ConfigFile:  "/tmp/config.yaml",
 		Registry:    registry,
 		DB:          nil, // Not needed for route testing
@@ -45,6 +44,8 @@ func TestNewServer(t *testing.T) {
 		Matcher:     mat,
 		JobQueue:    worker.NewJobQueue(),
 	}
+	// Initialize atomic config pointer
+	deps.SetConfig(cfg)
 
 	router := NewServer(deps)
 	require.NotNil(t, router)
@@ -102,7 +103,6 @@ func TestNewServer_CORSHeaders(t *testing.T) {
 	require.NoError(t, err)
 
 	deps := &ServerDependencies{
-		Config:      cfg,
 		ConfigFile:  "/tmp/config.yaml",
 		Registry:    registry,
 		Aggregator:  aggregator.New(cfg),
@@ -111,6 +111,8 @@ func TestNewServer_CORSHeaders(t *testing.T) {
 		Matcher:     mat,
 		JobQueue:    worker.NewJobQueue(),
 	}
+	// Initialize atomic config pointer
+	deps.SetConfig(cfg)
 
 	router := NewServer(deps)
 
@@ -142,7 +144,6 @@ func TestNewServer_StaticFiles(t *testing.T) {
 	require.NoError(t, err)
 
 	deps := &ServerDependencies{
-		Config:      cfg,
 		ConfigFile:  "/tmp/config.yaml",
 		Registry:    registry,
 		Aggregator:  aggregator.New(cfg),
@@ -151,6 +152,8 @@ func TestNewServer_StaticFiles(t *testing.T) {
 		Matcher:     mat,
 		JobQueue:    worker.NewJobQueue(),
 	}
+	// Initialize atomic config pointer
+	deps.SetConfig(cfg)
 
 	router := NewServer(deps)
 
@@ -180,7 +183,6 @@ func TestServeScalarDocs(t *testing.T) {
 	require.NoError(t, err)
 
 	deps := &ServerDependencies{
-		Config:      cfg,
 		ConfigFile:  "/tmp/config.yaml",
 		Registry:    registry,
 		Aggregator:  aggregator.New(cfg),
@@ -189,6 +191,8 @@ func TestServeScalarDocs(t *testing.T) {
 		Matcher:     mat,
 		JobQueue:    worker.NewJobQueue(),
 	}
+	// Initialize atomic config pointer
+	deps.SetConfig(cfg)
 
 	router := NewServer(deps)
 
@@ -256,7 +260,6 @@ func TestNewServer_GinMode(t *testing.T) {
 			require.NoError(t, err)
 
 			deps := &ServerDependencies{
-				Config:      cfg,
 				ConfigFile:  "/tmp/config.yaml",
 				Registry:    registry,
 				Aggregator:  aggregator.New(cfg),
@@ -265,6 +268,8 @@ func TestNewServer_GinMode(t *testing.T) {
 				Matcher:     mat,
 				JobQueue:    worker.NewJobQueue(),
 			}
+			// Initialize atomic config pointer
+			deps.SetConfig(cfg)
 
 			router := NewServer(deps)
 			require.NotNil(t, router)
@@ -308,7 +313,6 @@ func TestNewServer_AllEndpointsAccessible(t *testing.T) {
 	require.NoError(t, err)
 
 	deps := &ServerDependencies{
-		Config:      cfg,
 		ConfigFile:  "/tmp/config.yaml",
 		Registry:    registry,
 		DB:          db,
@@ -318,6 +322,8 @@ func TestNewServer_AllEndpointsAccessible(t *testing.T) {
 		Matcher:     mat,
 		JobQueue:    worker.NewJobQueue(),
 	}
+	// Initialize atomic config pointer
+	deps.SetConfig(cfg)
 
 	router := NewServer(deps)
 
@@ -365,7 +371,6 @@ func TestNewServer_SecurityHeaders(t *testing.T) {
 	require.NoError(t, err)
 
 	deps := &ServerDependencies{
-		Config:      cfg,
 		ConfigFile:  "/tmp/config.yaml",
 		Registry:    registry,
 		Aggregator:  aggregator.New(cfg),
@@ -374,6 +379,8 @@ func TestNewServer_SecurityHeaders(t *testing.T) {
 		Matcher:     mat,
 		JobQueue:    worker.NewJobQueue(),
 	}
+	// Initialize atomic config pointer
+	deps.SetConfig(cfg)
 
 	router := NewServer(deps)
 
@@ -417,7 +424,6 @@ func TestNewServer_InvalidRoutes(t *testing.T) {
 	require.NoError(t, err)
 
 	deps := &ServerDependencies{
-		Config:      cfg,
 		ConfigFile:  "/tmp/config.yaml",
 		Registry:    registry,
 		Aggregator:  aggregator.New(cfg),
@@ -426,6 +432,8 @@ func TestNewServer_InvalidRoutes(t *testing.T) {
 		Matcher:     mat,
 		JobQueue:    worker.NewJobQueue(),
 	}
+	// Initialize atomic config pointer
+	deps.SetConfig(cfg)
 
 	router := NewServer(deps)
 

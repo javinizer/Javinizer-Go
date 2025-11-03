@@ -258,8 +258,8 @@ func TestWithField(t *testing.T) {
 }
 
 func TestGetLogger_UninitializedReturnsDefault(t *testing.T) {
-	// Reset global logger
-	globalLogger = nil
+	// Reset logger state
+	current.Store((*loggerState)(nil))
 
 	logger := GetLogger()
 	if logger == nil {

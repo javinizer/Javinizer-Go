@@ -6,6 +6,8 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
+	"sync/atomic"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -27,8 +29,11 @@ var (
 )
 
 // ServerDependencies holds all dependencies needed to create the API server
+// Access to Config, Registry, Aggregator, and Matcher must be synchronized
+// to prevent data races during config reload.
 type ServerDependencies struct {
-	Config      *config.Config
+	mu          sync.RWMutex                  // Protects Registry, Aggregator, Matcher during reload
+	config      atomic.Pointer[config.Config] // Thread-safe config access
 	ConfigFile  string
 	Registry    *models.ScraperRegistry
 	DB          *database.DB
@@ -37,6 +42,46 @@ type ServerDependencies struct {
 	ActressRepo *database.ActressRepository
 	Matcher     *matcher.Matcher
 	JobQueue    *worker.JobQueue
+}
+
+// GetConfig returns the current configuration (thread-safe)
+func (d *ServerDependencies) GetConfig() *config.Config {
+	cfg := d.config.Load()
+	if cfg == nil {
+		logging.Errorf("CRITICAL: GetConfig() called before SetConfig() - this is a programming error")
+		panic("GetConfig() called with nil config - ensure SetConfig() is called during ServerDependencies initialization")
+	}
+	return cfg
+}
+
+// SetConfig atomically sets the configuration (thread-safe)
+func (d *ServerDependencies) SetConfig(cfg *config.Config) {
+	if cfg == nil {
+		logging.Errorf("CRITICAL: SetConfig() called with nil config - this is a programming error")
+		panic("SetConfig() called with nil config - config must not be nil")
+	}
+	d.config.Store(cfg)
+}
+
+// GetRegistry returns the current scraper registry (thread-safe)
+func (d *ServerDependencies) GetRegistry() *models.ScraperRegistry {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	return d.Registry
+}
+
+// GetAggregator returns the current aggregator (thread-safe)
+func (d *ServerDependencies) GetAggregator() *aggregator.Aggregator {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	return d.Aggregator
+}
+
+// GetMatcher returns the current matcher (thread-safe)
+func (d *ServerDependencies) GetMatcher() *matcher.Matcher {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	return d.Matcher
 }
 
 // resolveSwaggerPath returns the path to swagger.json, checking multiple locations
@@ -140,11 +185,14 @@ func NewServer(deps *ServerDependencies) *gin.Engine {
 	wsHub = ws.NewHub()
 	go wsHub.Run()
 
-	// Configure WebSocket upgrader with origin checking from config
-	allowedOrigins := deps.Config.API.Security.AllowedOrigins
+	// Configure WebSocket upgrader with dynamic origin checking from config
+	// Read allowedOrigins from deps.GetConfig() each time to respect config reloads
 	wsUpgrader = websocket.Upgrader{
 		CheckOrigin: func(r *http.Request) bool {
 			origin := r.Header.Get("Origin")
+
+			// Read current allowed origins from config (respects config reloads)
+			allowedOrigins := deps.GetConfig().API.Security.AllowedOrigins
 
 			// Empty config → allow same-origin only (secure default)
 			if len(allowedOrigins) == 0 {
@@ -171,15 +219,19 @@ func NewServer(deps *ServerDependencies) *gin.Engine {
 	}
 
 	// Setup Gin router
-	if deps.Config.Logging.Level != "debug" {
+	if deps.GetConfig().Logging.Level != "debug" {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
 	router := gin.Default()
 
-	// Enable CORS for web UI with origin validation
+	// Enable CORS for web UI with dynamic origin validation
+	// Read allowedOrigins from deps.GetConfig() each time to respect config reloads
 	router.Use(func(c *gin.Context) {
 		origin := c.Request.Header.Get("Origin")
+
+		// Read current allowed origins from config (respects config reloads)
+		allowedOrigins := deps.GetConfig().API.Security.AllowedOrigins
 
 		// Handle CORS based on configuration
 		if len(allowedOrigins) == 0 {
@@ -238,7 +290,7 @@ func NewServer(deps *ServerDependencies) *gin.Engine {
 	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 	// Health check endpoint
-	router.GET("/health", healthCheck(deps.Registry))
+	router.GET("/health", healthCheck(deps))
 
 	// WebSocket endpoint for progress updates
 	router.GET("/ws/progress", handleWebSocket(wsHub))
@@ -255,14 +307,14 @@ func NewServer(deps *ServerDependencies) *gin.Engine {
 		v1.GET("/actresses/search", searchActresses(deps.ActressRepo))
 
 		// System endpoints
-		v1.GET("/config", getConfig(deps.Config))
+		v1.GET("/config", getConfig(deps))
 		v1.PUT("/config", updateConfig(deps))
-		v1.GET("/scrapers", getAvailableScrapers(deps.Registry))
+		v1.GET("/scrapers", getAvailableScrapers(deps))
 
 		// File endpoints
-		v1.GET("/cwd", getCurrentWorkingDirectory(deps.Config))
-		v1.POST("/scan", scanDirectory(deps.Matcher, deps.Config))
-		v1.POST("/browse", browseDirectory(deps.Config))
+		v1.GET("/cwd", getCurrentWorkingDirectory(deps))
+		v1.POST("/scan", scanDirectory(deps))
+		v1.POST("/browse", browseDirectory(deps))
 
 		// Batch endpoints
 		v1.POST("/batch/scrape", batchScrape(deps))

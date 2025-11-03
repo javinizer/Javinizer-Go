@@ -30,8 +30,8 @@ func batchScrape(deps *ServerDependencies) gin.HandlerFunc {
 		// Create job
 		job := deps.JobQueue.CreateJob(req.Files)
 
-		// Start processing in background - read from deps to get latest config/registry
-		go processBatchJob(job, deps.Registry, deps.Aggregator, deps.MovieRepo, deps.Matcher, req.Strict, req.Force, req.Destination, deps.Config)
+		// Start processing in background - use getters for thread-safe access
+		go processBatchJob(job, deps.GetRegistry(), deps.GetAggregator(), deps.MovieRepo, deps.GetMatcher(), req.Strict, req.Force, req.Destination, deps.GetConfig())
 
 		c.JSON(200, BatchScrapeResponse{
 			JobID: job.ID,
@@ -201,8 +201,8 @@ func organizeJob(deps *ServerDependencies) gin.HandlerFunc {
 			return
 		}
 
-		// Start organization in background - read from deps to get latest config
-		go processOrganizeJob(job, deps.Matcher, req.Destination, req.CopyOnly, deps.DB, deps.Config)
+		// Start organization in background - use getter for thread-safe access
+		go processOrganizeJob(job, deps.GetMatcher(), req.Destination, req.CopyOnly, deps.DB, deps.GetConfig())
 
 		c.JSON(200, gin.H{"message": "Organization started"})
 	}
@@ -274,7 +274,7 @@ func previewOrganize(deps *ServerDependencies) gin.HandlerFunc {
 		}
 
 		// Use the helper function from processors.go - read config from deps
-		preview := generatePreview(movie, req.Destination, deps.Config)
+		preview := generatePreview(movie, req.Destination, deps.GetConfig())
 		c.JSON(200, preview)
 	}
 }

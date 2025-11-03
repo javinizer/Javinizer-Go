@@ -108,7 +108,6 @@ func TestCORS_OriginValidation(t *testing.T) {
 			require.NoError(t, err)
 
 			deps := &ServerDependencies{
-				Config:      cfg,
 				ConfigFile:  "/tmp/config.yaml",
 				Registry:    registry,
 				Aggregator:  aggregator.New(cfg),
@@ -117,6 +116,8 @@ func TestCORS_OriginValidation(t *testing.T) {
 				Matcher:     mat,
 				JobQueue:    worker.NewJobQueue(),
 			}
+			// Initialize atomic config pointer
+			deps.SetConfig(cfg)
 
 			router := NewServer(deps)
 
@@ -193,7 +194,6 @@ func TestCORS_PreflightRequest(t *testing.T) {
 			require.NoError(t, err)
 
 			deps := &ServerDependencies{
-				Config:      cfg,
 				ConfigFile:  "/tmp/config.yaml",
 				Registry:    registry,
 				Aggregator:  aggregator.New(cfg),
@@ -202,6 +202,8 @@ func TestCORS_PreflightRequest(t *testing.T) {
 				Matcher:     mat,
 				JobQueue:    worker.NewJobQueue(),
 			}
+			// Initialize atomic config pointer
+			deps.SetConfig(cfg)
 
 			router := NewServer(deps)
 
@@ -382,7 +384,6 @@ func TestSecurity_InputValidation(t *testing.T) {
 	require.NoError(t, err)
 
 	deps := &ServerDependencies{
-		Config:      cfg,
 		ConfigFile:  "/tmp/config.yaml",
 		Registry:    registry,
 		DB:          db,
@@ -392,6 +393,8 @@ func TestSecurity_InputValidation(t *testing.T) {
 		Matcher:     mat,
 		JobQueue:    worker.NewJobQueue(),
 	}
+	// Initialize atomic config pointer
+	deps.SetConfig(cfg)
 
 	router := NewServer(deps)
 
@@ -528,6 +531,8 @@ func TestSecurity_InputValidation(t *testing.T) {
 			},
 		},
 		{
+			// NOTE: This test MUST run last because it modifies shared deps.Config
+			// and reloads components, which affects subsequent tests
 			name:           "config update with malicious template",
 			method:         "PUT",
 			path:           "/api/v1/config",
@@ -596,7 +601,6 @@ func TestSecurity_ErrorMessageLeakage(t *testing.T) {
 	require.NoError(t, err)
 
 	deps := &ServerDependencies{
-		Config:      cfg,
 		ConfigFile:  "/tmp/config.yaml",
 		Registry:    registry,
 		Aggregator:  aggregator.New(cfg),
@@ -605,6 +609,8 @@ func TestSecurity_ErrorMessageLeakage(t *testing.T) {
 		Matcher:     mat,
 		JobQueue:    worker.NewJobQueue(),
 	}
+	// Initialize atomic config pointer
+	deps.SetConfig(cfg)
 
 	router := NewServer(deps)
 
@@ -661,7 +667,6 @@ func TestSecurity_RateLimitingHeaders(t *testing.T) {
 	require.NoError(t, err)
 
 	deps := &ServerDependencies{
-		Config:      cfg,
 		ConfigFile:  "/tmp/config.yaml",
 		Registry:    registry,
 		Aggregator:  aggregator.New(cfg),
@@ -670,6 +675,8 @@ func TestSecurity_RateLimitingHeaders(t *testing.T) {
 		Matcher:     mat,
 		JobQueue:    worker.NewJobQueue(),
 	}
+	// Initialize atomic config pointer
+	deps.SetConfig(cfg)
 
 	router := NewServer(deps)
 
@@ -744,7 +751,6 @@ func TestSecurity_WebSocketOriginValidation(t *testing.T) {
 			require.NoError(t, err)
 
 			deps := &ServerDependencies{
-				Config:      cfg,
 				ConfigFile:  "/tmp/config.yaml",
 				Registry:    registry,
 				Aggregator:  aggregator.New(cfg),
@@ -753,6 +759,8 @@ func TestSecurity_WebSocketOriginValidation(t *testing.T) {
 				Matcher:     mat,
 				JobQueue:    worker.NewJobQueue(),
 			}
+			// Initialize atomic config pointer
+			deps.SetConfig(cfg)
 
 			router := NewServer(deps)
 
