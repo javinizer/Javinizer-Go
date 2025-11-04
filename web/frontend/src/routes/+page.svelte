@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { browser } from '$app/environment';
 	import { apiClient } from '$lib/api/client';
 	import { websocketStore } from '$lib/stores/websocket';
 	import type { HealthResponse } from '$lib/api/types';
@@ -93,8 +94,9 @@
 						Settings
 					</a>
 					<a
-						href="/docs"
+						href={browser ? `${location.protocol}//${location.hostname}:8080/docs` : '/docs'}
 						target="_blank"
+						rel="noopener noreferrer"
 						class="px-4 py-2 border rounded hover:bg-accent transition-colors text-center"
 					>
 						API Documentation
