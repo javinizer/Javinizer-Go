@@ -18,6 +18,8 @@
 	let isDragging = $state(false);
 	let dragStartX = $state(0);
 	let dragStartY = $state(0);
+	let hasDragged = $state(false); // Track if user has dragged
+	let pointerDownTracking = $state(false); // Track if pointer down was initiated
 	let imageContainer: HTMLDivElement | undefined = $state();
 
 	// Reset state when modal opens or image changes
@@ -38,7 +40,7 @@
 	function nextImage() {
 		if (currentIndex < images.length - 1) {
 			currentIndex++;
-			zoom = 1;
+			// Keep zoom level, but reset pan position for new image
 			panX = 0;
 			panY = 0;
 		}
@@ -47,7 +49,7 @@
 	function prevImage() {
 		if (currentIndex > 0) {
 			currentIndex--;
-			zoom = 1;
+			// Keep zoom level, but reset pan position for new image
 			panX = 0;
 			panY = 0;
 		}
@@ -76,7 +78,6 @@
 	function handleWheel(e: WheelEvent) {
 		if (e.ctrlKey || e.metaKey) {
 			e.preventDefault();
-			const oldZoom = zoom;
 			const delta = e.deltaY > 0 ? -0.1 : 0.1;
 			zoom = Math.min(Math.max(zoom + delta, 0.5), 3);
 
@@ -91,29 +92,116 @@
 	// Pan support with mouse/touch
 	function handlePointerDown(e: PointerEvent) {
 		if (zoom > 1) {
-			isDragging = true;
-			dragStartX = e.clientX - panX;
-			dragStartY = e.clientY - panY;
-			(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+			pointerDownTracking = true;
+			hasDragged = false; // Reset drag state
+			dragStartX = e.clientX;
+			dragStartY = e.clientY;
+			// Don't capture pointer yet - wait for actual movement
+		} else {
+			pointerDownTracking = false;
 		}
 	}
 
 	function handlePointerMove(e: PointerEvent) {
-		if (isDragging && zoom > 1) {
-			panX = e.clientX - dragStartX;
-			panY = e.clientY - dragStartY;
+		// Only track movement if pointer down was initiated on the container (not on image)
+		if (zoom > 1 && pointerDownTracking) {
+			const deltaX = Math.abs(e.clientX - dragStartX);
+			const deltaY = Math.abs(e.clientY - dragStartY);
+
+			// Only start dragging if moved more than 5 pixels
+			if (deltaX > 5 || deltaY > 5) {
+				if (!isDragging) {
+					// First time we detect actual movement, start dragging and capture pointer
+					isDragging = true;
+					dragStartX = e.clientX - panX;
+					dragStartY = e.clientY - panY;
+					(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+				}
+				hasDragged = true;
+				panX = e.clientX - dragStartX;
+				panY = e.clientY - dragStartY;
+			}
 		}
 	}
 
 	function handlePointerUp(e: PointerEvent) {
+		pointerDownTracking = false;
 		if (isDragging) {
 			isDragging = false;
-			(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+			try {
+				(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+			} catch (err) {
+				// Ignore errors if pointer wasn't captured
+			}
+		}
+	}
+
+	// Handle click on container (empty area)
+	function handleContainerClick(e: MouseEvent) {
+		// Only close if:
+		// 1. Clicked on the container itself (not a child element like the image)
+		// 2. Not dragging/panning
+		// 3. Target is not an IMG element
+		const target = e.target as HTMLElement;
+		if (e.target === e.currentTarget && !hasDragged && target.tagName !== 'IMG') {
+			close();
+		}
+	}
+
+	// Keyboard handler for accessibility
+	function handleContainerKeyDown(e: KeyboardEvent) {
+		// Close on Enter or Space when focused on container
+		if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) {
+			e.preventDefault();
+			close();
+		}
+	}
+
+	// Handle image click for zoom
+	function handleImageClick(e: MouseEvent) {
+		// Prevent both default behavior and propagation
+		e.preventDefault();
+		e.stopPropagation();
+		e.stopImmediatePropagation();
+
+		// Don't zoom if user was dragging (panning)
+		if (hasDragged) {
+			hasDragged = false; // Reset for next interaction
+			return;
+		}
+
+		// Toggle between normal and zoomed state
+		if (zoom === 1) {
+			// Zoom in by 50% (to 150%)
+			zoom = 1.5;
+		} else {
+			// If already zoomed, reset to 100%
+			resetZoom();
+		}
+
+		// Reset drag state after zoom
+		hasDragged = false;
+	}
+
+	// Keyboard handler for image zoom
+	function handleImageKeyDown(e: KeyboardEvent) {
+		// Prevent event from bubbling
+		e.stopPropagation();
+
+		// Zoom on Enter or Space
+		if (e.key === 'Enter' || e.key === ' ') {
+			e.preventDefault();
+			if (zoom === 1) {
+				zoom = 1.5;
+			} else {
+				resetZoom();
+			}
 		}
 	}
 
 	const zoomPercent = $derived(Math.round(zoom * 100));
-	const cursor = $derived(isDragging ? 'grabbing' : zoom > 1 ? 'grab' : 'default');
+	const containerCursor = $derived(isDragging ? 'grabbing' : zoom > 1 ? 'grab' : 'default');
+	const imageCursor = $derived(isDragging ? 'grabbing' : zoom > 1 ? 'grab' : 'zoom-in');
 
 	// Keyboard navigation
 	$effect(() => {
@@ -218,7 +306,7 @@
 			{#if hasMultipleImages && currentIndex > 0}
 				<button
 					onclick={prevImage}
-					class="absolute left-4 top-1/2 -translate-y-1/2 p-3 bg-black/50 hover:bg-black/70 rounded-full text-white transition-colors"
+					class="absolute left-4 top-1/2 -translate-y-1/2 z-10 p-3 bg-black/50 hover:bg-black/70 rounded-full text-white transition-colors cursor-pointer"
 					title="Previous (←)"
 				>
 					<ChevronLeft class="h-8 w-8" />
@@ -229,7 +317,7 @@
 			{#if hasMultipleImages && currentIndex < images.length - 1}
 				<button
 					onclick={nextImage}
-					class="absolute right-4 top-1/2 -translate-y-1/2 p-3 bg-black/50 hover:bg-black/70 rounded-full text-white transition-colors"
+					class="absolute right-4 top-1/2 -translate-y-1/2 z-10 p-3 bg-black/50 hover:bg-black/70 rounded-full text-white transition-colors cursor-pointer"
 					title="Next (→)"
 				>
 					<ChevronRight class="h-8 w-8" />
@@ -240,19 +328,30 @@
 			<div
 				bind:this={imageContainer}
 				class="absolute inset-0 flex items-center justify-center overflow-hidden"
+				role="button"
+				tabindex="0"
 				onwheel={handleWheel}
 				onpointerdown={handlePointerDown}
 				onpointermove={handlePointerMove}
 				onpointerup={handlePointerUp}
 				onpointercancel={handlePointerUp}
-				style="cursor: {cursor};"
+				onclick={handleContainerClick}
+				onkeydown={handleContainerKeyDown}
+				style="cursor: {containerCursor};"
 			>
+				<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+				<!-- svelte-ignore a11y_click_events_have_key_events -->
+				<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 				<img
 					src={currentImage}
 					alt={title || `Image ${currentIndex + 1}`}
-					style="transform: scale({zoom}) translate({panX}px, {panY}px); transition: {isDragging ? 'none' : 'transform 0.1s ease-out'}; user-select: none;"
+					tabindex="0"
+					onclick={handleImageClick}
+					onkeydown={handleImageKeyDown}
+					style="transform: scale({zoom}) translate({panX}px, {panY}px); transition: {isDragging ? 'none' : 'transform 0.1s ease-out'}; user-select: none; cursor: {imageCursor};"
 					class="max-w-full max-h-full object-contain"
 					draggable="false"
+					aria-label={zoom === 1 ? 'Click to zoom in' : 'Click to zoom out or drag to pan'}
 				/>
 			</div>
 		</div>
