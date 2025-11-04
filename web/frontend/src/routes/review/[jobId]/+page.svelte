@@ -164,9 +164,9 @@
 			const msg = ws.messages.at(-1);
 			if (!msg || msg.job_id !== jobId) return;
 
-			// Handle both organizing and updating progress messages
-			if (msg.status === 'organizing' || msg.status === 'updating') {
-				organizeProgress = msg.progress || 0;
+			// Handle progress messages from any status that includes progress data
+			if (msg.progress !== undefined && msg.progress !== null) {
+				organizeProgress = msg.progress;
 			}
 
 			if (msg.status === 'failed' && msg.file_path) {
