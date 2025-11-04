@@ -24,33 +24,34 @@ const (
 
 // GetOptimalPosterURL attempts to find the highest quality poster URL
 // It tries the awsimgsrc URL first, checks its resolution, and falls back to cover if needed
+// Returns shouldCrop=false always since backend handles all cropping via downloadTempPoster
 func GetOptimalPosterURL(coverURL string, client *http.Client) (posterURL string, shouldCrop bool) {
 	if coverURL == "" {
-		return "", true
+		return "", false // Backend handles cropping
 	}
 
 	// Extract the content ID and construct awsimgsrc poster URL
 	awsimgsrcPosterURL := constructAwsimgsrcPosterURL(coverURL)
 	if awsimgsrcPosterURL == "" {
-		logging.Debug("ImageUtil: Could not construct awsimgsrc poster URL, using cover for cropping")
-		return coverURL, true
+		logging.Debug("ImageUtil: Could not construct awsimgsrc poster URL, backend will crop cover")
+		return coverURL, false // Backend handles cropping
 	}
 
 	// Check the resolution of the awsimgsrc poster
 	width, height, err := getImageDimensions(awsimgsrcPosterURL, client)
 	if err != nil {
-		logging.Debugf("ImageUtil: Failed to check awsimgsrc poster dimensions: %v, using cover for cropping", err)
-		return coverURL, true
+		logging.Debugf("ImageUtil: Failed to check awsimgsrc poster dimensions: %v, backend will crop cover", err)
+		return coverURL, false // Backend handles cropping
 	}
 
 	// Check if the poster meets quality requirements
 	if width >= MinPosterWidth && height >= MinPosterHeight {
 		logging.Debugf("ImageUtil: Using high-quality awsimgsrc poster (%dx%d): %s", width, height, awsimgsrcPosterURL)
-		return awsimgsrcPosterURL, false
+		return awsimgsrcPosterURL, false // Use poster as-is, backend already cropped it
 	}
 
-	logging.Debugf("ImageUtil: Awsimgsrc poster too small (%dx%d), using cover for cropping", width, height)
-	return coverURL, true
+	logging.Debugf("ImageUtil: Awsimgsrc poster too small (%dx%d), backend will crop cover", width, height)
+	return coverURL, false // Backend handles cropping
 }
 
 // constructAwsimgsrcPosterURL converts a cover URL to an awsimgsrc poster URL

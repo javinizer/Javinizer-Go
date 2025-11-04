@@ -4,12 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/javinizer/javinizer-go/internal/aggregator"
 	"github.com/javinizer/javinizer-go/internal/database"
+	imageutil "github.com/javinizer/javinizer-go/internal/image"
 	"github.com/javinizer/javinizer-go/internal/logging"
 	"github.com/javinizer/javinizer-go/internal/matcher"
 	"github.com/javinizer/javinizer-go/internal/models"
@@ -301,6 +305,12 @@ func (t *BatchScrapeTask) Execute(ctx context.Context) error {
 	// Set original filename for tracking
 	movie.OriginalFileName = filepath.Base(t.filePath)
 
+	// Step 8.5: Download and crop poster temporarily for review page
+	if err := t.downloadTempPoster(ctx, movie); err != nil {
+		logging.Warnf("[Batch %s] File %d: Failed to create temp poster: %v (continuing anyway)", t.job.ID, t.fileIndex, err)
+		// Continue - temp poster is optional for review
+	}
+
 	// Step 9: Save to database (skip if using custom scrapers)
 	if !usingCustomScrapers {
 		t.progressTracker.Update(t.id, 0.9, "Saving to database...", 0)
@@ -346,6 +356,83 @@ func (t *BatchScrapeTask) Execute(ctx context.Context) error {
 
 	t.progressTracker.Complete(t.id, fmt.Sprintf("Scraped %s successfully", movieID))
 	logging.Debugf("[Batch %s] File %d: Task completed successfully", t.job.ID, t.fileIndex)
+
+	return nil
+}
+
+// downloadTempPoster downloads and crops the poster temporarily for the review page
+// Updates movie.PosterURL to point to the local temp file path
+func (t *BatchScrapeTask) downloadTempPoster(ctx context.Context, movie *models.Movie) error {
+	// Determine poster URL to download
+	posterURL := movie.PosterURL
+	if posterURL == "" {
+		posterURL = movie.CoverURL
+	}
+	if posterURL == "" {
+		return fmt.Errorf("no poster or cover URL available")
+	}
+
+	// Create temp directory: data/temp/posters/{job_id}/
+	tempDir := filepath.Join("data", "temp", "posters", t.job.ID)
+	if err := os.MkdirAll(tempDir, 0755); err != nil {
+		return fmt.Errorf("failed to create temp poster directory: %w", err)
+	}
+
+	// Download poster to temp location
+	tempFullPath := filepath.Join(tempDir, fmt.Sprintf("%s-full.jpg", movie.ID))
+	tempCroppedPath := filepath.Join(tempDir, fmt.Sprintf("%s.jpg", movie.ID))
+
+	// Download the poster
+	client := &http.Client{Timeout: 30 * time.Second}
+	req, err := http.NewRequestWithContext(ctx, "GET", posterURL, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("User-Agent", "Javinizer (+https://github.com/javinizer/Javinizer)")
+	req.Header.Set("Referer", "https://www.dmm.co.jp/")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to download poster: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("poster download failed with status %d", resp.StatusCode)
+	}
+
+	// Save to temp file
+	outFile, err := os.Create(tempFullPath)
+	if err != nil {
+		return fmt.Errorf("failed to create temp file: %w", err)
+	}
+
+	_, err = io.Copy(outFile, resp.Body)
+	outFile.Close()
+	if err != nil {
+		os.Remove(tempFullPath)
+		return fmt.Errorf("failed to write poster: %w", err)
+	}
+
+	// Crop the poster using the smart cropping algorithm
+	if err := imageutil.CropPosterFromCover(tempFullPath, tempCroppedPath); err != nil {
+		os.Remove(tempFullPath)
+		return fmt.Errorf("failed to crop poster: %w", err)
+	}
+
+	// Clean up the full image
+	os.Remove(tempFullPath)
+
+	// Update movie.PosterURL to point to the temp cropped poster via API
+	// Frontend will access: /api/v1/temp/posters/{job_id}/{movie_id}.jpg
+	movie.PosterURL = fmt.Sprintf("/api/v1/temp/posters/%s/%s.jpg", t.job.ID, movie.ID)
+
+	// Set ShouldCropPoster to false because the image is already cropped on disk
+	// Frontend will display it normally without CSS cropping (min-width: 211.8%)
+	movie.ShouldCropPoster = false
+
+	logging.Debugf("[Batch %s] File %d: Created temp cropped poster at %s", t.job.ID, t.fileIndex, tempCroppedPath)
 
 	return nil
 }

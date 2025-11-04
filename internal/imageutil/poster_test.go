@@ -62,13 +62,13 @@ func TestGetOptimalPosterURL(t *testing.T) {
 		{
 			name:            "empty cover URL",
 			coverURL:        "",
-			expectedCrop:    true,
+			expectedCrop:    false, // Backend handles all cropping now
 			expectedContain: "",
 		},
 		{
 			name:            "invalid cover URL format",
 			coverURL:        "https://example.com/image.jpg",
-			expectedCrop:    true,
+			expectedCrop:    false, // Backend handles all cropping now
 			expectedContain: "example.com",
 		},
 	}
