@@ -273,6 +273,9 @@ func (s *Scraper) parseResponse(data *R18Response, sourceURL string) (*models.Sc
 		}
 
 		// Parse romaji name into first/last names
+		// Note: R18.dev's name_romaji field is inconsistent - sometimes Western order (First Last),
+		// sometimes Japanese order (Last First). We treat it as Western order by default since
+		// that's the more common case in their API responses.
 		firstName := ""
 		lastName := ""
 		if actress.NameRomaji != "" {
