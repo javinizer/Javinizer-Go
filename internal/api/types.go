@@ -2,7 +2,6 @@ package api
 
 import (
 	"github.com/javinizer/javinizer-go/internal/models"
-	"github.com/javinizer/javinizer-go/internal/worker"
 )
 
 // HealthResponse represents the health check response
@@ -130,17 +129,29 @@ type OrganizePreviewResponse struct {
 	Screenshots     []string `json:"screenshots" example:"fanart1.jpg,fanart2.jpg,fanart3.jpg"`
 }
 
+// BatchFileResult wraps worker.FileResult with additional API-specific fields
+type BatchFileResult struct {
+	FilePath      string      `json:"file_path"`
+	MovieID       string      `json:"movie_id"`
+	Status        string      `json:"status"`
+	Error         string      `json:"error,omitempty"`
+	Data          interface{} `json:"data,omitempty"`            // Movie data
+	TempPosterURL string      `json:"temp_poster_url,omitempty"` // API URL for temp cropped poster
+	StartedAt     string      `json:"started_at"`
+	EndedAt       *string     `json:"ended_at,omitempty"`
+}
+
 // BatchJobResponse represents a batch job status
 type BatchJobResponse struct {
-	ID          string                        `json:"id"`
-	Status      string                        `json:"status"`
-	TotalFiles  int                           `json:"total_files"`
-	Completed   int                           `json:"completed"`
-	Failed      int                           `json:"failed"`
-	Progress    float64                       `json:"progress"`
-	Results     map[string]*worker.FileResult `json:"results"`
-	StartedAt   string                        `json:"started_at"`
-	CompletedAt *string                       `json:"completed_at,omitempty"`
+	ID          string                      `json:"id"`
+	Status      string                      `json:"status"`
+	TotalFiles  int                         `json:"total_files"`
+	Completed   int                         `json:"completed"`
+	Failed      int                         `json:"failed"`
+	Progress    float64                     `json:"progress"`
+	Results     map[string]*BatchFileResult `json:"results"`
+	StartedAt   string                      `json:"started_at"`
+	CompletedAt *string                     `json:"completed_at,omitempty"`
 }
 
 // BrowseRequest represents a browse request

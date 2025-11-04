@@ -104,6 +104,11 @@
 			: null
 	);
 
+	// Use temp_poster_url if available (for cropped posters during batch scraping), otherwise use poster_url
+	const displayPosterUrl = $derived<string | undefined>(
+		currentResult?.temp_poster_url || currentMovie?.poster_url
+	);
+
 	async function fetchJob() {
 		try {
 			job = await apiClient.getBatchJob(jobId);
@@ -589,12 +594,13 @@
 							<h3 class="font-semibold mb-3 text-sm">
 								Poster{currentMovie.should_crop_poster ? ' (Cropped)' : ''}
 							</h3>
-							{#if currentMovie.poster_url}
+							{#if displayPosterUrl}
 								<div class="w-full aspect-2/3 overflow-hidden rounded border relative">
-									{#if currentMovie.should_crop_poster}
+									{#if currentMovie.should_crop_poster && !currentResult?.temp_poster_url}
 										<!-- Crop to show only right 47.2% of image (removes promotional text on left) -->
+										<!-- Only apply cropping if temp_poster_url is not available (temp_poster_url is already cropped) -->
 										<img
-											src={currentMovie.poster_url}
+											src={displayPosterUrl}
 											alt="Poster"
 											class="absolute h-full"
 											style="right: 0; width: auto; min-width: 211.8%; object-fit: cover; object-position: right center;"
@@ -603,9 +609,9 @@
 											}}
 										/>
 									{:else}
-										<!-- Use poster directly without cropping -->
+										<!-- Use poster directly without cropping (either temp_poster_url or regular poster) -->
 										<img
-											src={currentMovie.poster_url}
+											src={displayPosterUrl}
 											alt="Poster"
 											class="w-full h-full object-contain"
 											onerror={(e) => {

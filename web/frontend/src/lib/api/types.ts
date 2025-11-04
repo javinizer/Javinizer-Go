@@ -61,6 +61,7 @@ export interface FileResult {
 	status: string;
 	error?: string;
 	data?: Movie;
+	temp_poster_url?: string;
 	started_at: string;
 	ended_at?: string;
 }

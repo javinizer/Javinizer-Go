@@ -326,7 +326,7 @@ func NewServer(deps *ServerDependencies) *gin.Engine {
 		v1.POST("/batch/:id/organize", organizeJob(deps))
 		v1.POST("/batch/:id/update", updateBatchJob(deps))
 		// Temp resource endpoints (for review page preview)
-		v1.GET("/temp/posters/:jobId/:movieId", serveTempPoster())
+		v1.GET("/temp/posters/:jobId/:filename", serveTempPoster())
 	}
 
 	// Serve frontend static files (for Docker deployment)

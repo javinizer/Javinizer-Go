@@ -3,6 +3,8 @@ package api
 import (
 	"context"
 	"fmt"
+	"io"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -127,6 +129,76 @@ func processBatchJob(job *worker.BatchJob, registry *models.ScraperRegistry, agg
 	})
 }
 
+// copyTempCroppedPoster copies the temp cropped poster to the destination directory
+// Returns true if copy was successful, false otherwise
+func copyTempCroppedPoster(job *worker.BatchJob, movie *models.Movie, destDir string, cfg *config.Config, mode string) bool {
+	tempPosterPath := filepath.Join("data", "temp", "posters", job.ID, movie.ID+".jpg")
+	if _, err := os.Stat(tempPosterPath); err != nil {
+		// Temp poster doesn't exist - not an error, just skip
+		return false
+	}
+
+	// Generate filename using template engine (matching downloader behavior)
+	ctx := template.NewContextFromMovie(movie)
+	ctx.GroupActress = cfg.Output.GroupActress
+	engine := template.NewEngine()
+	posterFilename, err := engine.Execute(cfg.Output.PosterFormat, ctx)
+	if err != nil {
+		// Fallback to hardcoded format if template fails
+		posterFilename = fmt.Sprintf("%s-poster.jpg", movie.ID)
+		logging.Warnf("%s mode: Template execution failed, using fallback filename: %v", mode, err)
+	}
+	destPosterPath := filepath.Join(destDir, posterFilename)
+
+	// Copy temp poster to destination
+	if err := copyFile(tempPosterPath, destPosterPath); err != nil {
+		logging.Warnf("%s mode: Failed to copy temp poster: %v", mode, err)
+		return false
+	}
+
+	logging.Infof("%s mode: Copied cropped poster from temp to %s", mode, destPosterPath)
+	return true
+}
+
+// downloadMediaFiles downloads all configured media files for a movie
+// destDir is where files should be downloaded to
+func downloadMediaFiles(dl *downloader.Downloader, movie *models.Movie, destDir string, cfg *config.Config) {
+	// Download poster (may be skipped if temp poster was already copied)
+	if cfg.Output.DownloadPoster {
+		if _, err := dl.DownloadPoster(movie, destDir); err != nil {
+			logging.Errorf("Failed to download poster for %s: %v", movie.ID, err)
+		}
+	}
+
+	// Download cover
+	if cfg.Output.DownloadCover {
+		if _, err := dl.DownloadCover(movie, destDir); err != nil {
+			logging.Errorf("Failed to download cover for %s: %v", movie.ID, err)
+		}
+	}
+
+	// Download screenshots
+	if cfg.Output.DownloadExtrafanart {
+		if _, err := dl.DownloadExtrafanart(movie, destDir); err != nil {
+			logging.Errorf("Failed to download screenshots for %s: %v", movie.ID, err)
+		}
+	}
+
+	// Download trailer
+	if cfg.Output.DownloadTrailer {
+		if _, err := dl.DownloadTrailer(movie, destDir); err != nil {
+			logging.Errorf("Failed to download trailer for %s: %v", movie.ID, err)
+		}
+	}
+
+	// Download actress images
+	if cfg.Output.DownloadActress {
+		if _, err := dl.DownloadActressImages(movie, destDir); err != nil {
+			logging.Errorf("Failed to download actress images for %s: %v", movie.ID, err)
+		}
+	}
+}
+
 // processUpdateJob handles update operation triggered from review page
 // Generates NFOs and downloads media files in place without moving video files
 func processUpdateJob(job *worker.BatchJob, cfg *config.Config, db *database.DB) {
@@ -206,8 +278,10 @@ func processUpdateMode(job *worker.BatchJob, cfg *config.Config, db *database.DB
 		hasErrors := false
 		errorMsg := ""
 
+		// Copy temp cropped poster BEFORE downloads (so downloader skips it)
+		copyTempCroppedPoster(job, movie, sourceDir, cfg, "Update")
+
 		// Generate NFO in source directory
-		// outputPath is a DIRECTORY, not a file path - Generate() creates the filename
 		if err := nfoGen.Generate(movie, sourceDir, "", filePath); err != nil {
 			logging.Warnf("Failed to generate NFO for %s: %v", movie.ID, err)
 			hasErrors = true
@@ -217,8 +291,6 @@ func processUpdateMode(job *worker.BatchJob, cfg *config.Config, db *database.DB
 		}
 
 		// Download all media files to source directory
-		// In update mode, files stay in place - never create subfolders
-		// The Downloader will create extrafanart/.actors subdirs as needed
 		results, err := dl.DownloadAll(movie, sourceDir, 0)
 		if err != nil {
 			logging.Warnf("Failed to download media for %s: %v", movie.ID, err)
@@ -333,38 +405,13 @@ func processOrganizeJob(job *worker.BatchJob, mat *matcher.Matcher, destination 
 			continue
 		}
 
-		// Download artwork if file was moved
-		if result.Moved && cfg.Output.DownloadPoster {
-			if _, err := dl.DownloadPoster(movie, result.FolderPath); err != nil {
-				logging.Errorf("Failed to download poster for %s: %v", movie.ID, err)
-			}
-		}
+		// Copy temp cropped poster and download all media files
+		if result.Moved {
+			// Copy temp cropped poster BEFORE downloads (so downloader skips it)
+			copyTempCroppedPoster(job, movie, result.FolderPath, cfg, "Organize")
 
-		if result.Moved && cfg.Output.DownloadCover {
-			if _, err := dl.DownloadCover(movie, result.FolderPath); err != nil {
-				logging.Errorf("Failed to download cover for %s: %v", movie.ID, err)
-			}
-		}
-
-		// Download screenshots if enabled
-		if result.Moved && cfg.Output.DownloadExtrafanart {
-			if _, err := dl.DownloadExtrafanart(movie, result.FolderPath); err != nil {
-				logging.Errorf("Failed to download screenshots for %s: %v", movie.ID, err)
-			}
-		}
-
-		// Download trailer if enabled
-		if result.Moved && cfg.Output.DownloadTrailer {
-			if _, err := dl.DownloadTrailer(movie, result.FolderPath); err != nil {
-				logging.Errorf("Failed to download trailer for %s: %v", movie.ID, err)
-			}
-		}
-
-		// Download actress images if enabled
-		if result.Moved && cfg.Output.DownloadActress {
-			if _, err := dl.DownloadActressImages(movie, result.FolderPath); err != nil {
-				logging.Errorf("Failed to download actress images for %s: %v", movie.ID, err)
-			}
+			// Download all media files
+			downloadMediaFiles(dl, movie, result.FolderPath, cfg)
 		}
 
 		// Generate NFO file
@@ -474,4 +521,25 @@ func generatePreview(movie *models.Movie, destination string, cfg *config.Config
 		ExtrafanartPath: extrafanartPath,
 		Screenshots:     screenshots,
 	}
+}
+
+// copyFile copies a file from src to dst
+func copyFile(src, dst string) error {
+	sourceFile, err := os.Open(src)
+	if err != nil {
+		return fmt.Errorf("failed to open source file: %w", err)
+	}
+	defer sourceFile.Close()
+
+	destFile, err := os.Create(dst)
+	if err != nil {
+		return fmt.Errorf("failed to create destination file: %w", err)
+	}
+	defer destFile.Close()
+
+	if _, err := io.Copy(destFile, sourceFile); err != nil {
+		return fmt.Errorf("failed to copy file: %w", err)
+	}
+
+	return nil
 }

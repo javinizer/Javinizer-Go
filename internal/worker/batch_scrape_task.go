@@ -363,12 +363,12 @@ func (t *BatchScrapeTask) Execute(ctx context.Context) error {
 // downloadTempPoster downloads and crops the poster temporarily for the review page
 // Updates movie.PosterURL to point to the local temp file path
 func (t *BatchScrapeTask) downloadTempPoster(ctx context.Context, movie *models.Movie) error {
-	// Determine poster URL to download
-	posterURL := movie.PosterURL
-	if posterURL == "" {
-		posterURL = movie.CoverURL
+	// Determine poster URL to download and save original URL
+	originalPosterURL := movie.PosterURL
+	if originalPosterURL == "" {
+		originalPosterURL = movie.CoverURL
 	}
-	if posterURL == "" {
+	if originalPosterURL == "" {
 		return fmt.Errorf("no poster or cover URL available")
 	}
 
@@ -384,7 +384,7 @@ func (t *BatchScrapeTask) downloadTempPoster(ctx context.Context, movie *models.
 
 	// Download the poster
 	client := &http.Client{Timeout: 30 * time.Second}
-	req, err := http.NewRequestWithContext(ctx, "GET", posterURL, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", originalPosterURL, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
@@ -424,15 +424,25 @@ func (t *BatchScrapeTask) downloadTempPoster(ctx context.Context, movie *models.
 	// Clean up the full image
 	os.Remove(tempFullPath)
 
-	// Update movie.PosterURL to point to the temp cropped poster via API
-	// Frontend will access: /api/v1/temp/posters/{job_id}/{movie_id}.jpg
-	movie.PosterURL = fmt.Sprintf("/api/v1/temp/posters/%s/%s.jpg", t.job.ID, movie.ID)
+	// CRITICAL: Store temp poster path in a separate field
+	// We MUST NOT overwrite movie.PosterURL because:
+	// 1. NFO files need the original URL
+	// 2. Database needs the original URL
+	// 3. Update mode needs to know which file to use for download
+	//
+	// Instead, we create a response-only field for the frontend review page
+	// The frontend will construct the URL: /api/v1/temp/posters/{job_id}/{movie_id}.jpg
+	// This is handled in the BatchJobResponse serialization
 
-	// Set ShouldCropPoster to false because the image is already cropped on disk
+	// Keep original PosterURL intact - it's needed for NFO/database
+	// movie.PosterURL = originalPosterURL (already set, no change needed)
+
+	// Set ShouldCropPoster to false because the temp image is already cropped
 	// Frontend will display it normally without CSS cropping (min-width: 211.8%)
 	movie.ShouldCropPoster = false
 
-	logging.Debugf("[Batch %s] File %d: Created temp cropped poster at %s", t.job.ID, t.fileIndex, tempCroppedPath)
+	logging.Debugf("[Batch %s] File %d: Created temp cropped poster at %s for review (original URL preserved: %s)",
+		t.job.ID, t.fileIndex, tempCroppedPath, originalPosterURL)
 
 	return nil
 }

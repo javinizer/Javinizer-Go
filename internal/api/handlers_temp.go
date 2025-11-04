@@ -11,10 +11,11 @@ import (
 func serveTempPoster() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		jobID := c.Param("jobId")
-		movieID := c.Param("movieId")
+		filename := c.Param("filename")
 
-		// Construct path: data/temp/posters/{jobId}/{movieId}.jpg
-		posterPath := filepath.Join("data", "temp", "posters", jobID, movieID+".jpg")
+		// filename includes the .jpg extension
+		// Construct path: data/temp/posters/{jobId}/{filename}
+		posterPath := filepath.Join("data", "temp", "posters", jobID, filename)
 
 		// Serve the file
 		c.File(posterPath)
