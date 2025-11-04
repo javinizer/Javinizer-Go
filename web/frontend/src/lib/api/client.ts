@@ -120,6 +120,13 @@ class APIClient {
 		});
 	}
 
+	// Update batch job (generate NFOs and download media in place)
+	async updateBatchJob(jobId: string): Promise<{ message: string }> {
+		return this.request<{ message: string }>(`/api/v1/batch/${jobId}/update`, {
+			method: 'POST'
+		});
+	}
+
 	// Preview organize output
 	async previewOrganize(jobId: string, movieId: string, request: OrganizePreviewRequest): Promise<OrganizePreviewResponse> {
 		return this.request<OrganizePreviewResponse>(`/api/v1/batch/${jobId}/movies/${movieId}/preview`, {

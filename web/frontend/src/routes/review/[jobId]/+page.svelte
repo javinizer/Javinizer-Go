@@ -26,7 +26,8 @@
 		Image as ImageIcon,
 		Loader2,
 		X,
-		Check
+		Check,
+		RefreshCw
 	} from 'lucide-svelte';
 
 	let jobId = $derived($page.params.jobId as string);
@@ -42,6 +43,7 @@
 	let showDestinationBrowser = $state(false);
 	let showTrailerModal = $state(false);
 	let preview: OrganizePreviewResponse | null = $state(null);
+	let isUpdateMode = $derived($page.url.searchParams.get('update') === 'true');
 
 	// Organize operation state
 	let organizeProgress = $state(0);
@@ -162,7 +164,8 @@
 			const msg = ws.messages.at(-1);
 			if (!msg || msg.job_id !== jobId) return;
 
-			if (msg.status === 'organizing') {
+			// Handle both organizing and updating progress messages
+			if (msg.status === 'organizing' || msg.status === 'updating') {
 				organizeProgress = msg.progress || 0;
 			}
 
@@ -175,15 +178,18 @@
 
 				// Show toast notification for immediate feedback
 				const fileName = msg.file_path.split(/[\\/]/).pop();
-				toastStore.error(`Failed to organize ${fileName}: ${msg.error}`, 7000);
+				const action = isUpdateMode ? 'update' : 'organize';
+				toastStore.error(`Failed to ${action} ${fileName}: ${msg.error}`, 7000);
 			}
 
-			if (msg.status === 'organized' && msg.file_path) {
+			// Handle both organized and updated success messages
+			if ((msg.status === 'organized' || msg.status === 'updated') && msg.file_path) {
 				fileStatuses.set(msg.file_path, {status: 'success'});
 				fileStatuses = new Map(fileStatuses);
 			}
 
-			if (msg.status === 'organization_completed') {
+			// Handle completion for both operations
+			if (msg.status === 'organization_completed' || msg.status === 'update_completed') {
 				organizeStatus = 'completed';
 				organizeProgress = 100;
 				organizing = false;
@@ -193,7 +199,8 @@
 					.filter(s => s.status === 'failed').length;
 
 				if (failures === 0) {
-					toastStore.success(msg.message || 'All files organized successfully', 5000);
+					const action = isUpdateMode ? 'updated' : 'organized';
+					toastStore.success(msg.message || `All files ${action} successfully`, 5000);
 					setTimeout(() => goto('/browse'), 1000);
 				}
 				// If there are failures, stay on page to show them
@@ -341,6 +348,33 @@
 		}
 	}
 
+	async function updateAll() {
+		// Clear old WebSocket messages to prevent stale completion messages
+		websocketStore.clearMessages();
+
+		organizeStatus = 'organizing';
+		organizing = true;
+		organizeProgress = 0;
+		fileStatuses = new Map();
+
+		try {
+			// Save all edited movies to backend first
+			if (editedMovies.size > 0) {
+				await saveAllEdits();
+			}
+
+			// Start update (returns immediately)
+			await apiClient.updateBatchJob(jobId);
+
+			// DON'T show success or navigate - wait for WebSocket messages
+		} catch (e) {
+			organizeStatus = 'failed';
+			organizing = false;
+			const errorMessage = e instanceof Error ? e.message : 'Failed to start update';
+			toastStore.error(errorMessage, 7000);
+		}
+	}
+
 	function openDestinationBrowser() {
 		// TODO: Implement browse dialog
 		showDestinationBrowser = true;
@@ -420,26 +454,43 @@
 				<div>
 					<h1 class="text-3xl font-bold">Review & Edit Metadata</h1>
 					<p class="text-muted-foreground mt-1">
-						Review and edit scraped metadata before organizing files
+						{#if isUpdateMode}
+							Metadata and media files have been updated in place. Review and edit as needed.
+						{:else}
+							Review and edit scraped metadata before organizing files
+						{/if}
 					</p>
 				</div>
 				<div class="flex items-center gap-3">
 					<Button variant="outline" onclick={() => goto('/browse')} disabled={organizing}>
 						{#snippet children()}
 							<X class="h-4 w-4 mr-2" />
-							Cancel
+							{isUpdateMode ? 'Close' : 'Cancel'}
 						{/snippet}
 					</Button>
-					<Button onclick={organizeAll} disabled={organizing || !destinationPath.trim()}>
-						{#snippet children()}
-							{#if organizing}
-								<Loader2 class="h-4 w-4 mr-2 animate-spin" />
-							{:else}
-								<Play class="h-4 w-4 mr-2" />
-							{/if}
-							{organizing ? 'Organizing...' : `Organize ${movieResults.length} File${movieResults.length !== 1 ? 's' : ''}`}
-						{/snippet}
-					</Button>
+					{#if isUpdateMode}
+						<Button onclick={updateAll} disabled={organizing}>
+							{#snippet children()}
+								{#if organizing}
+									<Loader2 class="h-4 w-4 mr-2 animate-spin" />
+								{:else}
+									<RefreshCw class="h-4 w-4 mr-2" />
+								{/if}
+								{organizing ? 'Updating...' : `Update ${movieResults.length} File${movieResults.length !== 1 ? 's' : ''}`}
+							{/snippet}
+						</Button>
+					{:else}
+						<Button onclick={organizeAll} disabled={organizing || !destinationPath.trim()}>
+							{#snippet children()}
+								{#if organizing}
+									<Loader2 class="h-4 w-4 mr-2" />
+								{:else}
+									<Play class="h-4 w-4 mr-2" />
+								{/if}
+								{organizing ? 'Organizing...' : `Organize ${movieResults.length} File${movieResults.length !== 1 ? 's' : ''}`}
+							{/snippet}
+						</Button>
+					{/if}
 				</div>
 			</div>
 
@@ -725,93 +776,95 @@
 						</div>
 					</Card>
 
-					<!-- Destination Path -->
-					<Card class="p-4">
-						<div class="space-y-3 min-w-0">
-							<div class="flex items-center gap-2">
-								<FolderOpen class="h-5 w-5 text-primary" />
-								<h3 class="font-semibold">Output Destination</h3>
-							</div>
-							<div class="flex gap-2 min-w-0">
-								<input
-									type="text"
-									bind:value={destinationPath}
-									placeholder="Enter destination path (e.g., /path/to/output)"
-									class="flex-1 min-w-0 px-3 py-2 border rounded-md focus:ring-2 focus:ring-primary focus:border-primary transition-all font-mono text-sm"
-									title={destinationPath}
-								/>
-								<Button onclick={openDestinationBrowser} variant="outline">
-									{#snippet children()}
-										<FolderOpen class="h-4 w-4 mr-2" />
-										Browse
-									{/snippet}
-								</Button>
-							</div>
-
-							<div class="flex items-center gap-2">
-								<input
-									type="checkbox"
-									id="copyOnly"
-									bind:checked={copyOnly}
-									class="w-4 h-4 text-primary bg-gray-100 border-gray-300 rounded focus:ring-primary focus:ring-2"
-								/>
-								<label for="copyOnly" class="text-sm text-muted-foreground cursor-pointer">
-									Copy files only (don't move)
-								</label>
-							</div>
-
-							{#if preview}
-								{@const pathParts = preview.full_path
-									.replace(destinationPath + '/', '')
-									.split('/')
-									.filter(p => p && !p.includes('.mp4'))}
-								{@const fileIndent = pathParts.length * 4}
-								<div class="mt-3 p-3 bg-accent/50 rounded border border-dashed overflow-hidden">
-									<p class="text-xs font-medium mb-2 text-muted-foreground">Preview:</p>
-									<div class="font-mono text-xs space-y-1 overflow-x-auto">
-										<div class="text-muted-foreground break-all">📁 {destinationPath}/</div>
-										{#each pathParts as part, index}
-											<div class="text-muted-foreground break-all" style="margin-left: {(index + 1) * 4}px">
-												📁 {part}/
-											</div>
-										{/each}
-										<div class="break-all" style="margin-left: {fileIndent + 4}px">🎬 {preview.file_name}.mp4</div>
-										<div class="break-all" style="margin-left: {fileIndent + 4}px">📄 {preview.file_name}.nfo</div>
-										<div class="break-all" style="margin-left: {fileIndent + 4}px">🖼️ {preview.file_name}-poster.jpg</div>
-										<div class="break-all" style="margin-left: {fileIndent + 4}px">🖼️ {preview.file_name}-fanart.jpg</div>
-										{#if preview.screenshots && preview.screenshots.length > 0}
-											<div class="text-muted-foreground break-all" style="margin-left: {fileIndent + 4}px">📁 extrafanart/</div>
-											{#each (showAllPreviewScreenshots ? preview.screenshots : preview.screenshots.slice(0, 3)) as screenshot}
-												<div class="break-all" style="margin-left: {fileIndent + 8}px">🖼️ {screenshot}</div>
-											{/each}
-											{#if preview.screenshots.length > 3 && !showAllPreviewScreenshots}
-												<button
-													onclick={() => (showAllPreviewScreenshots = true)}
-													class="text-muted-foreground hover:text-primary transition-colors cursor-pointer text-left"
-													style="margin-left: {fileIndent + 8}px"
-												>
-													... and {preview.screenshots.length - 3} more
-												</button>
-											{/if}
-											{#if showAllPreviewScreenshots && preview.screenshots.length > 3}
-												<button
-													onclick={() => (showAllPreviewScreenshots = false)}
-													class="text-muted-foreground hover:text-primary transition-colors cursor-pointer text-left"
-													style="margin-left: {fileIndent + 8}px"
-												>
-													Show less
-												</button>
-											{/if}
-										{/if}
-									</div>
+					<!-- Destination Path (hidden in update mode) -->
+					{#if !isUpdateMode}
+						<Card class="p-4">
+							<div class="space-y-3 min-w-0">
+								<div class="flex items-center gap-2">
+									<FolderOpen class="h-5 w-5 text-primary" />
+									<h3 class="font-semibold">Output Destination</h3>
 								</div>
-							{:else}
-								<p class="text-xs text-muted-foreground">
-									Files will be organized with metadata, artwork, and NFO files in this directory
-								</p>
-							{/if}
-						</div>
-					</Card>
+								<div class="flex gap-2 min-w-0">
+									<input
+										type="text"
+										bind:value={destinationPath}
+										placeholder="Enter destination path (e.g., /path/to/output)"
+										class="flex-1 min-w-0 px-3 py-2 border rounded-md focus:ring-2 focus:ring-primary focus:border-primary transition-all font-mono text-sm"
+										title={destinationPath}
+									/>
+									<Button onclick={openDestinationBrowser} variant="outline">
+										{#snippet children()}
+											<FolderOpen class="h-4 w-4 mr-2" />
+											Browse
+										{/snippet}
+									</Button>
+								</div>
+
+								<div class="flex items-center gap-2">
+									<input
+										type="checkbox"
+										id="copyOnly"
+										bind:checked={copyOnly}
+										class="w-4 h-4 text-primary bg-gray-100 border-gray-300 rounded focus:ring-primary focus:ring-2"
+									/>
+									<label for="copyOnly" class="text-sm text-muted-foreground cursor-pointer">
+										Copy files only (don't move)
+									</label>
+								</div>
+
+								{#if preview}
+									{@const pathParts = preview.full_path
+										.replace(destinationPath + '/', '')
+										.split('/')
+										.filter(p => p && !p.includes('.mp4'))}
+									{@const fileIndent = pathParts.length * 4}
+									<div class="mt-3 p-3 bg-accent/50 rounded border border-dashed overflow-hidden">
+										<p class="text-xs font-medium mb-2 text-muted-foreground">Preview:</p>
+										<div class="font-mono text-xs space-y-1 overflow-x-auto">
+											<div class="text-muted-foreground break-all">📁 {destinationPath}/</div>
+											{#each pathParts as part, index}
+												<div class="text-muted-foreground break-all" style="margin-left: {(index + 1) * 4}px">
+													📁 {part}/
+												</div>
+											{/each}
+											<div class="break-all" style="margin-left: {fileIndent + 4}px">🎬 {preview.file_name}.mp4</div>
+											<div class="break-all" style="margin-left: {fileIndent + 4}px">📄 {preview.file_name}.nfo</div>
+											<div class="break-all" style="margin-left: {fileIndent + 4}px">🖼️ {preview.file_name}-poster.jpg</div>
+											<div class="break-all" style="margin-left: {fileIndent + 4}px">🖼️ {preview.file_name}-fanart.jpg</div>
+											{#if preview.screenshots && preview.screenshots.length > 0}
+												<div class="text-muted-foreground break-all" style="margin-left: {fileIndent + 4}px">📁 extrafanart/</div>
+												{#each (showAllPreviewScreenshots ? preview.screenshots : preview.screenshots.slice(0, 3)) as screenshot}
+													<div class="break-all" style="margin-left: {fileIndent + 8}px">🖼️ {screenshot}</div>
+												{/each}
+												{#if preview.screenshots.length > 3 && !showAllPreviewScreenshots}
+													<button
+														onclick={() => (showAllPreviewScreenshots = true)}
+														class="text-muted-foreground hover:text-primary transition-colors cursor-pointer text-left"
+														style="margin-left: {fileIndent + 8}px"
+													>
+														... and {preview.screenshots.length - 3} more
+													</button>
+												{/if}
+												{#if showAllPreviewScreenshots && preview.screenshots.length > 3}
+													<button
+														onclick={() => (showAllPreviewScreenshots = false)}
+														class="text-muted-foreground hover:text-primary transition-colors cursor-pointer text-left"
+														style="margin-left: {fileIndent + 8}px"
+													>
+														Show less
+													</button>
+												{/if}
+											{/if}
+										</div>
+									</div>
+								{:else}
+									<p class="text-xs text-muted-foreground">
+										Files will be organized with metadata, artwork, and NFO files in this directory
+									</p>
+								{/if}
+							</div>
+						</Card>
+					{/if}
 
 					<!-- Metadata Editor -->
 					<Card class="p-6">
@@ -882,27 +935,29 @@
 						</Card>
 					{/if}
 
-					<!-- Action Buttons -->
-					<Card class="p-4">
-						<div class="flex items-center justify-end gap-3">
-							<Button variant="outline" onclick={() => goto('/browse')} disabled={organizing}>
-								{#snippet children()}
-									<X class="h-4 w-4 mr-2" />
-									Cancel
-								{/snippet}
-							</Button>
-							<Button onclick={organizeAll} disabled={organizing || !destinationPath.trim()}>
-								{#snippet children()}
-									{#if organizing}
-										<Loader2 class="h-4 w-4 mr-2 animate-spin" />
-									{:else}
-										<Play class="h-4 w-4 mr-2" />
-									{/if}
-									{organizing ? 'Organizing...' : `Organize ${movieResults.length} File${movieResults.length !== 1 ? 's' : ''}`}
-								{/snippet}
-							</Button>
-						</div>
-					</Card>
+					<!-- Action Buttons (hidden in update mode) -->
+					{#if !isUpdateMode}
+						<Card class="p-4">
+							<div class="flex items-center justify-end gap-3">
+								<Button variant="outline" onclick={() => goto('/browse')} disabled={organizing}>
+									{#snippet children()}
+										<X class="h-4 w-4 mr-2" />
+										Cancel
+									{/snippet}
+								</Button>
+								<Button onclick={organizeAll} disabled={organizing || !destinationPath.trim()}>
+									{#snippet children()}
+										{#if organizing}
+											<Loader2 class="h-4 w-4 mr-2 animate-spin" />
+										{:else}
+											<Play class="h-4 w-4 mr-2" />
+										{/if}
+										{organizing ? 'Organizing...' : `Organize ${movieResults.length} File${movieResults.length !== 1 ? 's' : ''}`}
+									{/snippet}
+								</Button>
+							</div>
+						</Card>
+					{/if}
 				</div>
 			</div>
 {/if}

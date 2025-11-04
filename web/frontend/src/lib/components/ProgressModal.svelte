@@ -11,10 +11,11 @@
 	interface Props {
 		jobId: string;
 		destination: string;
+		updateMode?: boolean;
 		onClose: () => void;
 	}
 
-	let { jobId, destination, onClose }: Props = $props();
+	let { jobId, destination, updateMode = false, onClose }: Props = $props();
 
 	let job: BatchJobResponse | null = $state(null);
 	let loading = $state(true);
@@ -81,6 +82,7 @@
 						if (countdown <= 0 && !cancelRedirect) {
 							if (countdownInterval) clearInterval(countdownInterval);
 							const params = new URLSearchParams({ destination });
+							if (updateMode) params.set('update', 'true');
 							goto(`/review/${jobId}?${params.toString()}`);
 						}
 					}, 1000);
@@ -127,6 +129,7 @@
 
 	function handleViewResults() {
 		const params = new URLSearchParams({ destination });
+		if (updateMode) params.set('update', 'true');
 		goto(`/review/${jobId}?${params.toString()}`);
 	}
 

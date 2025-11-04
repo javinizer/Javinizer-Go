@@ -103,7 +103,20 @@ func main() {
 	sortCmd.Flags().StringSliceP("scrapers", "p", nil, "Scraper priority (comma-separated, e.g., 'r18dev,dmm')")
 	sortCmd.Flags().BoolP("force-update", "f", false, "Force update existing files")
 	sortCmd.Flags().Bool("force-refresh", false, "Force refresh metadata from scrapers (clear cache)")
-	sortCmd.Flags().BoolP("update", "u", false, "Update mode: only create/update metadata files without moving video files")
+
+	// Update command
+	updateCmd := &cobra.Command{
+		Use:   "update [path]",
+		Short: "Update metadata for existing files in place",
+		Long:  `Scans files, scrapes metadata, and updates NFO files and media without moving video files`,
+		Args:  cobra.ExactArgs(1),
+		RunE:  runWithDeps(runUpdate),
+	}
+	updateCmd.Flags().BoolP("dry-run", "n", false, "Preview operations without making changes")
+	updateCmd.Flags().BoolP("download", "", true, "Download media (covers, screenshots, etc.)")
+	updateCmd.Flags().Bool("extrafanart", false, "Download extrafanart (screenshots)")
+	updateCmd.Flags().StringSliceP("scrapers", "p", nil, "Scraper priority (comma-separated, e.g., 'r18dev,dmm')")
+	updateCmd.Flags().Bool("force-refresh", false, "Force refresh metadata from scrapers (clear cache)")
 
 	// Genre command with subcommands
 	genreCmd := &cobra.Command{
@@ -240,7 +253,7 @@ Example:
 	// API command
 	apiCmd := newAPICmd()
 
-	rootCmd.AddCommand(scrapeCmd, infoCmd, initCmd, sortCmd, genreCmd, tagCmd, historyCmd, tuiCmd, apiCmd)
+	rootCmd.AddCommand(scrapeCmd, infoCmd, initCmd, sortCmd, updateCmd, genreCmd, tagCmd, historyCmd, tuiCmd, apiCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)
@@ -888,11 +901,16 @@ func runSort(cmd *cobra.Command, args []string, deps *Dependencies) error {
 	scraperPriority, _ := cmd.Flags().GetStringSlice("scrapers")
 	forceUpdate, _ := cmd.Flags().GetBool("force-update")
 	forceRefresh, _ := cmd.Flags().GetBool("force-refresh")
-	updateMode, _ := cmd.Flags().GetBool("update")
 
 	// Default destination is same as source
+	// If source is a file, use its directory as destination
 	if destPath == "" {
-		destPath = sourcePath
+		fileInfo, err := os.Stat(sourcePath)
+		if err == nil && !fileInfo.IsDir() {
+			destPath = filepath.Dir(sourcePath)
+		} else {
+			destPath = sourcePath
+		}
 	}
 
 	// Override config with flag if extrafanart is explicitly enabled
@@ -900,24 +918,21 @@ func runSort(cmd *cobra.Command, args []string, deps *Dependencies) error {
 		deps.Config.Output.DownloadExtrafanart = true
 	}
 
-	// Override config with flag if scraper priority is provided
+	// Determine scraper priority (use flag override if provided, otherwise use config)
+	effectiveScraperPriority := deps.Config.Scrapers.Priority
 	if len(scraperPriority) > 0 {
-		deps.Config.Scrapers.Priority = scraperPriority
+		effectiveScraperPriority = scraperPriority
 	}
 
 	// Initialize components
 	movieRepo := database.NewMovieRepository(deps.DB)
-
 	registry := deps.ScraperRegistry
-
 	agg := aggregator.NewWithDatabase(deps.Config, deps.DB)
-
 	fileScanner := scanner.NewScanner(&deps.Config.Matching)
 	fileMatcher, err := matcher.NewMatcher(&deps.Config.Matching)
 	if err != nil {
 		return fmt.Errorf("failed to create matcher: %w", err)
 	}
-
 	fileOrganizer := organizer.NewOrganizer(&deps.Config.Output)
 	nfoGenerator := nfo.NewGenerator(nfo.ConfigFromAppConfig(&deps.Config.Metadata.NFO, &deps.Config.Output, &deps.Config.Metadata, deps.DB))
 	mediaDownloader := downloader.NewDownloaderWithNFOConfig(&deps.Config.Output, deps.Config.Scrapers.UserAgent, deps.Config.Metadata.NFO.ActressLanguageJA, deps.Config.Metadata.NFO.FirstNameOrder)
@@ -931,319 +946,47 @@ func runSort(cmd *cobra.Command, args []string, deps *Dependencies) error {
 	fmt.Printf("Generate NFO: %v\n", generateNFO)
 	fmt.Printf("Download Media: %v\n\n", downloadMedia)
 
-	// Step 1: Scan for video files
-	fmt.Println("📂 Scanning for video files...")
-	var scanResult *scanner.ScanResult
-	if recursive {
-		scanResult, err = fileScanner.Scan(sourcePath)
-	} else {
-		scanResult, err = fileScanner.ScanSingle(sourcePath)
-	}
+	// Step 1 & 2: Scan and match
+	matches, scanResult, err := scanAndMatch(sourcePath, recursive, fileScanner, fileMatcher)
 	if err != nil {
-		return fmt.Errorf("scan failed: %w", err)
+		return err
 	}
-
-	fmt.Printf("   Found %d video file(s)\n", len(scanResult.Files))
-	if len(scanResult.Skipped) > 0 {
-		fmt.Printf("   Skipped %d file(s)\n", len(scanResult.Skipped))
-	}
-	if len(scanResult.Errors) > 0 {
-		fmt.Printf("   ⚠️  %d error(s) during scan\n", len(scanResult.Errors))
-	}
-
-	if len(scanResult.Files) == 0 {
-		fmt.Println("\n✅ No files to process")
+	if matches == nil || len(matches) == 0 {
 		return nil
 	}
-
-	// Step 2: Match JAV IDs
-	fmt.Println("\n🔍 Extracting JAV IDs...")
-	matches := fileMatcher.Match(scanResult.Files)
-	fmt.Printf("   Matched %d file(s)\n", len(matches))
-
-	if len(matches) == 0 {
-		fmt.Println("\n⚠️  No JAV IDs found in filenames")
-		return nil
-	}
-
-	// Group by ID
-	grouped := matcher.GroupByID(matches)
-	fmt.Printf("   Found %d unique ID(s)\n", len(grouped))
 
 	// Step 3: Scrape metadata
-	fmt.Println("\n🌐 Scraping metadata...")
-	movies := make(map[string]*models.Movie)
-	scrapedCount := 0
-	cachedCount := 0
-
-	for id := range grouped {
-		fmt.Printf("   %s... ", id)
-
-		// Force refresh - clear cache if requested
-		if forceRefresh {
-			if err := movieRepo.Delete(id); err != nil {
-				logging.Debugf("Failed to delete %s from cache (may not exist): %v", id, err)
-			} else {
-				logging.Debugf("[%s] Cache cleared successfully", id)
-			}
-		}
-
-		// Check cache first (skip if force refresh)
-		if !forceRefresh {
-			if movie, err := movieRepo.FindByID(id); err == nil {
-				movies[id] = movie
-				cachedCount++
-				fmt.Println("✅ (cached)")
-				logging.Debugf("[%s] Found in cache: Title=%s, Maker=%s, Actresses=%d",
-					id, movie.Title, movie.Maker, len(movie.Actresses))
-				continue
-			}
-		}
-
-		logging.Debugf("[%s] Not found in cache, scraping from sources", id)
-
-		// Scrape from sources
-		results := []*models.ScraperResult{}
-		scrapers := registry.GetByPriority(deps.Config.Scrapers.Priority)
-		logging.Debugf("[%s] Initialized %d scrapers in priority order", id, len(scrapers))
-
-		for _, scraper := range scrapers {
-			logging.Debugf("[%s] Querying scraper: %s", id, scraper.Name())
-			if result, err := scraper.Search(id); err == nil {
-				logging.Debugf("[%s] Scraper %s returned: Title=%s, Language=%s, Actresses=%d, Genres=%d",
-					id, scraper.Name(), result.Title, result.Language, len(result.Actresses), len(result.Genres))
-				results = append(results, result)
-			} else {
-				logging.Debugf("[%s] Scraper %s failed: %v", id, scraper.Name(), err)
-			}
-		}
-
-		if len(results) == 0 {
-			fmt.Println("❌ (not found)")
-			logging.Debugf("[%s] No results from any scraper", id)
-			continue
-		}
-
-		logging.Debugf("[%s] Collected %d results from scrapers, starting aggregation", id, len(results))
-
-		// Aggregate and save
-		movie, err := agg.Aggregate(results)
-		if err != nil {
-			fmt.Printf("❌ (aggregate error: %v)\n", err)
-			logging.Debugf("[%s] Aggregation failed: %v", id, err)
-			continue
-		}
-
-		// Log aggregated metadata details
-		logging.Debugf("[%s] Aggregation complete - Final metadata:", id)
-		logging.Debugf("[%s]   Title: %s", id, movie.Title)
-		logging.Debugf("[%s]   Maker: %s", id, movie.Maker)
-		logging.Debugf("[%s]   Release Date: %v", id, movie.ReleaseDate)
-		logging.Debugf("[%s]   Runtime: %d min", id, movie.Runtime)
-		logging.Debugf("[%s]   Actresses: %d", id, len(movie.Actresses))
-		if len(movie.Actresses) > 0 {
-			actressNames := make([]string, len(movie.Actresses))
-			for i, a := range movie.Actresses {
-				actressNames[i] = a.FullName()
-			}
-			logging.Debugf("[%s]   Actress Names: %v", id, actressNames)
-		}
-		logging.Debugf("[%s]   Genres: %d", id, len(movie.Genres))
-		if len(movie.Genres) > 0 {
-			genreNames := make([]string, len(movie.Genres))
-			for i, g := range movie.Genres {
-				genreNames[i] = g.Name
-			}
-			logging.Debugf("[%s]   Genre Names: %v", id, genreNames)
-		}
-		logging.Debugf("[%s]   Screenshots: %d", id, len(movie.Screenshots))
-		logging.Debugf("[%s]   Cover URL: %s", id, movie.CoverURL)
-		logging.Debugf("[%s]   Trailer URL: %s", id, movie.TrailerURL)
-
-		if err := movieRepo.Upsert(movie); err != nil {
-			logging.Infof("Warning: Failed to save %s to database: %v", id, err)
-		}
-
-		movies[id] = movie
-		scrapedCount++
-		fmt.Println("✅ (scraped)")
+	movies, _, _, err := scrapeMetadata(matches, movieRepo, registry, agg, effectiveScraperPriority, forceRefresh)
+	if err != nil {
+		return err
 	}
-
-	fmt.Printf("   Scraped: %d, Cached: %d, Failed: %d\n", scrapedCount, cachedCount, len(grouped)-len(movies))
-
-	if len(movies) == 0 {
-		fmt.Println("\n⚠️  No metadata found")
+	if movies == nil || len(movies) == 0 {
 		return nil
 	}
 
 	// Step 4: Generate NFO files
-	if generateNFO && deps.Config.Metadata.NFO.Enabled {
-		fmt.Println("\n📝 Generating NFO files...")
-		nfoCount := 0
-
-		for id, movie := range movies {
-			// Find all matches for this ID
-			var idMatches []matcher.MatchResult
-			for _, m := range matches {
-				if m.ID == id {
-					idMatches = append(idMatches, m)
-				}
-			}
-
-			// Determine output directory: either organized folder or source directory
-			var outputDir string
-			if deps.Config.Output.MoveToFolder {
-				// Create destination folder for this movie (use first match for planning)
-				plan, err := fileOrganizer.Plan(idMatches[0], movie, destPath, forceUpdate)
-				if err != nil {
-					logging.Infof("Failed to plan for %s: %v", id, err)
-					continue
-				}
-				outputDir = plan.TargetDir
-			} else {
-				// Use source directory (directory of the first file)
-				outputDir = idMatches[0].File.Dir
-			}
-
-			// If per_file is enabled and this is multi-part, generate NFO for each part
-			if deps.Config.Metadata.NFO.PerFile && len(idMatches) > 1 {
-				for _, match := range idMatches {
-					partSuffix := ""
-					if match.IsMultiPart {
-						partSuffix = match.PartSuffix
-					}
-
-					if dryRun {
-						fmt.Printf("   %s%s.nfo (would generate)\n", id, partSuffix)
-					} else {
-						if err := nfoGenerator.Generate(movie, outputDir, partSuffix, ""); err != nil {
-							logging.Infof("Failed to generate NFO for %s%s: %v", id, partSuffix, err)
-						} else {
-							nfoCount++
-							fmt.Printf("   %s%s.nfo ✅\n", id, partSuffix)
-						}
-					}
-				}
-			} else {
-				// Single NFO for all parts (or single file)
-				if dryRun {
-					fmt.Printf("   %s.nfo (would generate)\n", id)
-				} else {
-					if err := nfoGenerator.Generate(movie, outputDir, "", ""); err != nil {
-						logging.Infof("Failed to generate NFO for %s: %v", id, err)
-					} else {
-						nfoCount++
-						fmt.Printf("   %s.nfo ✅\n", id)
-					}
-				}
-			}
-		}
-
-		if dryRun {
-			fmt.Printf("   Would generate %d NFO file(s)\n", len(movies))
-		} else {
-			fmt.Printf("   Generated %d NFO file(s)\n", nfoCount)
+	if generateNFO {
+		_, err = generateNFOs(movies, matches, nfoGenerator, fileOrganizer,
+			deps.Config.Metadata.NFO.Enabled, deps.Config.Output.MoveToFolder,
+			deps.Config.Metadata.NFO.PerFile, destPath, forceUpdate, dryRun)
+		if err != nil {
+			return err
 		}
 	}
 
 	// Step 5: Download media
 	if downloadMedia {
-		fmt.Println("\n📥 Downloading media...")
-		downloadCount := 0
-
-		for id, movie := range movies {
-			// Find all matches for this ID
-			var idMatches []matcher.MatchResult
-			for _, m := range matches {
-				if m.ID == id {
-					idMatches = append(idMatches, m)
-				}
-			}
-			if len(idMatches) == 0 {
-				continue
-			}
-			firstMatch := idMatches[0]
-
-			// Determine output directory: either organized folder or source directory
-			var downloadDir string
-			if deps.Config.Output.MoveToFolder {
-				plan, err := fileOrganizer.Plan(firstMatch, movie, destPath, forceUpdate)
-				if err != nil {
-					continue
-				}
-				downloadDir = plan.TargetDir
-			} else {
-				// Use source directory
-				downloadDir = firstMatch.File.Dir
-			}
-
-			if dryRun {
-				count := 0
-				if deps.Config.Output.DownloadCover {
-					count++
-					logging.Debugf("[%s] Would download cover from: %s", id, movie.CoverURL)
-				}
-				if deps.Config.Output.DownloadExtrafanart {
-					count += len(movie.Screenshots)
-					logging.Debugf("[%s] Would download %d screenshots", id, len(movie.Screenshots))
-				}
-				fmt.Printf("   %s: would download ~%d file(s)\n", id, count)
-			} else {
-				logging.Debugf("[%s] Starting download to: %s", id, downloadDir)
-				// Use PartNumber for deduplication (0 for single file, 1+ for multi-part)
-				// Find the lowest part number to determine if we should download shared media
-				partNumber := 0
-				if firstMatch.IsMultiPart {
-					// For multi-part, find the lowest part number among all matches
-					minPartNumber := idMatches[0].PartNumber
-					for _, m := range idMatches {
-						if m.PartNumber < minPartNumber {
-							minPartNumber = m.PartNumber
-						}
-					}
-					// Clamp to 1 so even if only later segments exist (e.g., only pt2),
-					// we still download shared media once
-					if minPartNumber > 1 {
-						minPartNumber = 1
-					}
-					partNumber = minPartNumber
-				}
-				results, err := mediaDownloader.DownloadAll(movie, downloadDir, partNumber)
-				if err != nil {
-					logging.Infof("Download error for %s: %v", id, err)
-				}
-
-				downloaded := 0
-				skipped := 0
-				failed := 0
-				for _, r := range results {
-					if r.Downloaded {
-						downloaded++
-						logging.Debugf("[%s] Downloaded %s: %s (%d bytes in %v)", id, r.Type, r.LocalPath, r.Size, r.Duration)
-					} else if r.Error != nil {
-						failed++
-						logging.Debugf("[%s] Failed to download %s: %v", id, r.Type, r.Error)
-					} else {
-						skipped++
-						logging.Debugf("[%s] Skipped %s (already exists): %s", id, r.Type, r.LocalPath)
-					}
-				}
-				logging.Debugf("[%s] Download summary: %d downloaded, %d skipped, %d failed", id, downloaded, skipped, failed)
-				if downloaded > 0 {
-					downloadCount += downloaded
-					fmt.Printf("   %s: %d file(s) ✅\n", id, downloaded)
-				}
-			}
-		}
-
-		if !dryRun {
-			fmt.Printf("   Downloaded %d file(s)\n", downloadCount)
+		_, err = downloadMediaFiles(movies, matches, mediaDownloader, fileOrganizer,
+			deps.Config.Output.DownloadCover, deps.Config.Output.DownloadExtrafanart,
+			deps.Config.Output.MoveToFolder, destPath, forceUpdate, dryRun)
+		if err != nil {
+			return err
 		}
 	}
 
-	// Step 6: Organize files (skip in update mode or if move_to_folder is disabled)
+	// Step 6: Organize files (skip if move_to_folder is disabled)
 	organizedCount := 0
-	if !updateMode && deps.Config.Output.MoveToFolder {
+	if deps.Config.Output.MoveToFolder {
 		fmt.Println("\n📦 Organizing files...")
 
 		for _, match := range matches {
@@ -1314,12 +1057,7 @@ func runSort(cmd *cobra.Command, args []string, deps *Dependencies) error {
 				fmt.Printf("   %s %s\n      %s\n", status, match.File.Name, plan.TargetPath)
 			}
 		}
-	} else {
-		fmt.Println("\n📝 Update mode: Files will remain in their original locations")
-		fmt.Printf("   Source directory: %s\n", sourcePath)
-	}
 
-	if !updateMode {
 		if dryRun {
 			fmt.Printf("\n   Would organize %d file(s)\n", organizedCount)
 		} else {
@@ -1335,20 +1073,125 @@ func runSort(cmd *cobra.Command, args []string, deps *Dependencies) error {
 	if generateNFO {
 		fmt.Printf("NFOs generated: %s\n", map[bool]string{true: fmt.Sprintf("%d (dry-run)", len(movies)), false: fmt.Sprintf("%d", len(movies))}[dryRun])
 	}
-	if !updateMode {
-		fmt.Printf("Files organized: %s\n", map[bool]string{true: fmt.Sprintf("%d (dry-run)", organizedCount), false: fmt.Sprintf("%d", organizedCount)}[dryRun])
-	} else {
-		fmt.Printf("Mode: Update (metadata only, files remain in place)\n")
-	}
+	fmt.Printf("Files organized: %s\n", map[bool]string{true: fmt.Sprintf("%d (dry-run)", organizedCount), false: fmt.Sprintf("%d", organizedCount)}[dryRun])
 
 	if dryRun {
 		fmt.Println("\n💡 Run without --dry-run to apply changes")
 	} else {
-		if updateMode {
-			fmt.Println("\n✅ Update complete!")
-		} else {
-			fmt.Println("\n✅ Sort complete!")
+		fmt.Println("\n✅ Sort complete!")
+	}
+
+	return nil
+}
+
+func runUpdate(cmd *cobra.Command, args []string, deps *Dependencies) error {
+	sourcePath := args[0]
+
+	// Get flags
+	dryRun, _ := cmd.Flags().GetBool("dry-run")
+	downloadMedia, _ := cmd.Flags().GetBool("download")
+	downloadExtrafanart, _ := cmd.Flags().GetBool("extrafanart")
+	scraperPriority, _ := cmd.Flags().GetStringSlice("scrapers")
+	forceRefresh, _ := cmd.Flags().GetBool("force-refresh")
+
+	// In update mode: always generate NFO, never move files, force update enabled
+	generateNFO := true
+	forceUpdate := true
+	recursive := true // Always scan recursively
+
+	// Destination is the source directory (or parent if source is a file)
+	destPath := sourcePath
+	fileInfo, err := os.Stat(sourcePath)
+	if err == nil && !fileInfo.IsDir() {
+		destPath = filepath.Dir(sourcePath)
+	}
+
+	// Override config with flag if extrafanart is explicitly enabled
+	if downloadExtrafanart {
+		deps.Config.Output.DownloadExtrafanart = true
+	}
+
+	// Determine scraper priority (use flag override if provided, otherwise use config)
+	effectiveScraperPriority := deps.Config.Scrapers.Priority
+	if len(scraperPriority) > 0 {
+		effectiveScraperPriority = scraperPriority
+	}
+
+	// Initialize components
+	movieRepo := database.NewMovieRepository(deps.DB)
+	registry := deps.ScraperRegistry
+	agg := aggregator.NewWithDatabase(deps.Config, deps.DB)
+	fileScanner := scanner.NewScanner(&deps.Config.Matching)
+	fileMatcher, err := matcher.NewMatcher(&deps.Config.Matching)
+	if err != nil {
+		return fmt.Errorf("failed to create matcher: %w", err)
+	}
+	fileOrganizer := organizer.NewOrganizer(&deps.Config.Output)
+	nfoGenerator := nfo.NewGenerator(nfo.ConfigFromAppConfig(&deps.Config.Metadata.NFO, &deps.Config.Output, &deps.Config.Metadata, deps.DB))
+	mediaDownloader := downloader.NewDownloaderWithNFOConfig(&deps.Config.Output, deps.Config.Scrapers.UserAgent, deps.Config.Metadata.NFO.ActressLanguageJA, deps.Config.Metadata.NFO.FirstNameOrder)
+
+	// Print configuration
+	fmt.Println("=== Javinizer Update ===")
+	fmt.Printf("Source: %s\n", sourcePath)
+	fmt.Printf("Mode: %s\n", map[bool]string{true: "DRY RUN", false: "LIVE"}[dryRun])
+	fmt.Printf("Generate NFO: %v\n", generateNFO)
+	fmt.Printf("Download Media: %v\n\n", downloadMedia)
+
+	// Step 1 & 2: Scan and match
+	matches, scanResult, err := scanAndMatch(sourcePath, recursive, fileScanner, fileMatcher)
+	if err != nil {
+		return err
+	}
+	if matches == nil || len(matches) == 0 {
+		return nil
+	}
+
+	// Step 3: Scrape metadata
+	movies, _, _, err := scrapeMetadata(matches, movieRepo, registry, agg, effectiveScraperPriority, forceRefresh)
+	if err != nil {
+		return err
+	}
+	if movies == nil || len(movies) == 0 {
+		return nil
+	}
+
+	// Step 4: Generate NFO files (always enabled in update mode)
+	// Note: In update mode, we always generate NFOs regardless of config setting
+	// because that's the primary purpose of the update command
+	nfoCount, err := generateNFOs(movies, matches, nfoGenerator, fileOrganizer,
+		true, false, // nfoEnabled = true (always in update mode), moveToFolder = false (files stay in place)
+		deps.Config.Metadata.NFO.PerFile, destPath, forceUpdate, dryRun)
+	if err != nil {
+		return err
+	}
+
+	// Step 5: Download media (if requested)
+	if downloadMedia {
+		_, err = downloadMediaFiles(movies, matches, mediaDownloader, fileOrganizer,
+			deps.Config.Output.DownloadCover, deps.Config.Output.DownloadExtrafanart,
+			false, // moveToFolder = false (files stay in place)
+			destPath, forceUpdate, dryRun)
+		if err != nil {
+			return err
 		}
+	}
+
+	// Summary
+	fmt.Println("\n=== Summary ===")
+	fmt.Printf("Files scanned: %d\n", len(scanResult.Files))
+	fmt.Printf("IDs matched: %d\n", len(matches))
+	fmt.Printf("Metadata found: %d\n", len(movies))
+	if dryRun {
+		fmt.Printf("NFOs generated: %d (dry-run)\n", nfoCount)
+	} else {
+		fmt.Printf("NFOs generated: %d\n", nfoCount)
+	}
+	fmt.Printf("Mode: Update (metadata only, files remain in place)\n")
+
+	if dryRun {
+		fmt.Println("\n💡 Run without --dry-run to apply changes")
+	} else {
+		fmt.Println("\n✅ Update complete!")
 	}
 
 	return nil

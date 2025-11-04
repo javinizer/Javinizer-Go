@@ -23,7 +23,8 @@ import (
 
 // processBatchJob processes a batch scraping job (metadata only, no file organization)
 // using concurrent worker pool for improved performance.
-func processBatchJob(job *worker.BatchJob, registry *models.ScraperRegistry, agg *aggregator.Aggregator, movieRepo *database.MovieRepository, mat *matcher.Matcher, strict, force bool, destination string, cfg *config.Config, selectedScrapers []string) {
+// If updateMode is true, will also download media files and generate NFOs in place without moving files.
+func processBatchJob(job *worker.BatchJob, registry *models.ScraperRegistry, agg *aggregator.Aggregator, movieRepo *database.MovieRepository, mat *matcher.Matcher, strict, force, updateMode bool, destination string, cfg *config.Config, selectedScrapers []string, db *database.DB) {
 	// Setup context for cancellation
 	ctx, cancel := context.WithCancel(context.Background())
 	job.CancelFunc = cancel
@@ -114,7 +115,7 @@ func processBatchJob(job *worker.BatchJob, registry *models.ScraperRegistry, agg
 	// Wait for all tasks to complete
 	pool.Wait()
 
-	// Mark job as completed
+	// Mark job as completed (don't auto-process update mode - wait for user to review and click "Update")
 	job.MarkCompleted()
 
 	// Broadcast final completion
@@ -123,6 +124,148 @@ func processBatchJob(job *worker.BatchJob, registry *models.ScraperRegistry, agg
 		Status:   "completed",
 		Progress: 100,
 		Message:  fmt.Sprintf("Completed %d of %d files", job.Completed, job.TotalFiles),
+	})
+}
+
+// processUpdateJob handles update operation triggered from review page
+// Generates NFOs and downloads media files in place without moving video files
+func processUpdateJob(job *worker.BatchJob, cfg *config.Config, db *database.DB) {
+	// Setup context for cancellation (mirrors processBatchJob pattern)
+	ctx, cancel := context.WithCancel(context.Background())
+	job.CancelFunc = cancel
+	defer cancel()
+
+	processUpdateMode(job, cfg, db, ctx)
+}
+
+// processUpdateMode handles update mode: generate NFOs and download media files in place (no file organization)
+func processUpdateMode(job *worker.BatchJob, cfg *config.Config, db *database.DB, ctx context.Context) {
+	// Initialize components
+	nfoGen := nfo.NewGenerator(nfo.ConfigFromAppConfig(&cfg.Metadata.NFO, &cfg.Output, &cfg.Metadata, db))
+	dl := downloader.NewDownloaderWithNFOConfig(&cfg.Output, cfg.Scrapers.UserAgent, cfg.Metadata.NFO.ActressLanguageJA, cfg.Metadata.NFO.FirstNameOrder)
+
+	// Broadcast update started
+	wsHub.BroadcastProgress(&ws.ProgressMessage{
+		JobID:    job.ID,
+		Status:   "updating",
+		Progress: 0,
+		Message:  "Generating NFOs and downloading media files in place",
+	})
+
+	status := job.GetStatus()
+	totalFiles := 0
+	for _, fileResult := range status.Results {
+		if fileResult.Status == worker.JobStatusCompleted && fileResult.Data != nil {
+			totalFiles++
+		}
+	}
+
+	// Guard against division by zero when no files were successfully scraped
+	if totalFiles == 0 {
+		wsHub.BroadcastProgress(&ws.ProgressMessage{
+			JobID:    job.ID,
+			Status:   "update_completed",
+			Progress: 100,
+			Message:  "Update completed: no files to process (all files failed during scraping)",
+		})
+		return
+	}
+
+	processedFiles := 0
+
+	for filePath, fileResult := range status.Results {
+		// Check if context is cancelled
+		select {
+		case <-ctx.Done():
+			job.MarkCancelled()
+			wsHub.BroadcastProgress(&ws.ProgressMessage{
+				JobID:    job.ID,
+				Status:   "cancelled",
+				Progress: float64(processedFiles) / float64(totalFiles) * 100,
+				Message:  fmt.Sprintf("Update cancelled (%d/%d files processed)", processedFiles, totalFiles),
+			})
+			return
+		default:
+		}
+
+		// Skip files that failed during scraping
+		if fileResult.Status != worker.JobStatusCompleted || fileResult.Data == nil {
+			continue
+		}
+
+		movie, ok := fileResult.Data.(*models.Movie)
+		if !ok {
+			logging.Errorf("Invalid movie data type for file: %s", filePath)
+			continue
+		}
+
+		// Get source directory (where file currently is)
+		sourceDir := filepath.Dir(filePath)
+
+		// Track whether this file had any errors
+		hasErrors := false
+		errorMsg := ""
+
+		// Generate NFO in source directory
+		// outputPath is a DIRECTORY, not a file path - Generate() creates the filename
+		if err := nfoGen.Generate(movie, sourceDir, "", filePath); err != nil {
+			logging.Warnf("Failed to generate NFO for %s: %v", movie.ID, err)
+			hasErrors = true
+			errorMsg = fmt.Sprintf("NFO generation failed: %v", err)
+		} else {
+			logging.Infof("Generated NFO in: %s", sourceDir)
+		}
+
+		// Download all media files to source directory
+		// In update mode, files stay in place - never create subfolders
+		// The Downloader will create extrafanart/.actors subdirs as needed
+		results, err := dl.DownloadAll(movie, sourceDir, 0)
+		if err != nil {
+			logging.Warnf("Failed to download media for %s: %v", movie.ID, err)
+			hasErrors = true
+			if errorMsg != "" {
+				errorMsg += "; Media download failed: " + err.Error()
+			} else {
+				errorMsg = fmt.Sprintf("Media download failed: %v", err)
+			}
+		} else {
+			for _, result := range results {
+				if result.Downloaded {
+					logging.Infof("Downloaded %s: %s (%d bytes)", result.Type, result.LocalPath, result.Size)
+				}
+			}
+		}
+
+		processedFiles++
+		progress := float64(processedFiles) / float64(totalFiles) * 100
+
+		// Broadcast progress with error status if errors occurred
+		if hasErrors {
+			wsHub.BroadcastProgress(&ws.ProgressMessage{
+				JobID:    job.ID,
+				FilePath: filePath,
+				Status:   "failed",
+				Progress: progress,
+				Message:  fmt.Sprintf("Partial failure for %s (%d/%d)", movie.ID, processedFiles, totalFiles),
+				Error:    errorMsg,
+			})
+		} else {
+			wsHub.BroadcastProgress(&ws.ProgressMessage{
+				JobID:    job.ID,
+				FilePath: filePath,
+				Status:   "updated",
+				Progress: progress,
+				Message:  fmt.Sprintf("Updated %s (%d/%d)", movie.ID, processedFiles, totalFiles),
+			})
+		}
+	}
+
+	// Broadcast completion
+	wsHub.BroadcastProgress(&ws.ProgressMessage{
+		JobID:    job.ID,
+		Status:   "update_completed",
+		Progress: 100,
+		Message:  fmt.Sprintf("Update completed: %d file(s) processed", processedFiles),
 	})
 }
 

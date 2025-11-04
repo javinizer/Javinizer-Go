@@ -8,15 +8,17 @@
 	import Card from '$lib/components/ui/Card.svelte';
 	import { apiClient } from '$lib/api/client';
 	import { toastStore } from '$lib/stores/toast';
-	import { Play, FolderInput, Scan, FolderOutput, FolderOpen, RotateCcw, Loader2 } from 'lucide-svelte';
+	import { Play, FolderInput, Scan, FolderOutput, FolderOpen, RotateCcw, Loader2, RefreshCw } from 'lucide-svelte';
 	import type { Scraper } from '$lib/api/types';
+
+	type OperationMode = 'scrape' | 'update';
 
 	let selectedFiles: string[] = $state([]);
 	let currentJobId: string | null = $state(null);
 	let showProgress = $state(false);
 	let scraping = $state(false);
 	let forceRefresh = $state(false);
-	let updateMode = $state(false);
+	let operationMode: OperationMode = $state('scrape');
 	let customPath = $state('');
 	let scanning = $state(false);
 	let scanError = $state<string | null>(null);
@@ -118,28 +120,30 @@
 	async function startBatchScrape() {
 		if (selectedFiles.length === 0) return;
 
+		const isUpdateMode = operationMode === 'update';
 		scraping = true;
 		try {
 			const response = await apiClient.batchScrape({
 				files: selectedFiles,
 				strict: false,
 				force: forceRefresh,
-				destination: destinationPath.trim() || undefined,
-				update: updateMode,
+				destination: isUpdateMode ? undefined : (destinationPath.trim() || undefined),
+				update: isUpdateMode,
 				selected_scrapers: showScraperSelector ? selectedScrapers : undefined
 			});
 			currentJobId = response.job_id;
 
 			// Show success toast
+			const modeText = isUpdateMode ? 'Updating metadata' : 'Batch scraping';
 			toastStore.success(
-				`Batch scraping started for ${selectedFiles.length} file${selectedFiles.length !== 1 ? 's' : ''}`,
+				`${modeText} started for ${selectedFiles.length} file${selectedFiles.length !== 1 ? 's' : ''}`,
 				5000
 			);
 
 			showProgress = true;
 		} catch (error) {
 			// Show error toast
-			const errorMessage = error instanceof Error ? error.message : 'Failed to start batch scrape';
+			const errorMessage = error instanceof Error ? error.message : 'Failed to start batch operation';
 			toastStore.error(errorMessage, 7000);
 		} finally {
 			scraping = false;
@@ -285,43 +289,79 @@
 			</div>
 		</Card>
 
-		<!-- Destination Folder -->
+		<!-- Operation Mode Selection -->
 		<Card class="p-4">
 			<div class="space-y-3">
-				<div class="flex items-center gap-2">
-					<FolderOutput class="h-5 w-5 text-primary" />
-					<h3 class="font-semibold">Output Destination</h3>
+				<h3 class="font-semibold">Operation Mode</h3>
+				<div class="grid grid-cols-2 gap-3">
+					<button
+						onclick={() => operationMode = 'scrape'}
+						class="flex flex-col items-start gap-2 p-4 rounded-lg border-2 transition-all {operationMode === 'scrape' ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'}"
+					>
+						<div class="flex items-center gap-2">
+							<Play class="h-5 w-5 {operationMode === 'scrape' ? 'text-primary' : 'text-muted-foreground'}" />
+							<span class="font-medium {operationMode === 'scrape' ? 'text-primary' : ''}">Scrape & Organize</span>
+						</div>
+						<p class="text-xs text-muted-foreground text-left">
+							Scrape metadata and organize files into destination folder with artwork and NFO
+						</p>
+					</button>
+
+					<button
+						onclick={() => operationMode = 'update'}
+						class="flex flex-col items-start gap-2 p-4 rounded-lg border-2 transition-all {operationMode === 'update' ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'}"
+					>
+						<div class="flex items-center gap-2">
+							<RefreshCw class="h-5 w-5 {operationMode === 'update' ? 'text-primary' : 'text-muted-foreground'}" />
+							<span class="font-medium {operationMode === 'update' ? 'text-primary' : ''}">Update Metadata</span>
+						</div>
+						<p class="text-xs text-muted-foreground text-left">
+							Update metadata and media files in place, video files remain where they are
+						</p>
+					</button>
 				</div>
-				<div class="flex gap-2">
-					<input
-						type="text"
-						bind:value={destinationPath}
-						oninput={() => {
-							// Save to localStorage for persistence
-							localStorage.setItem(STORAGE_KEY_OUTPUT, destinationPath);
-						}}
-						placeholder="Enter destination path (e.g., /path/to/output)"
-						class="flex-1 px-3 py-2 border rounded-md focus:ring-2 focus:ring-primary focus:border-primary transition-all font-mono text-sm"
-					/>
-					<Button onclick={openDestinationBrowser}>
-						{#snippet children()}
-							<FolderOpen class="h-4 w-4 mr-2" />
-							Browse
-						{/snippet}
-					</Button>
-				</div>
-				<p class="text-xs text-muted-foreground">
-					Scraped files will be organized with metadata, artwork, and NFO files in this directory
-				</p>
 			</div>
 		</Card>
+
+		<!-- Destination Folder (only shown in scrape mode) -->
+		{#if operationMode === 'scrape'}
+			<Card class="p-4">
+				<div class="space-y-3">
+					<div class="flex items-center gap-2">
+						<FolderOutput class="h-5 w-5 text-primary" />
+						<h3 class="font-semibold">Output Destination</h3>
+					</div>
+					<div class="flex gap-2">
+						<input
+							type="text"
+							bind:value={destinationPath}
+							oninput={() => {
+								// Save to localStorage for persistence
+								localStorage.setItem(STORAGE_KEY_OUTPUT, destinationPath);
+							}}
+							placeholder="Enter destination path (e.g., /path/to/output)"
+							class="flex-1 px-3 py-2 border rounded-md focus:ring-2 focus:ring-primary focus:border-primary transition-all font-mono text-sm"
+						/>
+						<Button onclick={openDestinationBrowser}>
+							{#snippet children()}
+								<FolderOpen class="h-4 w-4 mr-2" />
+								Browse
+							{/snippet}
+						</Button>
+					</div>
+					<p class="text-xs text-muted-foreground">
+						Scraped files will be organized with metadata, artwork, and NFO files in this directory
+					</p>
+				</div>
+			</Card>
+		{/if}
 
 		<!-- Controls -->
 		<Card class="p-6">
 			<div class="space-y-6">
 				<!-- Options Section -->
 				<div class="space-y-3">
-					<h3 class="text-sm font-semibold text-foreground mb-3">Scrape Options</h3>
+					<h3 class="text-sm font-semibold text-foreground mb-3">Options</h3>
 					<div class="grid gap-3">
 						<label
 							class="flex items-start gap-3 p-3 rounded-lg border border-border hover:bg-accent/50 cursor-pointer transition-colors"
@@ -335,22 +375,6 @@
 								<span class="text-sm font-medium">Force Refresh</span>
 								<p class="text-xs text-muted-foreground mt-0.5">
 									Clear cache and fetch fresh metadata from scrapers
-								</p>
-							</div>
-						</label>
-
-						<label
-							class="flex items-start gap-3 p-3 rounded-lg border border-border hover:bg-accent/50 cursor-pointer transition-colors"
-						>
-							<input
-								type="checkbox"
-								bind:checked={updateMode}
-								class="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary focus:ring-2 focus:ring-primary"
-							/>
-							<div class="flex-1">
-								<span class="text-sm font-medium">Update Mode</span>
-								<p class="text-xs text-muted-foreground mt-0.5">
-									Only update metadata files, don't move or organize video files
 								</p>
 							</div>
 						</label>
@@ -400,12 +424,18 @@
 						{#snippet children()}
 							{#if scraping}
 								<Loader2 class="h-4 w-4 mr-2 animate-spin" />
+							{:else if operationMode === 'update'}
+								<RefreshCw class="h-4 w-4 mr-2" />
 							{:else}
 								<Play class="h-4 w-4 mr-2" />
 							{/if}
-							{scraping
-								? 'Starting...'
-								: `Scrape ${selectedFiles.length} File${selectedFiles.length !== 1 ? 's' : ''}`}
+							{#if scraping}
+								Starting...
+							{:else if operationMode === 'update'}
+								Update {selectedFiles.length} File{selectedFiles.length !== 1 ? 's' : ''}
+							{:else}
+								Scrape {selectedFiles.length} File{selectedFiles.length !== 1 ? 's' : ''}
+							{/if}
 						{/snippet}
 					</Button>
 				</div>
@@ -480,11 +510,12 @@
 		<Card class="p-4 bg-accent/30">
 			<h3 class="font-semibold mb-2">How to use:</h3>
 			<ul class="text-sm text-muted-foreground space-y-1">
-				<li>1. Navigate to your video files directory using the file browser</li>
-				<li>2. Select one or more video files (files with matched JAV IDs are highlighted in green)</li>
-				<li>3. Configure scraping options (strict mode, force refresh)</li>
-				<li>4. Click "Scrape" to start batch metadata scraping</li>
-				<li>5. Monitor progress in the modal dialog (you can close it and the job will continue)</li>
+				<li>1. Select operation mode: <strong>Scrape & Organize</strong> (moves files) or <strong>Update Metadata</strong> (files stay in place)</li>
+				<li>2. Navigate to your video files directory using the file browser</li>
+				<li>3. Select one or more video files (files with matched JAV IDs are highlighted in green)</li>
+				<li>4. Configure options (force refresh, scraper selection) as needed</li>
+				<li>5. Click the action button to start the operation</li>
+				<li>6. Monitor progress in the modal dialog (you can close it and the job will continue)</li>
 			</ul>
 		</Card>
 	</div>
@@ -492,7 +523,12 @@
 
 <!-- Progress Modal -->
 {#if showProgress && currentJobId}
-	<ProgressModal jobId={currentJobId} destination={destinationPath} onClose={closeProgress} />
+	<ProgressModal
+		jobId={currentJobId}
+		destination={destinationPath}
+		updateMode={operationMode === 'update'}
+		onClose={closeProgress}
+	/>
 {/if}
 
 <!-- Input Browser Modal -->

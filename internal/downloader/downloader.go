@@ -141,9 +141,9 @@ func (d *Downloader) DownloadCover(movie *models.Movie, destDir string) (*Downlo
 	return d.download(movie.CoverURL, destPath, MediaTypeCover)
 }
 
-// DownloadPoster downloads and crops the movie poster
-// The poster is created by cropping the right 47.2% of the cover image
-// This matches the original Javinizer's behavior
+// DownloadPoster downloads the movie poster
+// If ShouldCropPoster is true, the poster is created by cropping the right 47.2% of the cover image
+// If ShouldCropPoster is false, the poster is downloaded directly without cropping (high-quality poster)
 func (d *Downloader) DownloadPoster(movie *models.Movie, destDir string) (*DownloadResult, error) {
 	if !d.config.DownloadPoster {
 		return &DownloadResult{Type: MediaTypePoster, Downloaded: false}, nil
@@ -177,7 +177,14 @@ func (d *Downloader) DownloadPoster(movie *models.Movie, destDir string) (*Downl
 		}, nil
 	}
 
-	// Download the source image to a temporary location
+	// Check if we need to crop the poster or use it directly
+	if !movie.ShouldCropPoster {
+		// High-quality poster - download directly without cropping
+		result, err := d.download(posterURL, destPath, MediaTypePoster)
+		return result, err
+	}
+
+	// Low-quality poster - download and crop from cover
 	tempPath := destPath + ".full.tmp"
 	result, err := d.download(posterURL, tempPath, MediaTypePoster)
 	if err != nil || !result.Downloaded {

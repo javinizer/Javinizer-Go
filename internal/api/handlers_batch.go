@@ -31,7 +31,7 @@ func batchScrape(deps *ServerDependencies) gin.HandlerFunc {
 		job := deps.JobQueue.CreateJob(req.Files)
 
 		// Start processing in background - use getters for thread-safe access
-		go processBatchJob(job, deps.GetRegistry(), deps.GetAggregator(), deps.MovieRepo, deps.GetMatcher(), req.Strict, req.Force, req.Destination, deps.GetConfig(), req.SelectedScrapers)
+		go processBatchJob(job, deps.GetRegistry(), deps.GetAggregator(), deps.MovieRepo, deps.GetMatcher(), req.Strict, req.Force, req.Update, req.Destination, deps.GetConfig(), req.SelectedScrapers, deps.DB)
 
 		c.JSON(200, BatchScrapeResponse{
 			JobID: job.ID,
@@ -226,6 +226,40 @@ func organizeJob(deps *ServerDependencies) gin.HandlerFunc {
 		go processOrganizeJob(job, deps.GetMatcher(), req.Destination, req.CopyOnly, deps.DB, deps.GetConfig())
 
 		c.JSON(200, gin.H{"message": "Organization started"})
+	}
+}
+
+// updateBatchJob godoc
+// @Summary Update batch job files
+// @Description Generate NFOs and download media files in place without moving video files
+// @Tags web
+// @Produce json
+// @Param id path string true "Job ID"
+// @Success 200 {object} map[string]string
+// @Failure 400 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Router /api/v1/batch/{id}/update [post]
+func updateBatchJob(deps *ServerDependencies) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		jobID := c.Param("id")
+
+		job, ok := deps.JobQueue.GetJob(jobID)
+		if !ok {
+			c.JSON(404, ErrorResponse{Error: "Job not found"})
+			return
+		}
+
+		// Check if job is in correct state (completed scraping)
+		status := job.GetStatus()
+		if status.Status != worker.JobStatusCompleted {
+			c.JSON(400, ErrorResponse{Error: "Job must be completed before updating"})
+			return
+		}
+
+		// Start update in background - use getter for thread-safe access
+		go processUpdateJob(job, deps.GetConfig(), deps.DB)
+
+		c.JSON(200, gin.H{"message": "Update started"})
 	}
 }
 

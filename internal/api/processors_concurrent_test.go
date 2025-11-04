@@ -227,9 +227,11 @@ func TestProcessBatchJobConcurrent(t *testing.T) {
 			deps.Matcher,
 			false, // strict
 			false, // force
+			false, // updateMode
 			"",    // destination
 			cfg,
-			nil, // selectedScrapers
+			nil,     // selectedScrapers
+			deps.DB, // db
 		)
 		close(done)
 	}()
@@ -303,9 +305,11 @@ func TestProcessBatchJobCancellation(t *testing.T) {
 			deps.Matcher,
 			false,
 			false,
+			false, // updateMode
 			"",
 			cfg,
-			nil,
+			nil,     // selectedScrapers
+			deps.DB, // db
 		)
 		close(done)
 	}()
@@ -378,9 +382,11 @@ func TestProcessBatchJobRaceConditions(t *testing.T) {
 			deps.Matcher,
 			false,
 			false,
+			false, // updateMode
 			"",
 			cfg,
-			nil,
+			nil,     // selectedScrapers
+			deps.DB, // db
 		)
 		close(done)
 	}()
@@ -572,9 +578,11 @@ func TestBatchScrapeTaskDatabaseSafety(t *testing.T) {
 			deps.Matcher,
 			false,
 			false,
+			false, // updateMode
 			"",
 			cfg,
-			nil,
+			nil,     // selectedScrapers
+			deps.DB, // db
 		)
 		close(done)
 	}()
@@ -663,9 +671,11 @@ func TestWorkerPoolErrorHandling(t *testing.T) {
 			deps.Matcher,
 			false,
 			false,
+			false, // updateMode
 			"",
 			cfg,
-			nil,
+			nil,     // selectedScrapers
+			deps.DB, // db
 		)
 		close(done)
 	}()

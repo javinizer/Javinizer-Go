@@ -324,6 +324,7 @@ func NewServer(deps *ServerDependencies) *gin.Engine {
 		v1.PATCH("/batch/:id/movies/:movieId", updateBatchMovie(deps))
 		v1.POST("/batch/:id/movies/:movieId/preview", previewOrganize(deps))
 		v1.POST("/batch/:id/organize", organizeJob(deps))
+		v1.POST("/batch/:id/update", updateBatchJob(deps))
 	}
 
 	// Serve frontend static files (for Docker deployment)
