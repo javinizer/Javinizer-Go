@@ -82,21 +82,22 @@ func GenerateTempPoster(
 		return "", fmt.Errorf("poster download failed with status %d", resp.StatusCode)
 	}
 
-	// Save to temporary file using atomic write pattern
-	tempDownloadPath := tempFullPath + ".tmp"
-	outFile, err := os.Create(tempDownloadPath)
+	// Save to temporary file using atomic write pattern with unique filename
+	tmpDownload, err := os.CreateTemp(tempDir, movie.ID+"-full-*.tmp")
 	if err != nil {
 		return "", fmt.Errorf("failed to create temp file: %w", err)
 	}
+	tempDownloadPath := tmpDownload.Name()
 
-	_, err = io.Copy(outFile, resp.Body)
-	outFile.Close()
+	_, err = io.Copy(tmpDownload, resp.Body)
+	tmpDownload.Close()
 	if err != nil {
 		os.Remove(tempDownloadPath)
 		return "", fmt.Errorf("failed to write poster: %w", err)
 	}
 
-	// Atomic rename to final path
+	// Atomic rename to final path (idempotent: remove destination first for Windows/rescrape compatibility)
+	_ = os.Remove(tempFullPath) // Best-effort remove existing dest
 	if err := os.Rename(tempDownloadPath, tempFullPath); err != nil {
 		os.Remove(tempDownloadPath)
 		return "", fmt.Errorf("failed to finalize poster download: %w", err)
@@ -173,8 +174,7 @@ func GenerateCroppedPoster(
 		return "", fmt.Errorf("failed to create poster directory: %w", err)
 	}
 
-	// Define file paths
-	tempFullPath := filepath.Join(posterDir, fmt.Sprintf("%s-full.jpg.tmp", movie.ID))
+	// Define cropped file path
 	croppedPath := filepath.Join(posterDir, fmt.Sprintf("%s.jpg", movie.ID))
 
 	// Download the poster
@@ -201,37 +201,60 @@ func GenerateCroppedPoster(
 		return "", fmt.Errorf("poster download failed with status %d", resp.StatusCode)
 	}
 
-	// Save to temporary file using atomic write pattern
-	outFile, err := os.Create(tempFullPath)
+	// Save to temporary file using atomic write pattern with unique filename
+	tmpDownload, err := os.CreateTemp(posterDir, movie.ID+"-full-*.tmp")
 	if err != nil {
 		return "", fmt.Errorf("failed to create temp file: %w", err)
 	}
+	tempDownloadPath := tmpDownload.Name()
 
-	_, err = io.Copy(outFile, resp.Body)
-	outFile.Close()
+	_, err = io.Copy(tmpDownload, resp.Body)
+	tmpDownload.Close()
 	if err != nil {
-		os.Remove(tempFullPath)
+		os.Remove(tempDownloadPath)
 		return "", fmt.Errorf("failed to write poster: %w", err)
 	}
 
 	// Check for cancellation before expensive cropping operation
 	select {
 	case <-ctx.Done():
-		os.Remove(tempFullPath)
+		os.Remove(tempDownloadPath)
 		os.Remove(croppedPath)
 		return "", ctx.Err()
 	default:
 	}
 
 	// Crop the poster using the smart cropping algorithm
-	if err := imageutil.CropPosterFromCover(tempFullPath, croppedPath); err != nil {
-		os.Remove(tempFullPath)
-		os.Remove(croppedPath)
+	// Crop to temp file first for atomic operation with unique filename
+	tmpCropped, err := os.CreateTemp(posterDir, movie.ID+"-cropped-*.tmp")
+	if err != nil {
+		os.Remove(tempDownloadPath)
+		return "", fmt.Errorf("failed to create temp cropped file: %w", err)
+	}
+	tempCroppedPath := tmpCropped.Name()
+	tmpCropped.Close() // Close immediately as CropPosterFromCover will create the file
+
+	if err := imageutil.CropPosterFromCover(tempDownloadPath, tempCroppedPath); err != nil {
+		os.Remove(tempDownloadPath)
+		os.Remove(tempCroppedPath)
 		return "", fmt.Errorf("failed to crop poster: %w", err)
 	}
 
+	// Atomic rename to final destination (idempotent: remove destination first for Windows/rescrape compatibility)
+	_ = os.Remove(croppedPath) // Best-effort remove existing dest
+	if err := os.Rename(tempCroppedPath, croppedPath); err != nil {
+		os.Remove(tempDownloadPath)
+		os.Remove(tempCroppedPath)
+		return "", fmt.Errorf("failed to rename cropped poster: %w", err)
+	}
+
 	// Clean up the full image after successful crop
-	os.Remove(tempFullPath)
+	os.Remove(tempDownloadPath)
+
+	// Set predictable permissions for static file serving
+	if err := os.Chmod(croppedPath, 0644); err != nil {
+		logging.Warnf("Failed to set poster permissions: %v", err)
+	}
 
 	// Update movie metadata to indicate poster is already cropped
 	movie.ShouldCropPoster = false

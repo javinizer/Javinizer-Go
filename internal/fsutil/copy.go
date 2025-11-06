@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 )
 
 // CopyFileAtomic performs an atomic streaming copy from src to dst.
@@ -14,26 +15,40 @@ import (
 //   - Streaming copy (memory-safe for large files)
 //   - Atomic rename (most filesystems)
 //   - Automatic cleanup of temp files on error
+//   - Preserves source file permissions
+//   - Unique temp filenames (safe for concurrent writes to same destination)
 //
 // Returns an error if any operation fails (open, copy, close, rename).
 func CopyFileAtomic(src, dst string) error {
-	// Open source file
+	// Open source file and get its permissions
 	srcFile, err := os.Open(src)
 	if err != nil {
 		return fmt.Errorf("failed to open source file: %w", err)
 	}
 	defer srcFile.Close()
 
-	// Write to temporary file first for atomic operation
-	tmpDst := dst + ".tmp"
-	dstFile, err := os.Create(tmpDst)
+	// Get source file permissions
+	srcInfo, err := srcFile.Stat()
+	if err != nil {
+		return fmt.Errorf("failed to stat source file: %w", err)
+	}
+
+	// Ensure destination directory exists
+	dir := filepath.Dir(dst)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("failed to ensure destination directory: %w", err)
+	}
+
+	// Create unique temporary file in same directory (for atomic rename)
+	tmpFile, err := os.CreateTemp(dir, filepath.Base(dst)+".tmp.*")
 	if err != nil {
 		return fmt.Errorf("failed to create temp file: %w", err)
 	}
+	tmpDst := tmpFile.Name()
 
 	// Stream copy (memory-safe for large files)
-	_, err = io.Copy(dstFile, srcFile)
-	closeErr := dstFile.Close()
+	_, err = io.Copy(tmpFile, srcFile)
+	closeErr := tmpFile.Close()
 
 	if err != nil {
 		os.Remove(tmpDst) // Clean up temp file on copy error
@@ -45,10 +60,37 @@ func CopyFileAtomic(src, dst string) error {
 		return fmt.Errorf("failed to close temp file: %w", closeErr)
 	}
 
-	// Rename temp file to final destination (atomic on most filesystems)
+	// Preserve source file permissions
+	if err := os.Chmod(tmpDst, srcInfo.Mode().Perm()); err != nil {
+		os.Remove(tmpDst)
+		return fmt.Errorf("failed to set file permissions: %w", err)
+	}
+
+	// Rename temp file to final destination (atomic on same filesystem)
 	if err := os.Rename(tmpDst, dst); err != nil {
-		os.Remove(tmpDst) // Clean up temp file on rename error
-		return fmt.Errorf("failed to rename temp file: %w", err)
+		// Fallback for cross-filesystem rename (e.g., external drives, network mounts)
+		if copyErr := func() error {
+			in, err := os.Open(tmpDst)
+			if err != nil {
+				return err
+			}
+			defer in.Close()
+
+			out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, srcInfo.Mode().Perm())
+			if err != nil {
+				return err
+			}
+			defer out.Close()
+
+			if _, err := io.Copy(out, in); err != nil {
+				return err
+			}
+			return nil
+		}(); copyErr != nil {
+			os.Remove(tmpDst)
+			return fmt.Errorf("failed to finalize copy (rename: %v, fallback: %v)", err, copyErr)
+		}
+		os.Remove(tmpDst)
 	}
 
 	return nil

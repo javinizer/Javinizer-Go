@@ -62,21 +62,44 @@ func TestCopyFileAtomic_SourceNotFound(t *testing.T) {
 	}
 }
 
-func TestCopyFileAtomic_InvalidDestination(t *testing.T) {
+func TestCopyFileAtomic_CreatesNestedDirectories(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create source file
 	srcPath := filepath.Join(tmpDir, "source.txt")
-	if err := os.WriteFile(srcPath, []byte("test"), 0644); err != nil {
+	testContent := []byte("test content")
+	if err := os.WriteFile(srcPath, testContent, 0644); err != nil {
 		t.Fatalf("Failed to create source file: %v", err)
 	}
 
-	// Try to copy to invalid destination (directory that doesn't exist)
-	dstPath := filepath.Join(tmpDir, "nonexistent_dir", "destination.txt")
+	// Copy to nested directory that doesn't exist yet
+	dstPath := filepath.Join(tmpDir, "level1", "level2", "level3", "destination.txt")
 
+	// Should succeed by auto-creating directories
 	err := CopyFileAtomic(srcPath, dstPath)
-	if err == nil {
-		t.Fatal("Expected error for invalid destination, got nil")
+	if err != nil {
+		t.Fatalf("CopyFileAtomic should auto-create nested directories, got error: %v", err)
+	}
+
+	// Verify destination file exists
+	if _, err := os.Stat(dstPath); os.IsNotExist(err) {
+		t.Error("Destination file does not exist after copy")
+	}
+
+	// Verify content matches
+	dstContent, err := os.ReadFile(dstPath)
+	if err != nil {
+		t.Fatalf("Failed to read destination file: %v", err)
+	}
+
+	if string(dstContent) != string(testContent) {
+		t.Errorf("Content mismatch: got %q, want %q", string(dstContent), string(testContent))
+	}
+
+	// Verify intermediate directories were created
+	dir := filepath.Join(tmpDir, "level1", "level2", "level3")
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		t.Error("Intermediate directories were not created")
 	}
 }
 
