@@ -1,0 +1,49 @@
+# Runtime data and databases (contains sensitive content and temp files)
+data/
+
+# Build artifacts
+bin/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test artifacts
+*.test
+*.out
+coverage.out
+coverage.html
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Git files
+.git/
+.gitignore
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# CI/CD files
+.github/
+
+# Node modules (frontend dependencies, will be installed in container)
+web/frontend/node_modules/
+
+# Go module cache
+go.sum
+
+# Logs
+*.log
+
+# Temporary files
+tmp/
+temp/
+*.tmp
