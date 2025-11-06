@@ -439,10 +439,15 @@ func excludeBatchMovie(deps *ServerDependencies) gin.HandlerFunc {
 
 		// If not found by MovieID, try searching by the actual movie.ID
 		if len(filePaths) == 0 {
+			logging.Debugf("[ExcludeBatchMovie] No matches by FileResult.MovieID, trying Movie.ID")
 			for filePath, result := range status.Results {
 				if result.Data != nil {
-					if m, ok := result.Data.(*models.Movie); ok && m.ID == movieID {
-						filePaths = append(filePaths, filePath)
+					if m, ok := result.Data.(*models.Movie); ok {
+						logging.Debugf("[ExcludeBatchMovie] File: %s, Movie.ID: %s", filePath, m.ID)
+						if m.ID == movieID {
+							filePaths = append(filePaths, filePath)
+							logging.Debugf("[ExcludeBatchMovie] Matched by Movie.ID: %s", filePath)
+						}
 					}
 				}
 			}
@@ -454,8 +459,10 @@ func excludeBatchMovie(deps *ServerDependencies) gin.HandlerFunc {
 		}
 
 		// Mark ALL parts as excluded (handles multi-part files like CD1, CD2, etc.)
+		logging.Debugf("[ExcludeBatchMovie] Excluding %d file(s) for movieID=%s", len(filePaths), movieID)
 		for _, filePath := range filePaths {
 			job.ExcludeFile(filePath)
+			logging.Debugf("[ExcludeBatchMovie] Excluded: %s", filePath)
 		}
 
 		logging.Infof("Movie %s (%d file(s)) excluded from batch job %s", movieID, len(filePaths), jobID)

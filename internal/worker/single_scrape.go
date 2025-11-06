@@ -120,14 +120,42 @@ func RunBatchScrapeOnce(
 			logging.Debugf("[Batch %s] File %d: Found %s in cache (Title=%s, Maker=%s)",
 				job.ID, fileIndex, movieID, cached.Title, cached.Maker)
 
+			// IMPORTANT: Generate temp poster for review page even when using cache
+			// This ensures multi-part files (CD1/CD2/CD3) all have accessible posters
+			// Without this, cached results would have 404 poster URLs
+			var posterErr *string
+			if httpClient != nil && processedMovieIDs != nil {
+				// Check if we've already generated a poster for this movie ID (thread-safe)
+				processedMovieIDsMutex.Lock()
+				shouldGenerate := !processedMovieIDs[cached.ID]
+				if shouldGenerate {
+					processedMovieIDs[cached.ID] = true
+				}
+				processedMovieIDsMutex.Unlock()
+
+				if shouldGenerate {
+					if tempPosterURL, err := GenerateTempPoster(ctx, job.ID, cached, httpClient, userAgent, referer); err != nil {
+						logging.Warnf("[Batch %s] File %d: Failed to create temp poster for cached movie: %v", job.ID, fileIndex, err)
+						errMsg := err.Error()
+						posterErr = &errMsg
+					} else {
+						cached.CroppedPosterURL = tempPosterURL
+					}
+				} else {
+					// Reuse already-generated temp poster URL for multi-part files
+					cached.CroppedPosterURL = fmt.Sprintf("/api/v1/temp/posters/%s/%s.jpg", job.ID, cached.ID)
+				}
+			}
+
 			now := time.Now()
 			fileResult := &FileResult{
-				FilePath:  filePath,
-				MovieID:   movieID,
-				Status:    JobStatusCompleted,
-				Data:      cached,
-				StartedAt: startTime,
-				EndedAt:   &now,
+				FilePath:    filePath,
+				MovieID:     movieID,
+				Status:      JobStatusCompleted,
+				Data:        cached,
+				PosterError: posterErr,
+				StartedAt:   startTime,
+				EndedAt:     &now,
 			}
 
 			// Populate multi-part fields (only valid if not using query override)
