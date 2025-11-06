@@ -81,7 +81,10 @@ type ScrapersConfig struct {
 
 // R18DevConfig holds R18.dev scraper configuration
 type R18DevConfig struct {
-	Enabled bool `yaml:"enabled"`
+	Enabled           bool `yaml:"enabled"`
+	RequestDelay      int  `yaml:"request_delay"`       // Delay between requests in milliseconds (0 = no delay)
+	MaxRetries        int  `yaml:"max_retries"`         // Maximum number of retry attempts for rate-limited requests
+	RespectRetryAfter bool `yaml:"respect_retry_after"` // Whether to respect Retry-After header from server
 }
 
 // DMMConfig holds DMM/Fanza scraper configuration

@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 	"unicode"
 
@@ -24,8 +25,12 @@ const (
 
 // Scraper implements the R18.dev scraper
 type Scraper struct {
-	client  *resty.Client
-	enabled bool
+	client            *resty.Client
+	enabled           bool
+	requestDelay      time.Duration
+	maxRetries        int
+	respectRetryAfter bool
+	lastRequestTime   atomic.Value // stores time.Time of last request for rate limiting
 }
 
 // New creates a new R18.dev scraper
@@ -62,10 +67,31 @@ func New(cfg *config.Config) *Scraper {
 		logging.Infof("R18Dev: Using proxy %s", httpclient.SanitizeProxyURL(cfg.Scrapers.Proxy.URL))
 	}
 
-	return &Scraper{
-		client:  client,
-		enabled: cfg.Scrapers.R18Dev.Enabled,
+	// Calculate request delay from config (milliseconds to duration)
+	requestDelay := time.Duration(cfg.Scrapers.R18Dev.RequestDelay) * time.Millisecond
+
+	// Set defaults for rate limiting if not configured
+	maxRetries := cfg.Scrapers.R18Dev.MaxRetries
+	if maxRetries == 0 {
+		maxRetries = 3 // Default to 3 retries
 	}
+
+	scraper := &Scraper{
+		client:            client,
+		enabled:           cfg.Scrapers.R18Dev.Enabled,
+		requestDelay:      requestDelay,
+		maxRetries:        maxRetries,
+		respectRetryAfter: cfg.Scrapers.R18Dev.RespectRetryAfter,
+	}
+
+	// Initialize lastRequestTime with zero time
+	scraper.lastRequestTime.Store(time.Time{})
+
+	if requestDelay > 0 {
+		logging.Infof("R18Dev: Rate limiting enabled with %v delay between requests", requestDelay)
+	}
+
+	return scraper
 }
 
 // Name returns the scraper identifier
@@ -82,6 +108,90 @@ func (s *Scraper) IsEnabled() bool {
 func (s *Scraper) GetURL(id string) (string, error) {
 	normalized := normalizeID(id)
 	return fmt.Sprintf(apiURL, normalized), nil
+}
+
+// waitForRateLimit enforces the request delay between requests
+func (s *Scraper) waitForRateLimit() {
+	if s.requestDelay == 0 {
+		return // No rate limiting configured
+	}
+
+	// Get last request time
+	lastReq := s.lastRequestTime.Load()
+	if lastReq == nil {
+		return // First request, no need to wait
+	}
+
+	lastTime := lastReq.(time.Time)
+	if lastTime.IsZero() {
+		return // First request, no need to wait
+	}
+
+	// Calculate how long to wait
+	elapsed := time.Since(lastTime)
+	if elapsed < s.requestDelay {
+		waitTime := s.requestDelay - elapsed
+		logging.Debugf("R18: Rate limit wait: %v", waitTime)
+		time.Sleep(waitTime)
+	}
+}
+
+// updateLastRequestTime updates the timestamp of the last request
+func (s *Scraper) updateLastRequestTime() {
+	s.lastRequestTime.Store(time.Now())
+}
+
+// doRequestWithRetry performs an HTTP request with retry logic for rate limiting
+func (s *Scraper) doRequestWithRetry(url string) (*resty.Response, error) {
+	var resp *resty.Response
+	var err error
+
+	for attempt := 0; attempt <= s.maxRetries; attempt++ {
+		// Wait for rate limit before making request
+		s.waitForRateLimit()
+
+		// Make the request
+		resp, err = s.client.R().
+			SetHeader("Accept-Encoding", ""). // Disable compression to avoid issues
+			Get(url)
+
+		// Update last request time
+		s.updateLastRequestTime()
+
+		// Handle rate limiting
+		if resp != nil && (resp.StatusCode() == 429 || resp.StatusCode() == 503) {
+			retryAfter := resp.Header().Get("Retry-After")
+
+			if attempt < s.maxRetries {
+				var waitTime time.Duration
+
+				// Parse Retry-After header if configured to respect it
+				if s.respectRetryAfter && retryAfter != "" {
+					// Try to parse as seconds (integer)
+					if seconds, parseErr := strconv.Atoi(retryAfter); parseErr == nil {
+						waitTime = time.Duration(seconds) * time.Second
+					}
+				}
+
+				// Use exponential backoff if no Retry-After or not configured to respect it
+				if waitTime == 0 {
+					waitTime = time.Duration(1<<uint(attempt)) * time.Second // 1s, 2s, 4s, 8s...
+				}
+
+				logging.Warnf("R18: Rate limited (429), retrying in %v (attempt %d/%d)", waitTime, attempt+1, s.maxRetries)
+				time.Sleep(waitTime)
+				continue
+			}
+
+			// Max retries exceeded
+			return nil, fmt.Errorf("rate limited after %d retries (HTTP %d)", s.maxRetries, resp.StatusCode())
+		}
+
+		// Request successful or non-rate-limit error
+		break
+	}
+
+	return resp, err
 }
 
 // Search searches for and scrapes metadata for a given movie ID
@@ -113,9 +223,7 @@ func (s *Scraper) Search(id string) (*models.ScraperResult, error) {
 		dvdIDURL := fmt.Sprintf("%s/videos/vod/movies/detail/-/dvd_id=%s/json", baseURL, idVariation)
 		logging.Debugf("R18: Trying dvd_id lookup: %s", idVariation)
 
-		resp, err := s.client.R().
-			SetHeader("Accept-Encoding", ""). // Disable compression to avoid issues
-			Get(dvdIDURL)
+		resp, err := s.doRequestWithRetry(dvdIDURL)
 		if err != nil {
 			logging.Debugf("R18: Failed to lookup with %s: %v", idVariation, err)
 			continue
@@ -169,9 +277,7 @@ func (s *Scraper) Search(id string) (*models.ScraperResult, error) {
 		logging.Debugf("R18: Using normalized ID URL (no content-id found): %s", finalURL)
 	}
 
-	resp, err := s.client.R().
-		SetHeader("Accept-Encoding", ""). // Disable compression to avoid issues
-		Get(finalURL)
+	resp, err := s.doRequestWithRetry(finalURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch data from R18.dev: %w", err)
 	}
