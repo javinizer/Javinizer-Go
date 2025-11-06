@@ -361,10 +361,11 @@ func RunBatchScrapeOnce(
 				logging.Debugf("[Batch %s] File %d: Persistent poster already exists for %s, skipping copy", job.ID, fileIndex, movie.ID)
 
 				// Update database with cropped poster URL (other task may have persisted it)
+				// Use Upsert instead of Update to avoid GORM association side effects
 				croppedURL := fmt.Sprintf("/api/v1/posters/%s.jpg", movie.ID)
 				movie.CroppedPosterURL = croppedURL
-				if updateErr := movieRepo.Update(movie); updateErr != nil {
-					logging.Warnf("[Batch %s] File %d: Failed to update cropped poster URL: %v", job.ID, fileIndex, updateErr)
+				if updateErr := movieRepo.Upsert(movie); updateErr != nil {
+					logging.Warnf("[Batch %s] File %d: Failed to upsert cropped poster URL: %v", job.ID, fileIndex, updateErr)
 				}
 			} else {
 				logging.Debugf("[Batch %s] File %d: Copying temp poster to persistent location for %s", job.ID, fileIndex, movie.ID)
@@ -379,11 +380,12 @@ func RunBatchScrapeOnce(
 						logging.Warnf("[Batch %s] File %d: Failed to copy poster: %v", job.ID, fileIndex, copyErr)
 					} else {
 						// Update database with cropped poster URL
+						// Use Upsert instead of Update to avoid GORM association side effects
 						croppedURL := fmt.Sprintf("/api/v1/posters/%s.jpg", movie.ID)
 						movie.CroppedPosterURL = croppedURL
 
-						if updateErr := movieRepo.Update(movie); updateErr != nil {
-							logging.Warnf("[Batch %s] File %d: Failed to update cropped poster URL: %v", job.ID, fileIndex, updateErr)
+						if updateErr := movieRepo.Upsert(movie); updateErr != nil {
+							logging.Warnf("[Batch %s] File %d: Failed to upsert cropped poster URL: %v", job.ID, fileIndex, updateErr)
 						} else {
 							logging.Debugf("[Batch %s] File %d: Successfully persisted cropped poster: %s", job.ID, fileIndex, croppedURL)
 						}
