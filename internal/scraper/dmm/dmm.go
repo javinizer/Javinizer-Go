@@ -193,8 +193,10 @@ func (s *Scraper) ResolveContentID(id string) (string, error) {
 		}
 
 		if urlCID != "" {
-			// Clean the CID from URL (remove prepended numbers like "9ipx535" -> "ipx535")
-			cleanURLCID := regexp.MustCompile(`^\d*([a-z]+\d+.*)$`).ReplaceAllString(urlCID, "$1")
+			// Clean the CID from URL:
+			// 1. Remove prepended numbers: "9ipx535" -> "ipx535"
+			// 2. Remove h_<digits> prefix pattern: "h_796san167" -> "san167"
+			cleanURLCID := regexp.MustCompile(`^(?:\d+|h_\d+)?([a-z]+\d+.*)$`).ReplaceAllString(urlCID, "$1")
 
 			logging.Debugf("DMM: Found urlCID=%s, cleanURLCID=%s (comparing with searchQuery=%s, cleanSearchID=%s, contentID=%s)",
 				urlCID, cleanURLCID, searchQuery, cleanSearchID, contentID)
