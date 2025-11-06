@@ -115,6 +115,7 @@ func rescrapeBatchMovie(deps *ServerDependencies) gin.HandlerFunc {
 			cfg.Scrapers.Referer,   // referer
 			req.Force,              // force rescrape
 			req.SelectedScrapers,   // selectedScrapers (empty = use defaults)
+			nil,                    // processedMovieIDs (nil = no deduplication for single file rescrape)
 		)
 
 		if err != nil {
@@ -172,9 +173,9 @@ func rescrapeBatchMovie(deps *ServerDependencies) gin.HandlerFunc {
 			} else {
 				// Update movie's cropped poster URL
 				movie.CroppedPosterURL = croppedURL
-				// Save to database
-				if err := deps.MovieRepo.Update(movie); err != nil {
-					logging.Warnf("Failed to save cropped poster URL to database: %v", err)
+				// Save to database (use Upsert to handle both new and existing records)
+				if err := deps.MovieRepo.Upsert(movie); err != nil {
+					logging.Warnf("Failed to upsert movie with cropped poster URL: %v", err)
 				}
 			}
 		}

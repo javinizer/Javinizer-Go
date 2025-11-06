@@ -26,9 +26,9 @@ coverage.html
 .git/
 .gitignore
 
-# Documentation
-docs/
-*.md
+# Documentation (exclude user docs but keep swagger API docs needed for build)
+docs/*.md
+!docs/swagger/
 !README.md
 
 # CI/CD files
@@ -37,8 +37,8 @@ docs/
 # Node modules (frontend dependencies, will be installed in container)
 web/frontend/node_modules/
 
-# Go module cache
-go.sum
+# Go module cache (go.sum must be included for reproducible builds)
+# go.sum should NOT be excluded - it's needed for dependency verification
 
 # Logs
 *.log

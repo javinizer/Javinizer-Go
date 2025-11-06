@@ -87,6 +87,9 @@ func scanDirectory(deps *ServerDependencies) gin.HandlerFunc {
 			}
 			if found {
 				apiFileInfo.MovieID = match.ID
+				apiFileInfo.IsMultiPart = match.IsMultiPart
+				apiFileInfo.PartNumber = match.PartNumber
+				apiFileInfo.PartSuffix = match.PartSuffix
 			}
 			files = append(files, apiFileInfo)
 		}

@@ -9,6 +9,8 @@ import (
 var (
 	// Matches pt1, PT2, part1, PART2 with optional separators before/after
 	reNumericPart = regexp.MustCompile(`(?i)(?:^|[-_\s])(?:(pt|part))[-_\s]?(\d{1,2})(?:$|[-_\s])`)
+	// Matches plain numbers: -1, -2, _3, etc. (common multi-part pattern)
+	rePlainNumber = regexp.MustCompile(`^[-_\s]?(\d{1,2})$`)
 	// Strict letter-only remainder: optional sep + [a-z] + optional sep
 	reLetterOnlyRemainder = regexp.MustCompile(`(?i)^\s*[-_\s]?([a-z])\s*$`)
 )
@@ -39,7 +41,15 @@ func DetectPartSuffix(nameWithoutExt, id string) (int, string) {
 		}
 	}
 
-	// 2) Letter parts: single trailing letter (A/B/C/...) optionally separated by dash/underscore/space
+	// 2) Plain numbers: -1, -2, _3, etc. (common multi-part pattern like pred-151-1.mp4)
+	if m := rePlainNumber.FindStringSubmatch(trimmed); len(m) == 2 {
+		numStr := m[1]
+		if n, err := strconv.Atoi(numStr); err == nil && n > 0 {
+			return n, "-" + numStr
+		}
+	}
+
+	// 3) Letter parts: single trailing letter (A/B/C/...) optionally separated by dash/underscore/space
 	// Only accept when the remainder is just that letter (plus optional separators)
 	if m := reLetterOnlyRemainder.FindStringSubmatch(trimmed); len(m) == 2 {
 		letter := strings.ToUpper(m[1])

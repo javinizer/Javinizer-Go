@@ -98,11 +98,43 @@
 	let manualSearchMode = $state(false);
 	let manualSearchInput = $state('');
 
-	// Get all successful movie results
-	const movieResults = $derived<FileResult[]>(
-		job ? (Object.values((job as BatchJobResponse).results) as FileResult[]).filter((r) => r.status === 'completed' && r.data) : []
+	// Group file results by movie_id to handle multi-part files
+	// Each movie group contains all file results with the same movie_id
+	interface MovieGroup {
+		movieId: string;
+		results: FileResult[];
+		primaryResult: FileResult; // The first result in the group (for display)
+	}
+
+	const movieGroups = $derived<MovieGroup[]>(
+		job ? (() => {
+			const allResults = (Object.values((job as BatchJobResponse).results) as FileResult[])
+				.filter((r) => r.status === 'completed' && r.data);
+
+			// Group by movie_id
+			const grouped = new Map<string, FileResult[]>();
+			for (const result of allResults) {
+				const movieId = result.movie_id;
+				if (!grouped.has(movieId)) {
+					grouped.set(movieId, []);
+				}
+				grouped.get(movieId)!.push(result);
+			}
+
+			// Convert to MovieGroup array
+			return Array.from(grouped.entries()).map(([movieId, results]) => ({
+				movieId,
+				results,
+				primaryResult: results[0] // Use first result as primary
+			}));
+		})() : []
 	);
-	const currentResult = $derived<FileResult | undefined>(movieResults[currentMovieIndex]);
+
+	// Get all successful movie results (kept for backward compatibility with UI)
+	const movieResults = $derived<FileResult[]>(movieGroups.map(g => g.primaryResult));
+
+	const currentMovieGroup = $derived<MovieGroup | undefined>(movieGroups[currentMovieIndex]);
+	const currentResult = $derived<FileResult | undefined>(currentMovieGroup?.primaryResult);
 	const currentMovie = $derived<Movie | null>(
 		currentResult && currentResult.data
 			? editedMovies.get(currentResult.file_path) || currentResult.data
@@ -889,11 +921,17 @@
 						</div>
 					</Card>
 
-					<!-- File Path Info -->
+					<!-- File Path Info (supports multi-part files) -->
 					<Card class="p-4">
 						<div class="min-w-0">
 							<div class="flex items-center justify-between mb-2">
-								<p class="text-sm font-medium">Source File</p>
+								<p class="text-sm font-medium">
+									{#if currentMovieGroup && currentMovieGroup.results.length > 1}
+										Source Files ({currentMovieGroup.results.length} parts)
+									{:else}
+										Source File
+									{/if}
+								</p>
 								{#if currentResult.file_path.length > 80}
 									<button
 										onclick={() => showFullSourcePath = !showFullSourcePath}
@@ -903,11 +941,26 @@
 									</button>
 								{/if}
 							</div>
-							<div class="bg-accent rounded px-3 py-2 {showFullSourcePath ? 'overflow-x-auto' : ''}">
-								<code class="text-xs block {showFullSourcePath ? 'whitespace-nowrap' : ''}" title={currentResult.file_path}>
-									{showFullSourcePath ? currentResult.file_path : truncatePath(currentResult.file_path)}
-								</code>
-							</div>
+							{#if currentMovieGroup && currentMovieGroup.results.length > 1}
+								<!-- Multi-part file list -->
+								<div class="space-y-2">
+									{#each currentMovieGroup.results as result, index}
+										<div class="bg-accent rounded px-3 py-2 {showFullSourcePath ? 'overflow-x-auto' : ''}">
+											<code class="text-xs block {showFullSourcePath ? 'whitespace-nowrap' : ''}" title={result.file_path}>
+												<span class="text-muted-foreground mr-2">Part {index + 1}:</span>
+												{showFullSourcePath ? result.file_path : truncatePath(result.file_path)}
+											</code>
+										</div>
+									{/each}
+								</div>
+							{:else}
+								<!-- Single file -->
+								<div class="bg-accent rounded px-3 py-2 {showFullSourcePath ? 'overflow-x-auto' : ''}">
+									<code class="text-xs block {showFullSourcePath ? 'whitespace-nowrap' : ''}" title={currentResult.file_path}>
+										{showFullSourcePath ? currentResult.file_path : truncatePath(currentResult.file_path)}
+									</code>
+								</div>
+							{/if}
 						</div>
 					</Card>
 
@@ -962,7 +1015,16 @@
 													📁 {part}/
 												</div>
 											{/each}
-											<div class="break-all" style="margin-left: {fileIndent + 4}px">🎬 {preview.file_name}.mp4</div>
+											{#if preview.video_files && preview.video_files.length > 0}
+												<!-- Multi-part video files -->
+												{#each preview.video_files as videoFile, index}
+													{@const fileName = videoFile.split(/[\\/]/).pop()}
+													<div class="break-all" style="margin-left: {fileIndent + 4}px">🎬 {fileName}</div>
+												{/each}
+											{:else}
+												<!-- Single video file -->
+												<div class="break-all" style="margin-left: {fileIndent + 4}px">🎬 {preview.file_name}.mp4</div>
+											{/if}
 											<div class="break-all" style="margin-left: {fileIndent + 4}px">📄 {preview.file_name}.nfo</div>
 											<div class="break-all" style="margin-left: {fileIndent + 4}px">🖼️ {preview.file_name}-poster.jpg</div>
 											<div class="break-all" style="margin-left: {fileIndent + 4}px">🖼️ {preview.file_name}-fanart.jpg</div>

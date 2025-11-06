@@ -168,6 +168,7 @@ export interface OrganizePreviewResponse {
 	folder_name: string;
 	file_name: string;
 	full_path: string;
+	video_files?: string[]; // For multi-part files: all video file paths
 	nfo_path: string;
 	poster_path: string;
 	fanart_path: string;

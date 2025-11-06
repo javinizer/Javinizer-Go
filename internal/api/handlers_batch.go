@@ -1,17 +1,184 @@
 package api
 
 import (
+	"context"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/javinizer/javinizer-go/internal/config"
 	"github.com/javinizer/javinizer-go/internal/logging"
+	"github.com/javinizer/javinizer-go/internal/matcher"
 	"github.com/javinizer/javinizer-go/internal/models"
+	"github.com/javinizer/javinizer-go/internal/scanner"
 	"github.com/javinizer/javinizer-go/internal/worker"
 )
 
+// isDirAllowed checks if a directory is allowed based on API security settings.
+// It enforces both denied (blocklist) and allowed (allowlist) directory rules.
+// Also enforces the built-in denylist to match behavior of validateScanPath.
+func isDirAllowed(dir string, allow, deny []string) bool {
+	// Expand home directory first
+	expandedDir := expandHomeDir(dir)
+	d := filepath.Clean(expandedDir)
+
+	// Get built-in denied directories (system directories that should never be accessed)
+	builtInDenied := getDeniedDirectories()
+
+	// Check built-in denylist first
+	for _, blocked := range builtInDenied {
+		cleanBlocked := filepath.Clean(blocked)
+		if strings.HasPrefix(d, cleanBlocked+string(os.PathSeparator)) || d == cleanBlocked {
+			return false
+		}
+	}
+
+	// Check config-provided denied directories (with home expansion)
+	for _, blocked := range deny {
+		expandedBlocked := expandHomeDir(blocked)
+		cleanBlocked := filepath.Clean(expandedBlocked)
+		if strings.HasPrefix(d, cleanBlocked+string(os.PathSeparator)) || d == cleanBlocked {
+			return false
+		}
+	}
+
+	// If no allow list specified, allow by default
+	if len(allow) == 0 {
+		return true
+	}
+
+	// Check if directory is in allow list (allowlist, with home expansion)
+	for _, allowed := range allow {
+		expandedAllowed := expandHomeDir(allowed)
+		cleanAllowed := filepath.Clean(expandedAllowed)
+		if strings.HasPrefix(d, cleanAllowed+string(os.PathSeparator)) || d == cleanAllowed {
+			return true
+		}
+	}
+
+	return false
+}
+
+// discoverSiblingParts finds all multi-part files with the same base movie ID in the parent directories.
+// It handles two scenarios:
+// 1. User submits all parts → Groups them by movie ID and ensures completeness
+// 2. User submits some parts → Auto-discovers missing siblings from disk
+func discoverSiblingParts(files []string, fileMatcher *matcher.Matcher, cfg *config.Config) []string {
+	if len(files) == 0 {
+		return files
+	}
+
+	// First, match all submitted files to understand what we have
+	scan := scanner.NewScanner(&cfg.Matching)
+	seenPaths := make(map[string]bool)
+	fileInfos := make([]scanner.FileInfo, 0, len(files))
+
+	for _, filePath := range files {
+		seenPaths[filePath] = true
+		fileInfos = append(fileInfos, scanner.FileInfo{
+			Path:      filePath,
+			Name:      filepath.Base(filePath),
+			Extension: filepath.Ext(filePath),
+			Dir:       filepath.Dir(filePath),
+		})
+	}
+
+	// Match submitted files to detect multi-part status
+	submittedMatches := fileMatcher.Match(fileInfos)
+
+	// Group submitted files by movie ID and check if any are multi-part
+	movieIDsToProcess := make(map[string]bool) // movie IDs that need sibling discovery
+	directoriesScanned := make(map[string]bool)
+
+	for _, match := range submittedMatches {
+		// If ANY file for this movie ID is multi-part, we need to discover all siblings
+		if match.IsMultiPart {
+			movieIDsToProcess[match.ID] = true
+			logging.Debugf("Detected multi-part file: %s (movie ID: %s, part: %d)",
+				match.File.Name, match.ID, match.PartNumber)
+		}
+	}
+
+	// If no multi-part files detected, return original list
+	if len(movieIDsToProcess) == 0 {
+		logging.Debugf("No multi-part files detected in submission, skipping auto-discovery")
+		return files
+	}
+
+	// Scan parent directories to find all siblings for multi-part movies
+	allFiles := make([]string, 0, len(files))
+	allFiles = append(allFiles, files...) // Start with original files
+
+	for _, match := range submittedMatches {
+		if !movieIDsToProcess[match.ID] {
+			continue // Not a multi-part movie
+		}
+
+		dir := match.File.Dir
+		if directoriesScanned[dir] {
+			continue // Already scanned this directory
+		}
+		directoriesScanned[dir] = true
+
+		// Security: Check if directory is allowed before scanning
+		if !isDirAllowed(dir, cfg.API.Security.AllowedDirectories, cfg.API.Security.DeniedDirectories) {
+			logging.Debugf("Skipping auto-discovery in disallowed directory: %s", dir)
+			continue
+		}
+
+		// Check if directory exists
+		if _, err := os.Stat(dir); os.IsNotExist(err) {
+			logging.Debugf("Directory does not exist: %s", dir)
+			continue
+		}
+
+		// Create context with timeout to prevent resource exhaustion on large directories
+		scanCtx, cancelScan := context.WithTimeout(context.Background(),
+			time.Duration(cfg.API.Security.ScanTimeoutSeconds)*time.Second)
+
+		// Scan the directory with resource limits (non-recursive)
+		result, err := scan.ScanWithLimits(scanCtx, dir, cfg.API.Security.MaxFilesPerScan)
+		cancelScan() // Immediate cleanup, not deferred
+		if err != nil {
+			logging.Debugf("Failed to scan directory %s: %v", dir, err)
+			continue
+		}
+		if result.TimedOut {
+			logging.Warnf("Directory scan timed out for %s (limit: %d seconds)",
+				dir, cfg.API.Security.ScanTimeoutSeconds)
+			// Continue with partial results
+		}
+		if result.LimitReached {
+			logging.Warnf("Directory scan reached file limit for %s (limit: %d files)",
+				dir, cfg.API.Security.MaxFilesPerScan)
+			// Continue with partial results
+		}
+
+		// Match all files in the directory
+		matchResults := fileMatcher.Match(result.Files)
+
+		// Find siblings for the multi-part movies we're processing
+		for _, dirMatch := range matchResults {
+			if movieIDsToProcess[dirMatch.ID] && dirMatch.IsMultiPart {
+				if !seenPaths[dirMatch.File.Path] {
+					seenPaths[dirMatch.File.Path] = true
+					allFiles = append(allFiles, dirMatch.File.Path)
+					logging.Infof("Auto-discovered multi-part sibling: %s (movie ID: %s, part: %d)",
+						dirMatch.File.Name, dirMatch.ID, dirMatch.PartNumber)
+				}
+			}
+		}
+	}
+
+	return allFiles
+}
+
 // batchScrape godoc
 // @Summary Batch scrape movies
-// @Description Scrape metadata for multiple movies in batch
+// @Description Scrape metadata for multiple movies in batch. Automatically discovers and includes all parts of multi-part files.
 // @Tags web
 // @Accept json
 // @Produce json
@@ -27,8 +194,26 @@ func batchScrape(deps *ServerDependencies) gin.HandlerFunc {
 			return
 		}
 
-		// Create job
-		job := deps.JobQueue.CreateJob(req.Files)
+		// Security: Validate all submitted files against directory security settings
+		cfg := deps.GetConfig()
+		for _, filePath := range req.Files {
+			dir := filepath.Dir(filePath)
+			if !isDirAllowed(dir, cfg.API.Security.AllowedDirectories, cfg.API.Security.DeniedDirectories) {
+				c.JSON(403, ErrorResponse{Error: fmt.Sprintf("Access denied to directory: %s", dir)})
+				return
+			}
+		}
+
+		// Auto-discover sibling multi-part files
+		allFiles := discoverSiblingParts(req.Files, deps.GetMatcher(), cfg)
+
+		if len(allFiles) > len(req.Files) {
+			logging.Infof("Auto-discovered %d sibling files for batch job (original: %d, total: %d)",
+				len(allFiles)-len(req.Files), len(req.Files), len(allFiles))
+		}
+
+		// Create job with all files (original + discovered siblings)
+		job := deps.JobQueue.CreateJob(allFiles)
 
 		// Start processing in background - use getters for thread-safe access
 		go processBatchJob(job, deps.GetRegistry(), deps.GetAggregator(), deps.MovieRepo, deps.GetMatcher(), req.Strict, req.Force, req.Update, req.Destination, deps.GetConfig(), req.SelectedScrapers, deps.DB)
@@ -80,13 +265,16 @@ func getBatchJob(deps *ServerDependencies) gin.HandlerFunc {
 			}
 
 			results[filePath] = &BatchFileResult{
-				FilePath:  fileResult.FilePath,
-				MovieID:   fileResult.MovieID,
-				Status:    string(fileResult.Status),
-				Error:     fileResult.Error,
-				Data:      fileResult.Data,
-				StartedAt: fileResult.StartedAt.Format("2006-01-02T15:04:05Z07:00"),
-				EndedAt:   endedAt,
+				FilePath:    fileResult.FilePath,
+				MovieID:     fileResult.MovieID,
+				Status:      string(fileResult.Status),
+				Error:       fileResult.Error,
+				Data:        fileResult.Data,
+				StartedAt:   fileResult.StartedAt.Format("2006-01-02T15:04:05Z07:00"),
+				EndedAt:     endedAt,
+				IsMultiPart: fileResult.IsMultiPart,
+				PartNumber:  fileResult.PartNumber,
+				PartSuffix:  fileResult.PartSuffix,
 			}
 		}
 
@@ -162,32 +350,29 @@ func updateBatchMovie(deps *ServerDependencies) gin.HandlerFunc {
 			return
 		}
 
-		// Get a snapshot to search for the file
+		// Get a snapshot to search for files
 		status := job.GetStatus()
-		var foundFilePath string
-		var foundResult *worker.FileResult
+
+		// Collect ALL file paths for this movie ID (handles multi-part files)
+		var filePaths []string
 		for filePath, result := range status.Results {
 			if result.MovieID == movieID {
-				foundFilePath = filePath
-				foundResult = result
-				break
+				filePaths = append(filePaths, filePath)
 			}
 		}
 
 		// If not found by MovieID, try searching by the actual movie.ID (in case of content ID resolution)
-		if foundResult == nil {
+		if len(filePaths) == 0 {
 			for filePath, result := range status.Results {
 				if result.Data != nil {
 					if m, ok := result.Data.(*models.Movie); ok && m.ID == movieID {
-						foundFilePath = filePath
-						foundResult = result
-						break
+						filePaths = append(filePaths, filePath)
 					}
 				}
 			}
 		}
 
-		if foundResult == nil {
+		if len(filePaths) == 0 {
 			c.JSON(404, ErrorResponse{Error: fmt.Sprintf("Movie %s not found in job", movieID)})
 			return
 		}
@@ -199,21 +384,22 @@ func updateBatchMovie(deps *ServerDependencies) gin.HandlerFunc {
 			// Don't fail the request if DB update fails
 		}
 
-		// Use AtomicUpdateFileResult to safely update the movie data without race conditions
-		err := job.AtomicUpdateFileResult(foundFilePath, func(current *worker.FileResult) (*worker.FileResult, error) {
-			// Update the movie data
-			current.Data = req.Movie
-			// Always sync MovieID to keep job state consistent (handles both content ID resolution and user edits)
-			current.MovieID = req.Movie.ID
-			return current, nil
-		})
+		// Update ALL file parts for this movie ID (handles multi-part files like CD1, CD2, etc.)
+		for _, filePath := range filePaths {
+			err := job.AtomicUpdateFileResult(filePath, func(current *worker.FileResult) (*worker.FileResult, error) {
+				// Update the movie data
+				current.Data = req.Movie
+				// Always sync MovieID to keep job state consistent (handles both content ID resolution and user edits)
+				current.MovieID = req.Movie.ID
+				return current, nil
+			})
 
-		if err != nil {
-			logging.Errorf("Failed to update file result: %v", err)
-			c.JSON(500, ErrorResponse{Error: fmt.Sprintf("Failed to update job state: %v", err)})
-			return
+			if err != nil {
+				logging.Errorf("Failed to update file result for %s: %v", filePath, err)
+				c.JSON(500, ErrorResponse{Error: fmt.Sprintf("Failed to update job state: %v", err)})
+				return
+			}
 		}
-
 		c.JSON(200, MovieResponse{Movie: req.Movie})
 	}
 }
@@ -240,37 +426,39 @@ func excludeBatchMovie(deps *ServerDependencies) gin.HandlerFunc {
 			return
 		}
 
-		// Get a snapshot to search for the file
+		// Get a snapshot to search for the file(s)
 		status := job.GetStatus()
-		var foundFilePath string
+
+		// Collect ALL file paths for this movie ID (handles multi-part files)
+		var filePaths []string
 		for filePath, result := range status.Results {
 			if result.MovieID == movieID {
-				foundFilePath = filePath
-				break
+				filePaths = append(filePaths, filePath)
 			}
 		}
 
 		// If not found by MovieID, try searching by the actual movie.ID
-		if foundFilePath == "" {
+		if len(filePaths) == 0 {
 			for filePath, result := range status.Results {
 				if result.Data != nil {
 					if m, ok := result.Data.(*models.Movie); ok && m.ID == movieID {
-						foundFilePath = filePath
-						break
+						filePaths = append(filePaths, filePath)
 					}
 				}
 			}
 		}
 
-		if foundFilePath == "" {
+		if len(filePaths) == 0 {
 			c.JSON(404, ErrorResponse{Error: fmt.Sprintf("Movie %s not found in job", movieID)})
 			return
 		}
 
-		// Mark the file as excluded
-		job.ExcludeFile(foundFilePath)
+		// Mark ALL parts as excluded (handles multi-part files like CD1, CD2, etc.)
+		for _, filePath := range filePaths {
+			job.ExcludeFile(filePath)
+		}
 
-		logging.Infof("Movie %s (file: %s) excluded from batch job %s", movieID, foundFilePath, jobID)
+		logging.Infof("Movie %s (%d file(s)) excluded from batch job %s", movieID, len(filePaths), jobID)
 
 		c.JSON(200, gin.H{"message": "Movie excluded from organization"})
 	}
@@ -385,19 +573,19 @@ func previewOrganize(deps *ServerDependencies) gin.HandlerFunc {
 			return
 		}
 
-		// Find the movie in the job results (job is already a snapshot, use it directly)
+		// Find the movie and collect all file results for this movie (for multi-part support)
 		var movie *models.Movie
+		fileResults := make([]*worker.FileResult, 0)
+
+		// Collect all results matching this movieID
 		for _, result := range job.Results {
 			if result.MovieID == movieID {
 				if result.Data != nil {
-					var ok bool
-					movie, ok = result.Data.(*models.Movie)
-					if !ok {
-						c.JSON(500, ErrorResponse{Error: "Invalid movie data type"})
-						return
+					if m, ok := result.Data.(*models.Movie); ok {
+						movie = m
 					}
 				}
-				break
+				fileResults = append(fileResults, result)
 			}
 		}
 
@@ -407,7 +595,7 @@ func previewOrganize(deps *ServerDependencies) gin.HandlerFunc {
 				if result.Data != nil {
 					if m, ok := result.Data.(*models.Movie); ok && m.ID == movieID {
 						movie = m
-						break
+						fileResults = append(fileResults, result)
 					}
 				}
 			}
@@ -418,8 +606,8 @@ func previewOrganize(deps *ServerDependencies) gin.HandlerFunc {
 			return
 		}
 
-		// Use the helper function from processors.go - read config from deps
-		preview := generatePreview(movie, req.Destination, deps.GetConfig())
+		// Use the helper function from processors.go - pass all file results for multi-part support
+		preview := generatePreview(movie, fileResults, req.Destination, deps.GetConfig())
 		c.JSON(200, preview)
 	}
 }

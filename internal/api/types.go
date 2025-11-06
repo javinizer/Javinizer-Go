@@ -81,13 +81,16 @@ type ScanResponse struct {
 
 // FileInfo represents file or directory information
 type FileInfo struct {
-	Name    string `json:"name" example:"video.mp4"`
-	Path    string `json:"path" example:"/path/to/video.mp4"`
-	IsDir   bool   `json:"is_dir" example:"false"`
-	Size    int64  `json:"size" example:"1024000000"`
-	ModTime string `json:"mod_time" example:"2024-01-15T10:30:00Z"`
-	MovieID string `json:"movie_id,omitempty" example:"IPX-535"`
-	Matched bool   `json:"matched" example:"true"`
+	Name        string `json:"name" example:"video.mp4"`
+	Path        string `json:"path" example:"/path/to/video.mp4"`
+	IsDir       bool   `json:"is_dir" example:"false"`
+	Size        int64  `json:"size" example:"1024000000"`
+	ModTime     string `json:"mod_time" example:"2024-01-15T10:30:00Z"`
+	MovieID     string `json:"movie_id,omitempty" example:"IPX-535"`
+	Matched     bool   `json:"matched" example:"true"`
+	IsMultiPart bool   `json:"is_multi_part,omitempty" example:"true"`
+	PartNumber  int    `json:"part_number,omitempty" example:"1"`
+	PartSuffix  string `json:"part_suffix,omitempty" example:"-pt1"`
 }
 
 // BatchScrapeRequest represents a batch scrape request
@@ -122,6 +125,7 @@ type OrganizePreviewResponse struct {
 	FolderName      string   `json:"folder_name" example:"IPX-535 [IdeaPocket] - Beautiful Woman (2021)"`
 	FileName        string   `json:"file_name" example:"IPX-535"`
 	FullPath        string   `json:"full_path" example:"/path/to/output/IPX-535 [IdeaPocket] - Beautiful Woman (2021)/IPX-535.mp4"`
+	VideoFiles      []string `json:"video_files,omitempty"` // For multi-part files: all video file paths
 	NFOPath         string   `json:"nfo_path" example:"/path/to/output/IPX-535 [IdeaPocket] - Beautiful Woman (2021)/IPX-535.nfo"`
 	PosterPath      string   `json:"poster_path" example:"/path/to/output/IPX-535 [IdeaPocket] - Beautiful Woman (2021)/IPX-535-poster.jpg"`
 	FanartPath      string   `json:"fanart_path" example:"/path/to/output/IPX-535 [IdeaPocket] - Beautiful Woman (2021)/IPX-535-fanart.jpg"`
@@ -131,13 +135,16 @@ type OrganizePreviewResponse struct {
 
 // BatchFileResult wraps worker.FileResult with additional API-specific fields
 type BatchFileResult struct {
-	FilePath  string      `json:"file_path"`
-	MovieID   string      `json:"movie_id"`
-	Status    string      `json:"status"`
-	Error     string      `json:"error,omitempty"`
-	Data      interface{} `json:"data,omitempty"` // Movie data
-	StartedAt string      `json:"started_at"`
-	EndedAt   *string     `json:"ended_at,omitempty"`
+	FilePath    string      `json:"file_path"`
+	MovieID     string      `json:"movie_id"`
+	Status      string      `json:"status"`
+	Error       string      `json:"error,omitempty"`
+	Data        interface{} `json:"data,omitempty"` // Movie data
+	StartedAt   string      `json:"started_at"`
+	EndedAt     *string     `json:"ended_at,omitempty"`
+	IsMultiPart bool        `json:"is_multi_part,omitempty"`
+	PartNumber  int         `json:"part_number,omitempty"`
+	PartSuffix  string      `json:"part_suffix,omitempty"`
 }
 
 // BatchJobResponse represents a batch job status

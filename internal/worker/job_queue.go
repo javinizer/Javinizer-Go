@@ -3,10 +3,13 @@ package worker
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/javinizer/javinizer-go/internal/logging"
 	"github.com/javinizer/javinizer-go/internal/models"
 )
 
@@ -31,6 +34,9 @@ type FileResult struct {
 	Data        interface{} `json:"data,omitempty"`
 	StartedAt   time.Time   `json:"started_at"`
 	EndedAt     *time.Time  `json:"ended_at,omitempty"`
+	IsMultiPart bool        `json:"is_multi_part,omitempty"`
+	PartNumber  int         `json:"part_number,omitempty"`
+	PartSuffix  string      `json:"part_suffix,omitempty"`
 }
 
 // BatchJob represents a batch processing job
@@ -47,6 +53,7 @@ type BatchJob struct {
 	StartedAt   time.Time              `json:"started_at"`
 	CompletedAt *time.Time             `json:"completed_at,omitempty"`
 	CancelFunc  context.CancelFunc     `json:"-"`
+	Done        chan struct{}          `json:"-"` // closed when job fully finishes
 	mu          sync.RWMutex           `json:"-"`
 }
 
@@ -72,6 +79,7 @@ func (jq *JobQueue) CreateJob(files []string) *BatchJob {
 		Files:      files,
 		Results:    make(map[string]*FileResult),
 		Excluded:   make(map[string]bool),
+		Done:       make(chan struct{}),
 		StartedAt:  time.Now(),
 	}
 
@@ -107,10 +115,39 @@ func (jq *JobQueue) GetJobPointer(id string) (*BatchJob, bool) {
 	return job, ok
 }
 
-// DeleteJob removes a job from the queue
+// DeleteJob removes a job from the queue and cleans up associated temp files
+// Cancels the job first and waits for it to fully finish before removing files
 func (jq *JobQueue) DeleteJob(id string) {
+	// Get job without holding queue lock to avoid lock ordering issues
+	jq.mu.RLock()
+	job, ok := jq.jobs[id]
+	jq.mu.RUnlock()
+
+	if ok {
+		snap := job.GetStatus()
+		if snap.Status == JobStatusRunning || snap.Status == JobStatusPending {
+			job.Cancel()
+		}
+
+		// Wait for job to fully finish using Done channel
+		select {
+		case <-job.Done:
+			// Job finished, safe to cleanup
+		case <-time.After(5 * time.Second):
+			logging.Warnf("DeleteJob: timed out waiting for job %s to finish, proceeding with cleanup", id)
+		}
+	}
+
+	// Now safe to clean up filesystem and remove from map
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
+
+	// Clean up temp posters for this job (data/temp/posters/{jobID}/)
+	tempPosterDir := filepath.Join("data", "temp", "posters", id)
+	if err := os.RemoveAll(tempPosterDir); err != nil {
+		logging.Warnf("Failed to clean up temp posters for job %s: %v", id, err)
+	}
+
 	delete(jq.jobs, id)
 }
 
@@ -231,6 +268,13 @@ func (job *BatchJob) MarkCompleted() {
 	now := time.Now()
 	job.CompletedAt = &now
 	job.Progress = 100
+	// Close Done channel to signal completion (idempotent)
+	select {
+	case <-job.Done:
+		// already closed
+	default:
+		close(job.Done)
+	}
 }
 
 // MarkFailed marks the job as failed
@@ -240,6 +284,13 @@ func (job *BatchJob) MarkFailed() {
 	job.Status = JobStatusFailed
 	now := time.Now()
 	job.CompletedAt = &now
+	// Close Done channel to signal completion (idempotent)
+	select {
+	case <-job.Done:
+		// already closed
+	default:
+		close(job.Done)
+	}
 }
 
 // MarkCancelled marks the job as cancelled
@@ -249,6 +300,13 @@ func (job *BatchJob) MarkCancelled() {
 	job.Status = JobStatusCancelled
 	now := time.Now()
 	job.CompletedAt = &now
+	// Close Done channel to signal completion (idempotent)
+	select {
+	case <-job.Done:
+		// already closed
+	default:
+		close(job.Done)
+	}
 }
 
 // SetCancelFunc sets the cancel function for the job (thread-safe)

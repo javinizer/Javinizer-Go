@@ -18,19 +18,20 @@ import (
 // BatchScrapeTask represents a task for scraping metadata for a single file in a batch operation
 type BatchScrapeTask struct {
 	BaseTask
-	filePath         string
-	fileIndex        int
-	job              *BatchJob
-	registry         *models.ScraperRegistry
-	aggregator       *aggregator.Aggregator
-	movieRepo        *database.MovieRepository
-	matcher          *matcher.Matcher
-	progressTracker  *ProgressTracker
-	force            bool
-	selectedScrapers []string // empty = use default
-	httpClient       *http.Client
-	userAgent        string
-	referer          string
+	filePath          string
+	fileIndex         int
+	job               *BatchJob
+	registry          *models.ScraperRegistry
+	aggregator        *aggregator.Aggregator
+	movieRepo         *database.MovieRepository
+	matcher           *matcher.Matcher
+	progressTracker   *ProgressTracker
+	force             bool
+	selectedScrapers  []string // empty = use default
+	httpClient        *http.Client
+	userAgent         string
+	referer           string
+	processedMovieIDs map[string]bool // Thread-safe tracking of processed movie IDs for poster deduplication
 }
 
 // NewBatchScrapeTask creates a new batch scrape task
@@ -49,6 +50,7 @@ func NewBatchScrapeTask(
 	httpClient *http.Client,
 	userAgent string,
 	referer string,
+	processedMovieIDs map[string]bool,
 ) *BatchScrapeTask {
 	desc := fmt.Sprintf("Scraping metadata for %s", filepath.Base(filePath))
 
@@ -58,19 +60,20 @@ func NewBatchScrapeTask(
 			taskType:    TaskTypeBatchScrape,
 			description: desc,
 		},
-		filePath:         filePath,
-		fileIndex:        fileIndex,
-		job:              job,
-		registry:         registry,
-		aggregator:       agg,
-		movieRepo:        movieRepo,
-		matcher:          mat,
-		progressTracker:  progressTracker,
-		force:            force,
-		selectedScrapers: selectedScrapers,
-		httpClient:       httpClient,
-		userAgent:        userAgent,
-		referer:          referer,
+		filePath:          filePath,
+		fileIndex:         fileIndex,
+		job:               job,
+		registry:          registry,
+		aggregator:        agg,
+		movieRepo:         movieRepo,
+		matcher:           mat,
+		progressTracker:   progressTracker,
+		force:             force,
+		selectedScrapers:  selectedScrapers,
+		httpClient:        httpClient,
+		userAgent:         userAgent,
+		referer:           referer,
+		processedMovieIDs: processedMovieIDs,
 	}
 }
 
@@ -122,6 +125,7 @@ func (t *BatchScrapeTask) Execute(ctx context.Context) error {
 		t.referer,
 		t.force,
 		t.selectedScrapers,
+		t.processedMovieIDs,
 	)
 
 	// Step 3: Aggregating results (if we got this far without error)

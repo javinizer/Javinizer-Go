@@ -193,6 +193,13 @@ func copyTempCroppedPoster(job *worker.BatchJob, movie *models.Movie, destDir st
 		posterFilename = fmt.Sprintf("%s-poster.jpg", movie.ID)
 		logging.Warnf("%s mode: Template execution failed, using fallback filename: %v", mode, err)
 	}
+
+	// Security: Sanitize poster filename to prevent path traversal
+	posterFilename = template.SanitizeFilename(posterFilename)
+	if posterFilename == "" {
+		posterFilename = fmt.Sprintf("%s-poster.jpg", template.SanitizeFilename(movie.ID))
+	}
+
 	destPosterPath := filepath.Join(destDir, posterFilename)
 
 	// Copy temp poster to destination
