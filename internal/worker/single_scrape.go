@@ -146,8 +146,22 @@ func RunBatchScrapeOnce(
 						cached.CroppedPosterURL = tempPosterURL
 					}
 				} else {
-					// Reuse already-generated temp poster URL for multi-part files
-					cached.CroppedPosterURL = fmt.Sprintf("/api/v1/temp/posters/%s/%s.jpg", job.ID, cached.ID)
+					// Check if temp poster file exists (may have been cleaned up after previous job)
+					tempPosterPath := filepath.Join("data", "temp", "posters", job.ID, cached.ID+".jpg")
+					if _, err := os.Stat(tempPosterPath); err != nil {
+						// Temp poster doesn't exist - regenerate it
+						logging.Debugf("[Batch %s] File %d: Temp poster missing for %s, regenerating", job.ID, fileIndex, cached.ID)
+						if tempPosterURL, err := GenerateTempPoster(ctx, job.ID, cached, httpClient, userAgent, referer); err != nil {
+							logging.Warnf("[Batch %s] File %d: Failed to regenerate temp poster: %v", job.ID, fileIndex, err)
+							errMsg := err.Error()
+							posterErr = &errMsg
+						} else {
+							cached.CroppedPosterURL = tempPosterURL
+						}
+					} else {
+						// Reuse already-generated temp poster URL for multi-part files
+						cached.CroppedPosterURL = fmt.Sprintf("/api/v1/temp/posters/%s/%s.jpg", job.ID, cached.ID)
+					}
 				}
 			}
 
