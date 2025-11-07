@@ -151,19 +151,10 @@ func processBatchJob(job *worker.BatchJob, registry *models.ScraperRegistry, agg
 	// Mark job as completed (don't auto-process update mode - wait for user to review and click "Update")
 	job.MarkCompleted()
 
-	// Cleanup temp posters for this job (best-effort, non-blocking)
-	// These are no longer needed once the job is complete since:
-	// - Successful files have persistent posters in data/posters/
-	// - Failed files don't need temp posters
-	// - User has reviewed and can no longer rescrape from this job
-	go func() {
-		tempDir := filepath.Join("data", "temp", "posters", job.ID)
-		if err := os.RemoveAll(tempDir); err != nil {
-			logging.Debugf("[Job %s] Failed to clean temp poster dir: %v", job.ID, err)
-		} else {
-			logging.Debugf("[Job %s] Cleaned temp poster directory", job.ID)
-		}
-	}()
+	// Cleanup temp posters for this job now that it's completed
+	// Best-effort, non-blocking cleanup. The batch job is gone, so temp posters are no longer needed.
+	// Note: Startup cleanup (cmd/cli/api.go) handles any orphaned temp posters from crashed/incomplete jobs
+	go cleanupJobTempPosters(job.ID)
 
 	// Broadcast final completion
 	wsHub.BroadcastProgress(&ws.ProgressMessage{
@@ -172,6 +163,17 @@ func processBatchJob(job *worker.BatchJob, registry *models.ScraperRegistry, agg
 		Progress: 100,
 		Message:  fmt.Sprintf("Completed %d of %d files", job.Completed, job.TotalFiles),
 	})
+}
+
+// cleanupJobTempPosters removes temp posters for a completed or cancelled job
+// Best-effort, non-blocking cleanup. Called in a goroutine.
+func cleanupJobTempPosters(jobID string) {
+	tempDir := filepath.Join("data", "temp", "posters", jobID)
+	if err := os.RemoveAll(tempDir); err != nil {
+		logging.Debugf("[Job %s] Failed to clean temp poster dir: %v", jobID, err)
+	} else {
+		logging.Debugf("[Job %s] Cleaned temp poster directory", jobID)
+	}
 }
 
 // copyTempCroppedPoster copies the temp cropped poster to the destination directory

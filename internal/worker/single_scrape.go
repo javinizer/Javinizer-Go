@@ -384,12 +384,21 @@ func RunBatchScrapeOnce(
 	if !usingCustomScrapers {
 		logging.Debugf("[Batch %s] File %d: Saving metadata to database", job.ID, fileIndex)
 
+		// IMPORTANT: Don't save temp poster URLs to database
+		// Temp posters are cleaned up after job completion, causing 404s on subsequent cache hits
+		// Only persistent poster URLs (set in Step 8a) should be stored in the database
+		tempPosterURL := movie.CroppedPosterURL
+		movie.CroppedPosterURL = "" // Clear temp URL before saving
+
 		if err := movieRepo.Upsert(movie); err != nil {
 			logging.Errorf("[Batch %s] File %d: Database save failed: %v", job.ID, fileIndex, err)
 			// Continue anyway - we have the data
 		} else {
 			logging.Debugf("[Batch %s] File %d: Successfully saved to database", job.ID, fileIndex)
 		}
+
+		// Restore temp URL for the FileResult (needed for review page display)
+		movie.CroppedPosterURL = tempPosterURL
 
 		// Step 8a: Copy temp poster to persistent location (only for fresh scrapes, not cache hits)
 		// This happens after database save so the movie exists in DB for the repository update

@@ -78,6 +78,16 @@ func runAPI(hostFlag string, portFlag int) {
 		log.Fatalf("Failed to create data directory: %v", err)
 	}
 
+	// Cleanup temp posters from previous sessions
+	// Temp posters are ephemeral and tied to batch job lifecycle
+	// Since batch jobs don't persist across restarts, cleanup all temp posters on startup
+	tempPosterDir := filepath.Join("data", "temp", "posters")
+	if err := os.RemoveAll(tempPosterDir); err != nil {
+		logging.Warnf("Failed to clean temp poster directory on startup: %v", err)
+	} else {
+		logging.Info("Cleaned temp poster directory from previous sessions")
+	}
+
 	// Initialize database
 	db, err := database.New(cfg)
 	if err != nil {

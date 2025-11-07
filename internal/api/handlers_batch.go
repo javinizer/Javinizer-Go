@@ -315,6 +315,9 @@ func cancelBatchJob(deps *ServerDependencies) gin.HandlerFunc {
 
 		job.Cancel()
 
+		// Cleanup temp posters for cancelled job (batch job is gone, temp posters no longer needed)
+		go cleanupJobTempPosters(jobID)
+
 		c.JSON(200, gin.H{"message": "Job cancelled successfully"})
 	}
 }
