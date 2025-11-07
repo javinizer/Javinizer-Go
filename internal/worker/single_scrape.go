@@ -24,6 +24,33 @@ import (
 // processedMovieIDsMutex protects concurrent access to processedMovieIDs map
 var processedMovieIDsMutex sync.Mutex
 
+// scraperSearchWithContext wraps a scraper.Search() call with context cancellation support.
+// Since the Scraper interface doesn't accept context, we run the search in a goroutine
+// and cancel it if the context is cancelled.
+func scraperSearchWithContext(ctx context.Context, scraper models.Scraper, id string) (*models.ScraperResult, error) {
+	type result struct {
+		scraperResult *models.ScraperResult
+		err           error
+	}
+
+	resultCh := make(chan result, 1)
+
+	// Run scraper.Search() in a goroutine
+	go func() {
+		scraperResult, err := scraper.Search(id)
+		resultCh <- result{scraperResult, err}
+	}()
+
+	// Wait for either result or context cancellation
+	select {
+	case <-ctx.Done():
+		// Context cancelled - scraper goroutine will continue but result will be ignored
+		return nil, ctx.Err()
+	case res := <-resultCh:
+		return res.scraperResult, res.err
+	}
+}
+
 // RunBatchScrapeOnce performs a single scrape operation for a file within a batch job context
 // This function extracts the core scraping logic that can be reused for both initial batch scraping
 // and rescraping operations.
@@ -260,8 +287,22 @@ func RunBatchScrapeOnce(
 		}
 
 		logging.Debugf("[Batch %s] File %d: Querying scraper %s for %s", job.ID, fileIndex, scraper.Name(), resolvedID)
-		scraperResult, err := scraper.Search(resolvedID)
+		scraperResult, err := scraperSearchWithContext(ctx, scraper, resolvedID)
 		if err != nil {
+			// Check if error is due to context cancellation
+			if err == ctx.Err() {
+				logging.Debugf("[Batch %s] File %d: Context cancelled during scraper %s", job.ID, fileIndex, scraper.Name())
+				now := time.Now()
+				return nil, &FileResult{
+					FilePath:  filePath,
+					MovieID:   movieID,
+					Status:    JobStatusCancelled,
+					Error:     "Cancelled by user",
+					StartedAt: startTime,
+					EndedAt:   &now,
+				}, ctx.Err()
+			}
+
 			logging.Debugf("[Batch %s] File %d: Scraper %s failed: %v", job.ID, fileIndex, scraper.Name(), err)
 
 			// If scraping with resolved ID fails, try with original ID before giving up
@@ -269,8 +310,22 @@ func RunBatchScrapeOnce(
 			if resolvedID != movieID && queryOverride == "" {
 				logging.Debugf("[Batch %s] File %d: Retrying scraper %s with original ID: %s",
 					job.ID, fileIndex, scraper.Name(), movieID)
-				scraperResult, err = scraper.Search(movieID)
+				scraperResult, err = scraperSearchWithContext(ctx, scraper, movieID)
 				if err != nil {
+					// Check if error is due to context cancellation
+					if err == ctx.Err() {
+						logging.Debugf("[Batch %s] File %d: Context cancelled during scraper %s retry", job.ID, fileIndex, scraper.Name())
+						now := time.Now()
+						return nil, &FileResult{
+							FilePath:  filePath,
+							MovieID:   movieID,
+							Status:    JobStatusCancelled,
+							Error:     "Cancelled by user",
+							StartedAt: startTime,
+							EndedAt:   &now,
+						}, ctx.Err()
+					}
+
 					logging.Debugf("[Batch %s] File %d: Scraper %s failed with original ID: %v",
 						job.ID, fileIndex, scraper.Name(), err)
 					scraperErrors = append(scraperErrors, fmt.Sprintf("%s: %v", scraper.Name(), err))
