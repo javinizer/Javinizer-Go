@@ -28,7 +28,9 @@ import (
 // processBatchJob processes a batch scraping job (metadata only, no file organization)
 // using concurrent worker pool for improved performance.
 // If updateMode is true, will also download media files and generate NFOs in place without moving files.
-func processBatchJob(job *worker.BatchJob, registry *models.ScraperRegistry, agg *aggregator.Aggregator, movieRepo *database.MovieRepository, mat *matcher.Matcher, strict, force, updateMode bool, destination string, cfg *config.Config, selectedScrapers []string, db *database.DB) {
+// scalarStrategy determines how to merge scalar fields (prefer-scraper, prefer-nfo)
+// arrayStrategy determines how to merge array fields (merge, replace)
+func processBatchJob(job *worker.BatchJob, registry *models.ScraperRegistry, agg *aggregator.Aggregator, movieRepo *database.MovieRepository, mat *matcher.Matcher, strict, force, updateMode bool, destination string, cfg *config.Config, selectedScrapers []string, scalarStrategy string, arrayStrategy string, db *database.DB) {
 	// Setup context for cancellation
 	ctx, cancel := context.WithCancel(context.Background())
 	job.SetCancelFunc(cancel)
@@ -123,11 +125,15 @@ func processBatchJob(job *worker.BatchJob, registry *models.ScraperRegistry, agg
 			mat,
 			progressTracker,
 			force,
+			updateMode,             // updateMode - if true, merge with existing NFO
 			scrapersToUse,          // nil = registry defaults (DB persist), non-nil = custom mode
 			httpClient,             // httpClient - configured with proxy support
 			cfg.Scrapers.UserAgent, // userAgent
 			cfg.Scrapers.Referer,   // referer
 			processedMovieIDs,      // poster deduplication map (shared across all tasks)
+			cfg,                    // cfg - needed for NFO path construction in update mode
+			scalarStrategy,         // scalarStrategy - scalar field merge behavior (prefer-scraper, prefer-nfo)
+			arrayStrategy,          // arrayStrategy - array field merge behavior (merge, replace)
 		)
 
 		// Submit to pool (blocks if pool is full)

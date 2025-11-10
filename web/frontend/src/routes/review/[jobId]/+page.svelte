@@ -97,6 +97,9 @@
 	// Manual search mode state
 	let manualSearchMode = $state(false);
 	let manualSearchInput = $state('');
+	// Merge strategies for update mode (two independent options)
+	let rescrapeScalarStrategy = $state('prefer-nfo');  // For scalar fields: prefer-nfo, prefer-scraper
+	let rescrapeArrayStrategy = $state('merge');        // For array fields: merge, replace
 
 	// Group file results by movie_id to handle multi-part files
 	// Each movie group contains all file results with the same movie_id
@@ -338,7 +341,9 @@
 			const response = await apiClient.rescrapeBatchMovie(jobId, rescrapeMovieId, {
 				force: true,
 				selected_scrapers: rescrapeSelectedScrapers,
-				manual_search_input: manualSearchMode ? manualSearchInput.trim() : undefined
+				manual_search_input: manualSearchMode ? manualSearchInput.trim() : undefined,
+				scalar_strategy: rescrapeScalarStrategy !== '' ? rescrapeScalarStrategy : undefined,
+				array_strategy: rescrapeArrayStrategy !== '' ? rescrapeArrayStrategy : undefined
 			});
 
 			const updatedMovie = response.movie;
@@ -1295,6 +1300,37 @@
 						disabled={false}
 					/>
 				{/if}
+
+				<!-- Merge Strategy Selection -->
+				<div class="mt-6">
+					<h3 class="font-semibold mb-2">NFO Merge Strategy</h3>
+					<p class="text-sm text-muted-foreground mb-3">
+						Choose how to merge existing NFO data with freshly scraped data. Leave empty to replace all data.
+					</p>
+					<div class="grid grid-cols-3 gap-2">
+						<button
+							onclick={() => rescrapeScalarStrategy = 'prefer-nfo'}
+							class="p-3 rounded-lg border-2 text-sm transition-all {rescrapeScalarStrategy === 'prefer-nfo' ? 'border-primary bg-primary/5 font-medium' : 'border-border hover:border-primary/50'}"
+						>
+							<div class="font-medium">Prefer NFO</div>
+							<div class="text-xs text-muted-foreground mt-1">Keep existing data</div>
+						</button>
+						<button
+							onclick={() => rescrapeScalarStrategy = 'prefer-scraper'}
+							class="p-3 rounded-lg border-2 text-sm transition-all {rescrapeScalarStrategy === 'prefer-scraper' ? 'border-primary bg-primary/5 font-medium' : 'border-border hover:border-primary/50'}"
+						>
+							<div class="font-medium">Prefer Scraped</div>
+							<div class="text-xs text-muted-foreground mt-1">Update with fresh data</div>
+						</button>
+						<button
+							onclick={() => rescrapeScalarStrategy = ''}
+							class="p-3 rounded-lg border-2 text-sm transition-all {rescrapeScalarStrategy === '' ? 'border-primary bg-primary/5 font-medium' : 'border-border hover:border-primary/50'}"
+						>
+							<div class="font-medium">Replace All</div>
+							<div class="text-xs text-muted-foreground mt-1">Fresh scrape only</div>
+						</button>
+					</div>
+				</div>
 			{/if}			</div>
 
 			<!-- Footer -->

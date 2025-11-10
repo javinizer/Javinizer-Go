@@ -121,7 +121,8 @@ func main() {
 	updateCmd.Flags().Bool("force-overwrite", false, "Ignore existing NFO, use only scraper data (destructive)")
 	updateCmd.Flags().Bool("preserve-nfo", false, "Never overwrite NFO fields, only add missing data (conservative)")
 	updateCmd.Flags().Bool("show-merge-stats", false, "Display detailed merge statistics for each file")
-	updateCmd.Flags().String("merge-strategy", "prefer-scraper", "Merge strategy: prefer-scraper, prefer-nfo, or merge-arrays")
+	updateCmd.Flags().String("scalar-strategy", "prefer-nfo", "Scalar field merge strategy: prefer-nfo or prefer-scraper")
+	updateCmd.Flags().String("array-strategy", "merge", "Array field merge strategy: merge or replace")
 
 	// Genre command with subcommands
 	genreCmd := &cobra.Command{
@@ -1101,7 +1102,8 @@ func runUpdate(cmd *cobra.Command, args []string, deps *Dependencies) error {
 	forceOverwrite, _ := cmd.Flags().GetBool("force-overwrite")
 	preserveNFO, _ := cmd.Flags().GetBool("preserve-nfo")
 	showMergeStats, _ := cmd.Flags().GetBool("show-merge-stats")
-	mergeStrategyStr, _ := cmd.Flags().GetString("merge-strategy")
+	scalarStrategyStr, _ := cmd.Flags().GetString("scalar-strategy")
+	arrayStrategyStr, _ := cmd.Flags().GetString("array-strategy")
 
 	// In update mode: always generate NFO, never move files, force update enabled
 	generateNFO := true
@@ -1166,20 +1168,17 @@ func runUpdate(cmd *cobra.Command, args []string, deps *Dependencies) error {
 
 	// Step 3.5: Merge with existing NFO data (if not force-overwrite)
 	if !forceOverwrite {
-		// Determine merge strategy
-		var mergeStrategy nfo.MergeStrategy
+		// Determine merge strategies
+		var scalarStrategy nfo.MergeStrategy
+		var mergeArrays bool
+
 		if preserveNFO {
-			mergeStrategy = nfo.PreferNFO
+			scalarStrategy = nfo.PreferNFO
 		} else {
-			switch strings.ToLower(mergeStrategyStr) {
-			case "prefer-nfo":
-				mergeStrategy = nfo.PreferNFO
-			case "merge-arrays":
-				mergeStrategy = nfo.MergeArrays
-			default: // "prefer-scraper"
-				mergeStrategy = nfo.PreferScraper
-			}
+			scalarStrategy = nfo.ParseScalarStrategy(scalarStrategyStr)
 		}
+
+		mergeArrays = nfo.ParseArrayStrategy(arrayStrategyStr)
 
 		totalMerged := 0
 		totalPreservedFromNFO := 0
@@ -1210,8 +1209,8 @@ func runUpdate(cmd *cobra.Command, args []string, deps *Dependencies) error {
 					continue
 				}
 
-				// Merge scraped data with NFO data
-				mergeResult, mergeErr := nfo.MergeMovieMetadata(scrapedMovie, parseResult.Movie, mergeStrategy)
+				// Merge scraped data with NFO data using new two-parameter strategy
+				mergeResult, mergeErr := nfo.MergeMovieMetadataWithOptions(scrapedMovie, parseResult.Movie, scalarStrategy, mergeArrays)
 				if mergeErr != nil {
 					logging.Warnf("[%s] Failed to merge NFO data: %v (using scraper data only)", id, mergeErr)
 					continue
@@ -1245,7 +1244,8 @@ func runUpdate(cmd *cobra.Command, args []string, deps *Dependencies) error {
 			fmt.Printf("Movies merged with existing NFO: %d\n", totalMerged)
 			fmt.Printf("Total fields from scraper: %d\n", totalFromScraper)
 			fmt.Printf("Total fields preserved from NFO: %d\n", totalPreservedFromNFO)
-			fmt.Printf("Merge strategy: %s\n", mergeStrategyStr)
+			fmt.Printf("Scalar strategy: %s\n", scalarStrategyStr)
+			fmt.Printf("Array strategy: %s\n", arrayStrategyStr)
 		}
 	}
 

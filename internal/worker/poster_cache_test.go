@@ -129,9 +129,13 @@ func TestPosterRegenerationOnCacheHit(t *testing.T) {
 		httpClient,
 		userAgent,
 		referer,
-		false, // force=false
-		nil,   // no selected scrapers
-		nil,   // no processedMovieIDs tracking
+		false,            // force=false
+		false,            // updateMode=false
+		nil,              // no selected scrapers
+		nil,              // no processedMovieIDs tracking
+		cfg,              // config
+		"prefer-scraper", // scalarStrategy
+		"merge",          // arrayStrategy
 	)
 
 	require.NoError(t, err, "First scrape should succeed")
@@ -183,9 +187,13 @@ func TestPosterRegenerationOnCacheHit(t *testing.T) {
 		httpClient,
 		userAgent,
 		referer,
-		false, // force=false (use cache)
-		nil,   // no selected scrapers
-		nil,   // no processedMovieIDs tracking
+		false,            // force=false (use cache)
+		false,            // updateMode=false
+		nil,              // no selected scrapers
+		nil,              // no processedMovieIDs tracking
+		cfg,              // config
+		"prefer-scraper", // scalarStrategy
+		"merge",          // arrayStrategy
 	)
 
 	require.NoError(t, err, "Second scrape should succeed (cache hit)")

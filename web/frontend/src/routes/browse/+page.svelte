@@ -32,6 +32,8 @@
 	let availableScrapers: Scraper[] = $state([]);
 	let selectedScrapers: string[] = $state([]);
 	let showScraperSelector = $state(false);
+	let scalarStrategy: string = $state('prefer-nfo');  // For scalar fields: prefer-nfo, prefer-scraper
+	let arrayStrategy: string = $state('merge');        // For array fields: merge, replace
 
 	// localStorage keys
 	const STORAGE_KEY_INPUT = 'javinizer_input_path';
@@ -129,7 +131,9 @@
 				force: forceRefresh,
 				destination: isUpdateMode ? undefined : (destinationPath.trim() || undefined),
 				update: isUpdateMode,
-				selected_scrapers: showScraperSelector ? selectedScrapers : undefined
+				selected_scrapers: showScraperSelector ? selectedScrapers : undefined,
+				scalar_strategy: isUpdateMode ? scalarStrategy : undefined,
+				array_strategy: isUpdateMode ? arrayStrategy : undefined
 			});
 			currentJobId = response.job_id;
 
@@ -323,6 +327,60 @@
 			</div>
 		</Card>
 
+
+	<!-- Merge Strategy Selection (only shown in update mode) -->
+	{#if operationMode === 'update'}
+		<Card class="p-4">
+			<div class="space-y-4">
+				<div>
+					<h3 class="font-semibold">NFO Merge Strategy</h3>
+					<p class="text-sm text-muted-foreground">Choose how to merge existing NFO data with freshly scraped data</p>
+				</div>
+
+				<!-- Scalar Fields Strategy -->
+				<div class="space-y-2">
+					<h4 class="text-sm font-medium">Scalar Fields (Title, Studio, Label, etc.)</h4>
+					<div class="grid grid-cols-2 gap-2">
+						<button
+							onclick={() => scalarStrategy = 'prefer-nfo'}
+							class="p-3 rounded-lg border-2 text-sm transition-all {scalarStrategy === 'prefer-nfo' ? 'border-primary bg-primary/5 font-medium' : 'border-border hover:border-primary/50'}"
+						>
+							<div class="font-medium">Prefer NFO</div>
+							<div class="text-xs text-muted-foreground mt-1">Keep existing values</div>
+						</button>
+						<button
+							onclick={() => scalarStrategy = 'prefer-scraper'}
+							class="p-3 rounded-lg border-2 text-sm transition-all {scalarStrategy === 'prefer-scraper' ? 'border-primary bg-primary/5 font-medium' : 'border-border hover:border-primary/50'}"
+						>
+							<div class="font-medium">Prefer Scraped</div>
+							<div class="text-xs text-muted-foreground mt-1">Update with fresh data</div>
+						</button>
+					</div>
+				</div>
+
+				<!-- Array Fields Strategy -->
+				<div class="space-y-2">
+					<h4 class="text-sm font-medium">Array Fields (Actresses, Genres, Screenshots)</h4>
+					<div class="grid grid-cols-2 gap-2">
+						<button
+							onclick={() => arrayStrategy = 'merge'}
+							class="p-3 rounded-lg border-2 text-sm transition-all {arrayStrategy === 'merge' ? 'border-primary bg-primary/5 font-medium' : 'border-border hover:border-primary/50'}"
+						>
+							<div class="font-medium">Merge</div>
+							<div class="text-xs text-muted-foreground mt-1">Combine arrays</div>
+						</button>
+						<button
+							onclick={() => arrayStrategy = 'replace'}
+							class="p-3 rounded-lg border-2 text-sm transition-all {arrayStrategy === 'replace' ? 'border-primary bg-primary/5 font-medium' : 'border-border hover:border-primary/50'}"
+						>
+							<div class="font-medium">Replace</div>
+							<div class="text-xs text-muted-foreground mt-1">Use scraped arrays only</div>
+						</button>
+					</div>
+				</div>
+			</div>
+		</Card>
+	{/if}
 		<!-- Destination Folder (only shown in scrape mode) -->
 		{#if operationMode === 'scrape'}
 			<Card class="p-4">

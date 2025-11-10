@@ -44,6 +44,8 @@ export interface BatchScrapeRequest {
 	destination?: string;
 	update?: boolean;
 	selected_scrapers?: string[];
+	scalar_strategy?: string; // prefer-nfo, prefer-scraper
+	array_strategy?: string;  // merge, replace
 }
 
 export interface RescrapeRequest {
@@ -55,6 +57,8 @@ export interface BatchRescrapeRequest {
 	force?: boolean;
 	selected_scrapers?: string[];
 	manual_search_input?: string;
+	scalar_strategy?: string; // prefer-nfo, prefer-scraper
+	array_strategy?: string;  // merge, replace
 }
 
 export interface BatchRescrapeResponse {

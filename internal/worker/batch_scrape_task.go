@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/javinizer/javinizer-go/internal/aggregator"
+	"github.com/javinizer/javinizer-go/internal/config"
 	"github.com/javinizer/javinizer-go/internal/database"
 	"github.com/javinizer/javinizer-go/internal/logging"
 	"github.com/javinizer/javinizer-go/internal/matcher"
@@ -27,11 +28,15 @@ type BatchScrapeTask struct {
 	matcher           *matcher.Matcher
 	progressTracker   *ProgressTracker
 	force             bool
+	updateMode        bool     // If true, merge with existing NFO data
 	selectedScrapers  []string // empty = use default
 	httpClient        *http.Client
 	userAgent         string
 	referer           string
 	processedMovieIDs map[string]bool // Thread-safe tracking of processed movie IDs for poster deduplication
+	cfg               *config.Config  // Config for NFO path construction
+	scalarStrategy    string          // Scalar field strategy for updateMode: prefer-nfo, prefer-scraper
+	arrayStrategy     string          // Array field strategy for updateMode: merge, replace
 }
 
 // NewBatchScrapeTask creates a new batch scrape task
@@ -46,11 +51,15 @@ func NewBatchScrapeTask(
 	mat *matcher.Matcher,
 	progressTracker *ProgressTracker,
 	force bool,
+	updateMode bool,
 	selectedScrapers []string,
 	httpClient *http.Client,
 	userAgent string,
 	referer string,
 	processedMovieIDs map[string]bool,
+	cfg *config.Config,
+	scalarStrategy string,
+	arrayStrategy string,
 ) *BatchScrapeTask {
 	desc := fmt.Sprintf("Scraping metadata for %s", filepath.Base(filePath))
 
@@ -69,11 +78,15 @@ func NewBatchScrapeTask(
 		matcher:           mat,
 		progressTracker:   progressTracker,
 		force:             force,
+		updateMode:        updateMode,
 		selectedScrapers:  selectedScrapers,
 		httpClient:        httpClient,
 		userAgent:         userAgent,
 		referer:           referer,
 		processedMovieIDs: processedMovieIDs,
+		cfg:               cfg,
+		scalarStrategy:    scalarStrategy,
+		arrayStrategy:     arrayStrategy,
 	}
 }
 
@@ -124,8 +137,12 @@ func (t *BatchScrapeTask) Execute(ctx context.Context) error {
 		t.userAgent,
 		t.referer,
 		t.force,
+		t.updateMode,
 		t.selectedScrapers,
 		t.processedMovieIDs,
+		t.cfg,
+		t.scalarStrategy,
+		t.arrayStrategy,
 	)
 
 	// Step 3: Aggregating results (if we got this far without error)

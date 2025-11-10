@@ -120,6 +120,8 @@ type BatchScrapeRequest struct {
 	Destination      string   `json:"destination,omitempty" example:"/path/to/output"`
 	Update           bool     `json:"update" example:"false"` // Update mode: only create/update metadata files without moving video files
 	SelectedScrapers []string `json:"selected_scrapers,omitempty" example:"r18dev,dmm"`
+	ScalarStrategy   string   `json:"scalar_strategy,omitempty" example:"prefer-nfo"` // For Update mode: prefer-nfo, prefer-scraper
+	ArrayStrategy    string   `json:"array_strategy,omitempty" example:"merge"`       // For Update mode: merge, replace
 }
 
 // BatchScrapeResponse represents batch scrape response
@@ -209,6 +211,8 @@ type BatchRescrapeRequest struct {
 	Force             bool     `json:"force" example:"false"`
 	SelectedScrapers  []string `json:"selected_scrapers,omitempty" example:"r18dev,dmm"`
 	ManualSearchInput string   `json:"manual_search_input,omitempty" example:"IPX-535"`
+	ScalarStrategy    string   `json:"scalar_strategy,omitempty" example:"prefer-nfo"` // For Update mode: prefer-nfo, prefer-scraper
+	ArrayStrategy     string   `json:"array_strategy,omitempty" example:"merge"`       // For Update mode: merge, replace
 }
 
 // BatchRescrapeResponse represents a batch rescrape response with movie

@@ -241,8 +241,10 @@ func TestProcessBatchJobConcurrent(t *testing.T) {
 			false, // updateMode
 			"",    // destination
 			cfg,
-			nil,     // selectedScrapers
-			deps.DB, // db
+			nil,              // selectedScrapers
+			"prefer-scraper", // scalarStrategy
+			"merge",          // arrayStrategy
+			deps.DB,          // db
 		)
 		close(done)
 	}()
@@ -319,8 +321,10 @@ func TestProcessBatchJobCancellation(t *testing.T) {
 			false, // updateMode
 			"",
 			cfg,
-			nil,     // selectedScrapers
-			deps.DB, // db
+			nil,              // selectedScrapers
+			"prefer-scraper", // scalarStrategy
+			"merge",          // arrayStrategy
+			deps.DB,          // db
 		)
 		close(done)
 	}()
@@ -396,8 +400,10 @@ func TestProcessBatchJobRaceConditions(t *testing.T) {
 			false, // updateMode
 			"",
 			cfg,
-			nil,     // selectedScrapers
-			deps.DB, // db
+			nil,              // selectedScrapers
+			"prefer-scraper", // scalarStrategy
+			"merge",          // arrayStrategy
+			deps.DB,          // db
 		)
 		close(done)
 	}()
@@ -592,8 +598,10 @@ func TestBatchScrapeTaskDatabaseSafety(t *testing.T) {
 			false, // updateMode
 			"",
 			cfg,
-			nil,     // selectedScrapers
-			deps.DB, // db
+			nil,              // selectedScrapers
+			"prefer-scraper", // scalarStrategy
+			"merge",          // arrayStrategy
+			deps.DB,          // db
 		)
 		close(done)
 	}()
@@ -685,8 +693,10 @@ func TestWorkerPoolErrorHandling(t *testing.T) {
 			false, // updateMode
 			"",
 			cfg,
-			nil,     // selectedScrapers
-			deps.DB, // db
+			nil,              // selectedScrapers
+			"prefer-scraper", // scalarStrategy
+			"merge",          // arrayStrategy
+			deps.DB,          // db
 		)
 		close(done)
 	}()

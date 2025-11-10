@@ -114,8 +114,12 @@ func rescrapeBatchMovie(deps *ServerDependencies) gin.HandlerFunc {
 			cfg.Scrapers.UserAgent, // userAgent
 			cfg.Scrapers.Referer,   // referer
 			req.Force,              // force rescrape
-			req.SelectedScrapers,   // selectedScrapers (empty = use defaults)
-			nil,                    // processedMovieIDs (nil = no deduplication for single file rescrape)
+			req.ScalarStrategy != "" || req.ArrayStrategy != "", // updateMode - true if either strategy provided
+			req.SelectedScrapers, // selectedScrapers (empty = use defaults)
+			nil,                  // processedMovieIDs (nil = no deduplication for single file rescrape)
+			cfg,                  // cfg (needed for NFO path construction)
+			req.ScalarStrategy,   // scalarStrategy - scalar field merge behavior (prefer-scraper, prefer-nfo)
+			req.ArrayStrategy,    // arrayStrategy - array field merge behavior (merge, replace)
 		)
 
 		if err != nil {

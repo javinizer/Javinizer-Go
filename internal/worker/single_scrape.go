@@ -12,12 +12,15 @@ import (
 	"time"
 
 	"github.com/javinizer/javinizer-go/internal/aggregator"
+	"github.com/javinizer/javinizer-go/internal/config"
 	"github.com/javinizer/javinizer-go/internal/database"
 	"github.com/javinizer/javinizer-go/internal/logging"
 	"github.com/javinizer/javinizer-go/internal/matcher"
 	"github.com/javinizer/javinizer-go/internal/models"
+	"github.com/javinizer/javinizer-go/internal/nfo"
 	"github.com/javinizer/javinizer-go/internal/scanner"
 	"github.com/javinizer/javinizer-go/internal/scraper/dmm"
+	"github.com/javinizer/javinizer-go/internal/template"
 )
 
 // processedMovieIDsMutex protects concurrent access to processedMovieIDs map
@@ -68,8 +71,10 @@ func scraperSearchWithContext(ctx context.Context, scraper models.Scraper, id st
 //   - userAgent: User-Agent header value from config
 //   - referer: Referer header value from config
 //   - force: If true, skip cache and delete existing data
+//   - updateMode: If true, merge scraped data with existing NFO file
 //   - selectedScrapers: If non-empty, use these scrapers instead of defaults
 //   - processedMovieIDs: Map to track which movie IDs have already had posters generated (pass nil to disable tracking)
+//   - cfg: Config for NFO path construction (required if updateMode is true)
 //
 // Returns:
 //   - movie: Successfully scraped and saved movie metadata
@@ -92,8 +97,12 @@ func RunBatchScrapeOnce(
 	userAgent string,
 	referer string,
 	force bool,
+	updateMode bool,
 	selectedScrapers []string,
 	processedMovieIDs map[string]bool,
+	cfg *config.Config,
+	scalarStrategy string,
+	arrayStrategy string,
 ) (*models.Movie, *FileResult, error) {
 	logging.Debugf("[Batch %s] Starting scrape for file %d: %s (force=%v, customScrapers=%v, queryOverride=%s)",
 		job.ID, fileIndex, filePath, force, selectedScrapers, queryOverride)
@@ -191,12 +200,119 @@ func RunBatchScrapeOnce(
 				}
 			}
 
+			// CACHE HIT NFO MERGE: Merge cached data with existing NFO if updateMode is true
+			movieToReturn := cached
+			if updateMode && cfg != nil {
+				logging.Debugf("[Batch %s] File %d: Update mode enabled with cache hit, checking for existing NFO to merge", job.ID, fileIndex)
+
+				// Construct expected NFO path (same logic as fresh scrape path)
+				sourceDir := filepath.Dir(filePath)
+				tmplCtx := template.NewContextFromMovie(cached)
+				tmplCtx.GroupActress = cfg.Output.GroupActress
+
+				// Detect part suffix for multi-part files
+				if cfg.Metadata.NFO.PerFile && matchResultPtr != nil && matchResultPtr.IsMultiPart {
+					tmplCtx.PartNumber = matchResultPtr.PartNumber
+					tmplCtx.PartSuffix = matchResultPtr.PartSuffix
+					tmplCtx.IsMultiPart = true
+				}
+
+				// Generate expected NFO filename using template
+				templateEngine := template.NewEngine()
+				nfoFilename, err := templateEngine.Execute(cfg.Metadata.NFO.FilenameTemplate, tmplCtx)
+				if err != nil {
+					logging.Warnf("[Batch %s] File %d: Failed to execute NFO filename template: %v, using default", job.ID, fileIndex, err)
+					sanitized := template.SanitizeFilename(cached.ID)
+					if sanitized == "" {
+						sanitized = "metadata"
+					}
+					nfoFilename = sanitized + ".nfo"
+				} else {
+					basename := nfoFilename
+					lower := strings.ToLower(basename)
+					if strings.HasSuffix(lower, ".nfo") {
+						basename = basename[:len(basename)-4]
+					}
+					sanitized := template.SanitizeFilename(basename)
+					if sanitized == "" {
+						sanitized = template.SanitizeFilename(cached.ID)
+						if sanitized == "" {
+							sanitized = "metadata"
+						}
+					}
+					nfoFilename = sanitized + ".nfo"
+				}
+
+				nfoPath := filepath.Join(sourceDir, nfoFilename)
+
+				// Also try legacy paths
+				legacyPaths := []string{}
+				if nfoFilename != cached.ID+".nfo" {
+					legacyPaths = append(legacyPaths, filepath.Join(sourceDir, cached.ID+".nfo"))
+				}
+				if cfg.Metadata.NFO.PerFile && matchResultPtr != nil && matchResultPtr.IsMultiPart {
+					videoName := strings.TrimSuffix(filepath.Base(filePath), filepath.Ext(filePath))
+					videoNFO := filepath.Join(sourceDir, videoName+".nfo")
+					if videoNFO != nfoPath {
+						legacyPaths = append(legacyPaths, videoNFO)
+					}
+				}
+
+				// Check if NFO exists
+				foundPath := ""
+				if _, err := os.Stat(nfoPath); err == nil {
+					foundPath = nfoPath
+				} else {
+					for _, legacyPath := range legacyPaths {
+						if _, err := os.Stat(legacyPath); err == nil {
+							foundPath = legacyPath
+							logging.Debugf("[Batch %s] File %d: Found NFO at legacy path: %s", job.ID, fileIndex, legacyPath)
+							break
+						}
+					}
+				}
+
+				if foundPath != "" {
+					// NFO exists - parse and merge with cached data
+					logging.Infof("[Batch %s] File %d: Found existing NFO, merging with cached data: %s", job.ID, fileIndex, foundPath)
+
+					parseResult, err := nfo.ParseNFO(foundPath)
+					if err != nil {
+						logging.Warnf("[Batch %s] File %d: Failed to parse existing NFO %s: %v (will use cached data only)", job.ID, fileIndex, foundPath, err)
+					} else {
+						// Merge with user-selected strategies for Update Mode
+						scalar := nfo.ParseScalarStrategy(scalarStrategy)
+						mergeArrays := nfo.ParseArrayStrategy(arrayStrategy)
+						mergeResult, err := nfo.MergeMovieMetadataWithOptions(cached, parseResult.Movie, scalar, mergeArrays)
+						if err != nil {
+							logging.Warnf("[Batch %s] File %d: Failed to merge NFO data for %s: %v (using cached data only)", job.ID, fileIndex, cached.ID, err)
+						} else {
+							movieToReturn = mergeResult.Merged
+							logging.Infof("[Batch %s] File %d: NFO merge complete for cached %s: %d from cache, %d from NFO, %d conflicts resolved",
+								job.ID, fileIndex, cached.ID, mergeResult.Stats.FromScraper, mergeResult.Stats.FromNFO, mergeResult.Stats.ConflictsResolved)
+
+							// Regenerate DisplayName from merged data (uses merged Title)
+							if cfg != nil && cfg.Metadata.NFO.DisplayName != "" {
+								tmplEngine := template.NewEngine()
+								ctx := template.NewContextFromMovie(movieToReturn)
+								if displayName, err := tmplEngine.Execute(cfg.Metadata.NFO.DisplayName, ctx); err == nil {
+									movieToReturn.DisplayName = displayName
+									logging.Debugf("[Batch %s] File %d: Regenerated DisplayName after merge: %s", job.ID, fileIndex, displayName)
+								}
+							}
+						}
+					}
+				} else {
+					logging.Debugf("[Batch %s] File %d: No existing NFO found, using cached data only", job.ID, fileIndex)
+				}
+			}
+
 			now := time.Now()
 			fileResult := &FileResult{
 				FilePath:    filePath,
 				MovieID:     movieID,
 				Status:      JobStatusCompleted,
-				Data:        cached,
+				Data:        movieToReturn,
 				PosterError: posterErr,
 				StartedAt:   startTime,
 				EndedAt:     &now,
@@ -209,7 +325,7 @@ func RunBatchScrapeOnce(
 				fileResult.PartSuffix = matchResultPtr.PartSuffix
 			}
 
-			return cached, fileResult, nil
+			return movieToReturn, fileResult, nil
 		}
 		logging.Debugf("[Batch %s] File %d: %s not found in cache, will scrape", job.ID, fileIndex, movieID)
 	} else if force {
@@ -395,6 +511,114 @@ func RunBatchScrapeOnce(
 
 	// Set original filename for tracking
 	movie.OriginalFileName = filepath.Base(filePath)
+
+	// Step 6.5: NFO Merge (if updateMode is true)
+	if updateMode && cfg != nil {
+		logging.Debugf("[Batch %s] File %d: Update mode enabled, checking for existing NFO to merge", job.ID, fileIndex)
+
+		// Construct expected NFO path (similar to processUpdateMode logic)
+		sourceDir := filepath.Dir(filePath)
+		tmplCtx := template.NewContextFromMovie(movie)
+		tmplCtx.GroupActress = cfg.Output.GroupActress
+
+		// Detect part suffix for multi-part files
+		if cfg.Metadata.NFO.PerFile && matchResultPtr != nil && matchResultPtr.IsMultiPart {
+			tmplCtx.PartNumber = matchResultPtr.PartNumber
+			tmplCtx.PartSuffix = matchResultPtr.PartSuffix
+			tmplCtx.IsMultiPart = true
+		}
+
+		// Generate expected NFO filename using template
+		templateEngine := template.NewEngine()
+		nfoFilename, err := templateEngine.Execute(cfg.Metadata.NFO.FilenameTemplate, tmplCtx)
+		if err != nil {
+			// Fall back to default naming
+			logging.Warnf("[Batch %s] File %d: Failed to execute NFO filename template: %v, using default", job.ID, fileIndex, err)
+			sanitized := template.SanitizeFilename(movie.ID)
+			if sanitized == "" {
+				sanitized = "metadata"
+			}
+			nfoFilename = sanitized + ".nfo"
+		} else {
+			// Sanitize and ensure .nfo extension
+			basename := nfoFilename
+			lower := strings.ToLower(basename)
+			if strings.HasSuffix(lower, ".nfo") {
+				basename = basename[:len(basename)-4]
+			}
+			sanitized := template.SanitizeFilename(basename)
+			if sanitized == "" {
+				sanitized = template.SanitizeFilename(movie.ID)
+				if sanitized == "" {
+					sanitized = "metadata"
+				}
+			}
+			nfoFilename = sanitized + ".nfo"
+		}
+
+		nfoPath := filepath.Join(sourceDir, nfoFilename)
+
+		// Also try legacy paths for backward compatibility
+		legacyPaths := []string{}
+		if nfoFilename != movie.ID+".nfo" {
+			legacyPaths = append(legacyPaths, filepath.Join(sourceDir, movie.ID+".nfo"))
+		}
+		if cfg.Metadata.NFO.PerFile && matchResultPtr != nil && matchResultPtr.IsMultiPart {
+			videoName := strings.TrimSuffix(filepath.Base(filePath), filepath.Ext(filePath))
+			videoNFO := filepath.Join(sourceDir, videoName+".nfo")
+			if videoNFO != nfoPath {
+				legacyPaths = append(legacyPaths, videoNFO)
+			}
+		}
+
+		// Check if NFO exists (try template path first, then legacy)
+		foundPath := ""
+		if _, err := os.Stat(nfoPath); err == nil {
+			foundPath = nfoPath
+		} else {
+			for _, legacyPath := range legacyPaths {
+				if _, err := os.Stat(legacyPath); err == nil {
+					foundPath = legacyPath
+					logging.Debugf("[Batch %s] File %d: Found NFO at legacy path: %s", job.ID, fileIndex, legacyPath)
+					break
+				}
+			}
+		}
+
+		if foundPath != "" {
+			// NFO exists - parse and merge
+			logging.Infof("[Batch %s] File %d: Found existing NFO, merging data: %s", job.ID, fileIndex, foundPath)
+
+			parseResult, err := nfo.ParseNFO(foundPath)
+			if err != nil {
+				logging.Warnf("[Batch %s] File %d: Failed to parse existing NFO %s: %v (will use scraper data only)", job.ID, fileIndex, foundPath, err)
+			} else {
+				// Merge with user-selected strategies for Update Mode
+				scalar := nfo.ParseScalarStrategy(scalarStrategy)
+				mergeArrays := nfo.ParseArrayStrategy(arrayStrategy)
+				mergeResult, err := nfo.MergeMovieMetadataWithOptions(movie, parseResult.Movie, scalar, mergeArrays)
+				if err != nil {
+					logging.Warnf("[Batch %s] File %d: Failed to merge NFO data for %s: %v (using scraper data only)", job.ID, fileIndex, movie.ID, err)
+				} else {
+					movie = mergeResult.Merged
+					logging.Infof("[Batch %s] File %d: NFO merge complete for %s: %d from scraper, %d from NFO, %d conflicts resolved",
+						job.ID, fileIndex, movie.ID, mergeResult.Stats.FromScraper, mergeResult.Stats.FromNFO, mergeResult.Stats.ConflictsResolved)
+
+					// Regenerate DisplayName from merged data (uses merged Title)
+					if cfg != nil && cfg.Metadata.NFO.DisplayName != "" {
+						tmplEngine := template.NewEngine()
+						ctx := template.NewContextFromMovie(movie)
+						if displayName, err := tmplEngine.Execute(cfg.Metadata.NFO.DisplayName, ctx); err == nil {
+							movie.DisplayName = displayName
+							logging.Debugf("[Batch %s] File %d: Regenerated DisplayName after merge: %s", job.ID, fileIndex, displayName)
+						}
+					}
+				}
+			}
+		} else {
+			logging.Debugf("[Batch %s] File %d: No existing NFO found, using scraper data only", job.ID, fileIndex)
+		}
+	}
 
 	// Step 7: Download and crop poster temporarily for review page
 	// Skip if we've already processed this movie ID (for multi-part files)
