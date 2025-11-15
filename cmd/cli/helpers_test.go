@@ -1,13 +1,16 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/javinizer/javinizer-go/internal/config"
 	"github.com/javinizer/javinizer-go/internal/models"
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -525,4 +528,622 @@ server:
 	// Should get error due to malformed YAML
 	assert.Error(t, err)
 	assert.Contains(t, strings.ToLower(err.Error()), "config")
+}
+
+// Tests for applyScrapeFlagOverrides
+
+func TestApplyScrapeFlagOverrides_ScrapeActress(t *testing.T) {
+	tests := []struct {
+		name     string
+		flagName string
+		value    bool
+		expected bool
+	}{
+		{
+			name:     "scrape-actress true",
+			flagName: "scrape-actress",
+			value:    true,
+			expected: true,
+		},
+		{
+			name:     "scrape-actress false",
+			flagName: "scrape-actress",
+			value:    false,
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &config.Config{
+				Scrapers: config.ScrapersConfig{
+					DMM: config.DMMConfig{
+						ScrapeActress: false, // Default
+					},
+				},
+			}
+
+			cmd := &cobra.Command{}
+			cmd.Flags().Bool(tt.flagName, false, "test flag")
+			require.NoError(t, cmd.Flags().Set(tt.flagName, "true"))
+			if !tt.value {
+				require.NoError(t, cmd.Flags().Set(tt.flagName, "false"))
+			}
+
+			applyScrapeFlagOverrides(cmd, cfg)
+
+			assert.Equal(t, tt.expected, cfg.Scrapers.DMM.ScrapeActress)
+		})
+	}
+}
+
+func TestApplyScrapeFlagOverrides_NoScrapeActress(t *testing.T) {
+	cfg := &config.Config{
+		Scrapers: config.ScrapersConfig{
+			DMM: config.DMMConfig{
+				ScrapeActress: true, // Start with true
+			},
+		},
+	}
+
+	cmd := &cobra.Command{}
+	cmd.Flags().Bool("no-scrape-actress", false, "test flag")
+	require.NoError(t, cmd.Flags().Set("no-scrape-actress", "true"))
+
+	applyScrapeFlagOverrides(cmd, cfg)
+
+	assert.False(t, cfg.Scrapers.DMM.ScrapeActress)
+}
+
+func TestApplyScrapeFlagOverrides_Headless(t *testing.T) {
+	tests := []struct {
+		name     string
+		flagName string
+		value    bool
+		expected bool
+	}{
+		{
+			name:     "headless true",
+			flagName: "headless",
+			value:    true,
+			expected: true,
+		},
+		{
+			name:     "headless false",
+			flagName: "headless",
+			value:    false,
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &config.Config{
+				Scrapers: config.ScrapersConfig{
+					DMM: config.DMMConfig{
+						EnableHeadless: false, // Default
+					},
+				},
+			}
+
+			cmd := &cobra.Command{}
+			cmd.Flags().Bool(tt.flagName, false, "test flag")
+			require.NoError(t, cmd.Flags().Set(tt.flagName, "true"))
+			if !tt.value {
+				require.NoError(t, cmd.Flags().Set(tt.flagName, "false"))
+			}
+
+			applyScrapeFlagOverrides(cmd, cfg)
+
+			assert.Equal(t, tt.expected, cfg.Scrapers.DMM.EnableHeadless)
+		})
+	}
+}
+
+func TestApplyScrapeFlagOverrides_NoHeadless(t *testing.T) {
+	cfg := &config.Config{
+		Scrapers: config.ScrapersConfig{
+			DMM: config.DMMConfig{
+				EnableHeadless: true, // Start with true
+			},
+		},
+	}
+
+	cmd := &cobra.Command{}
+	cmd.Flags().Bool("no-headless", false, "test flag")
+	require.NoError(t, cmd.Flags().Set("no-headless", "true"))
+
+	applyScrapeFlagOverrides(cmd, cfg)
+
+	assert.False(t, cfg.Scrapers.DMM.EnableHeadless)
+}
+
+func TestApplyScrapeFlagOverrides_HeadlessTimeout(t *testing.T) {
+	tests := []struct {
+		name     string
+		value    int
+		expected int
+	}{
+		{
+			name:     "valid timeout 30",
+			value:    30,
+			expected: 30,
+		},
+		{
+			name:     "valid timeout 60",
+			value:    60,
+			expected: 60,
+		},
+		{
+			name:     "zero timeout ignored",
+			value:    0,
+			expected: 10, // Should keep default
+		},
+		{
+			name:     "negative timeout ignored",
+			value:    -5,
+			expected: 10, // Should keep default
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &config.Config{
+				Scrapers: config.ScrapersConfig{
+					DMM: config.DMMConfig{
+						HeadlessTimeout: 10, // Default
+					},
+				},
+			}
+
+			cmd := &cobra.Command{}
+			cmd.Flags().Int("headless-timeout", 0, "test flag")
+			require.NoError(t, cmd.Flags().Set("headless-timeout", fmt.Sprintf("%d", tt.value)))
+
+			applyScrapeFlagOverrides(cmd, cfg)
+
+			assert.Equal(t, tt.expected, cfg.Scrapers.DMM.HeadlessTimeout)
+		})
+	}
+}
+
+func TestApplyScrapeFlagOverrides_ActressDB(t *testing.T) {
+	tests := []struct {
+		name     string
+		flagName string
+		value    bool
+		expected bool
+	}{
+		{
+			name:     "actress-db true",
+			flagName: "actress-db",
+			value:    true,
+			expected: true,
+		},
+		{
+			name:     "actress-db false",
+			flagName: "actress-db",
+			value:    false,
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &config.Config{
+				Metadata: config.MetadataConfig{
+					ActressDatabase: config.ActressDatabaseConfig{
+						Enabled: false, // Default
+					},
+				},
+			}
+
+			cmd := &cobra.Command{}
+			cmd.Flags().Bool(tt.flagName, false, "test flag")
+			require.NoError(t, cmd.Flags().Set(tt.flagName, "true"))
+			if !tt.value {
+				require.NoError(t, cmd.Flags().Set(tt.flagName, "false"))
+			}
+
+			applyScrapeFlagOverrides(cmd, cfg)
+
+			assert.Equal(t, tt.expected, cfg.Metadata.ActressDatabase.Enabled)
+		})
+	}
+}
+
+func TestApplyScrapeFlagOverrides_NoActressDB(t *testing.T) {
+	cfg := &config.Config{
+		Metadata: config.MetadataConfig{
+			ActressDatabase: config.ActressDatabaseConfig{
+				Enabled: true, // Start with true
+			},
+		},
+	}
+
+	cmd := &cobra.Command{}
+	cmd.Flags().Bool("no-actress-db", false, "test flag")
+	require.NoError(t, cmd.Flags().Set("no-actress-db", "true"))
+
+	applyScrapeFlagOverrides(cmd, cfg)
+
+	assert.False(t, cfg.Metadata.ActressDatabase.Enabled)
+}
+
+func TestApplyScrapeFlagOverrides_GenreReplacement(t *testing.T) {
+	tests := []struct {
+		name     string
+		flagName string
+		value    bool
+		expected bool
+	}{
+		{
+			name:     "genre-replacement true",
+			flagName: "genre-replacement",
+			value:    true,
+			expected: true,
+		},
+		{
+			name:     "genre-replacement false",
+			flagName: "genre-replacement",
+			value:    false,
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &config.Config{
+				Metadata: config.MetadataConfig{
+					GenreReplacement: config.GenreReplacementConfig{
+						Enabled: false, // Default
+					},
+				},
+			}
+
+			cmd := &cobra.Command{}
+			cmd.Flags().Bool(tt.flagName, false, "test flag")
+			require.NoError(t, cmd.Flags().Set(tt.flagName, "true"))
+			if !tt.value {
+				require.NoError(t, cmd.Flags().Set(tt.flagName, "false"))
+			}
+
+			applyScrapeFlagOverrides(cmd, cfg)
+
+			assert.Equal(t, tt.expected, cfg.Metadata.GenreReplacement.Enabled)
+		})
+	}
+}
+
+func TestApplyScrapeFlagOverrides_NoGenreReplacement(t *testing.T) {
+	cfg := &config.Config{
+		Metadata: config.MetadataConfig{
+			GenreReplacement: config.GenreReplacementConfig{
+				Enabled: true, // Start with true
+			},
+		},
+	}
+
+	cmd := &cobra.Command{}
+	cmd.Flags().Bool("no-genre-replacement", false, "test flag")
+	require.NoError(t, cmd.Flags().Set("no-genre-replacement", "true"))
+
+	applyScrapeFlagOverrides(cmd, cfg)
+
+	assert.False(t, cfg.Metadata.GenreReplacement.Enabled)
+}
+
+func TestApplyScrapeFlagOverrides_NoFlagsSet(t *testing.T) {
+	cfg := &config.Config{
+		Scrapers: config.ScrapersConfig{
+			DMM: config.DMMConfig{
+				ScrapeActress:   false,
+				EnableHeadless:  false,
+				HeadlessTimeout: 10,
+			},
+		},
+		Metadata: config.MetadataConfig{
+			ActressDatabase: config.ActressDatabaseConfig{
+				Enabled: false,
+			},
+			GenreReplacement: config.GenreReplacementConfig{
+				Enabled: false,
+			},
+		},
+	}
+
+	// Create a config copy for comparison
+	originalScrapeActress := cfg.Scrapers.DMM.ScrapeActress
+	originalHeadless := cfg.Scrapers.DMM.EnableHeadless
+	originalTimeout := cfg.Scrapers.DMM.HeadlessTimeout
+	originalActressDB := cfg.Metadata.ActressDatabase.Enabled
+	originalGenreRepl := cfg.Metadata.GenreReplacement.Enabled
+
+	cmd := &cobra.Command{}
+	// Define flags but don't set them
+	cmd.Flags().Bool("scrape-actress", false, "")
+	cmd.Flags().Bool("headless", false, "")
+	cmd.Flags().Int("headless-timeout", 0, "")
+	cmd.Flags().Bool("actress-db", false, "")
+	cmd.Flags().Bool("genre-replacement", false, "")
+
+	applyScrapeFlagOverrides(cmd, cfg)
+
+	// Config should remain unchanged
+	assert.Equal(t, originalScrapeActress, cfg.Scrapers.DMM.ScrapeActress)
+	assert.Equal(t, originalHeadless, cfg.Scrapers.DMM.EnableHeadless)
+	assert.Equal(t, originalTimeout, cfg.Scrapers.DMM.HeadlessTimeout)
+	assert.Equal(t, originalActressDB, cfg.Metadata.ActressDatabase.Enabled)
+	assert.Equal(t, originalGenreRepl, cfg.Metadata.GenreReplacement.Enabled)
+}
+
+// Tests for applyEnvironmentOverrides
+
+func TestApplyEnvironmentOverrides_LogLevel(t *testing.T) {
+	tests := []struct {
+		name     string
+		envValue string
+		expected string
+	}{
+		{
+			name:     "debug level",
+			envValue: "debug",
+			expected: "debug",
+		},
+		{
+			name:     "info level",
+			envValue: "info",
+			expected: "info",
+		},
+		{
+			name:     "warn level",
+			envValue: "warn",
+			expected: "warn",
+		},
+		{
+			name:     "error level",
+			envValue: "error",
+			expected: "error",
+		},
+		{
+			name:     "uppercase DEBUG",
+			envValue: "DEBUG",
+			expected: "debug",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &config.Config{
+				Logging: config.LoggingConfig{
+					Level: "info", // Default
+				},
+			}
+
+			t.Setenv("LOG_LEVEL", tt.envValue)
+
+			applyEnvironmentOverrides(cfg)
+
+			assert.Equal(t, tt.expected, cfg.Logging.Level)
+		})
+	}
+}
+
+func TestApplyEnvironmentOverrides_Umask(t *testing.T) {
+	tests := []struct {
+		name     string
+		envValue string
+		expected string
+	}{
+		{
+			name:     "umask 0022",
+			envValue: "0022",
+			expected: "0022",
+		},
+		{
+			name:     "umask 0002",
+			envValue: "0002",
+			expected: "0002",
+		},
+		{
+			name:     "umask 0077",
+			envValue: "0077",
+			expected: "0077",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &config.Config{
+				System: config.SystemConfig{
+					Umask: "", // Default
+				},
+			}
+
+			t.Setenv("UMASK", tt.envValue)
+
+			applyEnvironmentOverrides(cfg)
+
+			assert.Equal(t, tt.expected, cfg.System.Umask)
+		})
+	}
+}
+
+func TestApplyEnvironmentOverrides_JavinizerDB(t *testing.T) {
+	tests := []struct {
+		name     string
+		envValue string
+		expected string
+	}{
+		{
+			name:     "custom db path",
+			envValue: "/custom/path/javinizer.db",
+			expected: "/custom/path/javinizer.db",
+		},
+		{
+			name:     "relative db path",
+			envValue: "data/custom.db",
+			expected: "data/custom.db",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &config.Config{
+				Database: config.DatabaseConfig{
+					DSN: "data/javinizer.db", // Default
+				},
+			}
+
+			t.Setenv("JAVINIZER_DB", tt.envValue)
+
+			applyEnvironmentOverrides(cfg)
+
+			assert.Equal(t, tt.expected, cfg.Database.DSN)
+		})
+	}
+}
+
+func TestApplyEnvironmentOverrides_JavinizerLogDir(t *testing.T) {
+	tests := []struct {
+		name           string
+		originalOutput string
+		envValue       string
+		expected       string
+	}{
+		{
+			name:           "single file output",
+			originalOutput: "logs/app.log",
+			envValue:       "/var/log",
+			expected:       "/var/log/app.log",
+		},
+		{
+			name:           "stdout preserved",
+			originalOutput: "stdout",
+			envValue:       "/var/log",
+			expected:       "stdout",
+		},
+		{
+			name:           "stderr preserved",
+			originalOutput: "stderr",
+			envValue:       "/var/log",
+			expected:       "stderr",
+		},
+		{
+			name:           "multiple outputs with stdout",
+			originalOutput: "stdout,logs/app.log",
+			envValue:       "/var/log",
+			expected:       "stdout,/var/log/app.log",
+		},
+		{
+			name:           "multiple file outputs",
+			originalOutput: "logs/app.log,logs/error.log",
+			envValue:       "/custom/logs",
+			expected:       "/custom/logs/app.log,/custom/logs/error.log",
+		},
+		{
+			name:           "mixed outputs",
+			originalOutput: "stdout,logs/app.log,stderr",
+			envValue:       "/var/log",
+			expected:       "stdout,/var/log/app.log,stderr",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &config.Config{
+				Logging: config.LoggingConfig{
+					Output: tt.originalOutput,
+				},
+			}
+
+			t.Setenv("JAVINIZER_LOG_DIR", tt.envValue)
+
+			applyEnvironmentOverrides(cfg)
+
+			assert.Equal(t, tt.expected, cfg.Logging.Output)
+		})
+	}
+}
+
+func TestApplyEnvironmentOverrides_DockerAutoDetection(t *testing.T) {
+	t.Run("media directory exists", func(t *testing.T) {
+		// We can't easily test /media detection without mocking os.Stat
+		// This test documents the expected behavior
+		// In a real Docker environment, /media would exist and be auto-detected
+		// The function checks if os.Stat("/media") succeeds and sets AllowedDirectories to ["/media"]
+	})
+
+	t.Run("allowed directories already set", func(t *testing.T) {
+		cfg := &config.Config{
+			API: config.APIConfig{
+				Security: config.SecurityConfig{
+					AllowedDirectories: []string{"/custom/path"},
+				},
+			},
+		}
+
+		originalDirs := cfg.API.Security.AllowedDirectories
+
+		applyEnvironmentOverrides(cfg)
+
+		// Should not override existing allowed directories
+		assert.Equal(t, originalDirs, cfg.API.Security.AllowedDirectories)
+	})
+}
+
+func TestApplyEnvironmentOverrides_NoEnvironmentVariables(t *testing.T) {
+	cfg := &config.Config{
+		Logging: config.LoggingConfig{
+			Level:  "info",
+			Output: "stdout",
+		},
+		System: config.SystemConfig{
+			Umask: "0022",
+		},
+		Database: config.DatabaseConfig{
+			DSN: "data/javinizer.db",
+		},
+	}
+
+	originalLogLevel := cfg.Logging.Level
+	originalOutput := cfg.Logging.Output
+	originalUmask := cfg.System.Umask
+	originalDSN := cfg.Database.DSN
+
+	// Don't set any environment variables
+	applyEnvironmentOverrides(cfg)
+
+	// Config should remain unchanged
+	assert.Equal(t, originalLogLevel, cfg.Logging.Level)
+	assert.Equal(t, originalOutput, cfg.Logging.Output)
+	assert.Equal(t, originalUmask, cfg.System.Umask)
+	assert.Equal(t, originalDSN, cfg.Database.DSN)
+}
+
+func TestApplyEnvironmentOverrides_AllVariables(t *testing.T) {
+	cfg := &config.Config{
+		Logging: config.LoggingConfig{
+			Level:  "info",
+			Output: "stdout,logs/app.log",
+		},
+		System: config.SystemConfig{
+			Umask: "0022",
+		},
+		Database: config.DatabaseConfig{
+			DSN: "data/javinizer.db",
+		},
+	}
+
+	t.Setenv("LOG_LEVEL", "debug")
+	t.Setenv("UMASK", "0002")
+	t.Setenv("JAVINIZER_DB", "/custom/db/javinizer.db")
+	t.Setenv("JAVINIZER_LOG_DIR", "/var/log/javinizer")
+
+	applyEnvironmentOverrides(cfg)
+
+	assert.Equal(t, "debug", cfg.Logging.Level)
+	assert.Equal(t, "0002", cfg.System.Umask)
+	assert.Equal(t, "/custom/db/javinizer.db", cfg.Database.DSN)
+	assert.Equal(t, "stdout,/var/log/javinizer/app.log", cfg.Logging.Output)
 }
