@@ -1,7 +1,11 @@
 package websocket
 
 import (
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -249,4 +253,252 @@ func TestRegisterAndUnregister_ChannelOperations(t *testing.T) {
 	case <-done:
 		// Unregistration completed (sent to channel)
 	}
+}
+
+// TestHub_Run tests the main hub event loop
+func TestHub_Run(t *testing.T) {
+	hub := NewHub()
+
+	// Start the hub in a goroutine
+	go hub.Run()
+
+	// Give the hub time to start
+	// (in production this runs indefinitely, we'll test specific operations)
+
+	t.Run("register client", func(t *testing.T) {
+		client := NewClient(nil)
+
+		// Register a client
+		hub.Register(client)
+
+		// Give time for hub to process
+		// We can't directly check hub.clients due to mutex,
+		// but we can verify the registration channel was consumed
+		// by trying a broadcast operation
+		err := hub.Broadcast("test")
+		if err != nil {
+			t.Errorf("Failed to broadcast after registration: %v", err)
+		}
+	})
+
+	t.Run("unregister client", func(t *testing.T) {
+		client := NewClient(nil)
+
+		// Register first
+		hub.Register(client)
+
+		// Then unregister
+		hub.Unregister(client)
+
+		// Broadcast should still work even with no clients
+		err := hub.Broadcast("test after unregister")
+		if err != nil {
+			t.Errorf("Failed to broadcast after unregistration: %v", err)
+		}
+	})
+
+	t.Run("broadcast to multiple clients", func(t *testing.T) {
+		// Create multiple clients
+		client1 := NewClient(nil)
+		client2 := NewClient(nil)
+		client3 := NewClient(nil)
+
+		// Register all clients
+		hub.Register(client1)
+		hub.Register(client2)
+		hub.Register(client3)
+
+		// Broadcast a message
+		testMsg := map[string]string{"type": "test", "message": "hello all"}
+		err := hub.Broadcast(testMsg)
+		if err != nil {
+			t.Errorf("Failed to broadcast to multiple clients: %v", err)
+		}
+
+		// Note: We can't easily test message reception without real websocket connections
+		// This test verifies the broadcast mechanism doesn't error with multiple clients
+	})
+
+	t.Run("unregister nonexistent client", func(t *testing.T) {
+		// Create a client but don't register it
+		client := NewClient(nil)
+
+		// Unregistering should not panic
+		hub.Unregister(client)
+
+		// Broadcast should still work
+		err := hub.Broadcast("test")
+		if err != nil {
+			t.Errorf("Failed to broadcast after unregistering nonexistent client: %v", err)
+		}
+	})
+}
+
+// TestClient_WritePump tests the client write pump
+func TestClient_WritePump(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping WritePump test in short mode")
+	}
+
+	t.Run("write message successfully", func(t *testing.T) {
+		// Create a pipe to simulate a connection
+		serverConn, clientConn, httpServer := createTestConnections(t)
+		defer httpServer.Close()
+		defer serverConn.Close()
+		defer clientConn.Close()
+
+		wsClient := NewClient(clientConn)
+
+		// Start WritePump in goroutine
+		done := make(chan bool)
+		go func() {
+			wsClient.WritePump()
+			done <- true
+		}()
+
+		// Send a message
+		testMsg := []byte("test message")
+		wsClient.send <- testMsg
+
+		// Read the message on server side
+		messageType, message, err := serverConn.ReadMessage()
+		if err != nil {
+			t.Fatalf("Failed to read message: %v", err)
+		}
+
+		if messageType != websocket.TextMessage {
+			t.Errorf("Expected TextMessage type, got %d", messageType)
+		}
+
+		if string(message) != string(testMsg) {
+			t.Errorf("Expected '%s', got '%s'", string(testMsg), string(message))
+		}
+
+		// Close to exit WritePump
+		close(wsClient.send)
+		<-done
+	})
+
+	t.Run("handle closed channel", func(t *testing.T) {
+		// Create test connections
+		serverConn, clientConn, httpServer := createTestConnections(t)
+		defer httpServer.Close()
+		defer serverConn.Close()
+
+		wsClient := NewClient(clientConn)
+
+		// Close channel immediately
+		close(wsClient.send)
+
+		// Run WritePump (should handle closed channel gracefully)
+		done := make(chan bool)
+		go func() {
+			wsClient.WritePump()
+			done <- true
+		}()
+
+		// Should complete without hanging
+		<-done
+	})
+}
+
+// TestClient_ReadPump tests the client read pump
+func TestClient_ReadPump(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping ReadPump test in short mode")
+	}
+
+	t.Run("read messages and unregister on close", func(t *testing.T) {
+		hub := NewHub()
+		go hub.Run()
+
+		// Create test connections
+		serverConn, clientConn, httpServer := createTestConnections(t)
+		defer httpServer.Close()
+		defer serverConn.Close()
+
+		wsClient := NewClient(clientConn)
+		hub.Register(wsClient)
+
+		// Start ReadPump
+		done := make(chan bool)
+		go func() {
+			wsClient.ReadPump(hub)
+			done <- true
+		}()
+
+		// Send a message from server
+		err := serverConn.WriteMessage(websocket.TextMessage, []byte("test"))
+		if err != nil {
+			t.Fatalf("Failed to write message: %v", err)
+		}
+
+		// Close the connection from server side
+		serverConn.Close()
+
+		// ReadPump should exit and unregister
+		<-done
+	})
+
+	t.Run("handle connection errors gracefully", func(t *testing.T) {
+		hub := NewHub()
+		go hub.Run()
+
+		serverConn, clientConn, httpServer := createTestConnections(t)
+		defer httpServer.Close()
+
+		wsClient := NewClient(clientConn)
+		hub.Register(wsClient)
+
+		// Close server immediately to trigger error
+		serverConn.Close()
+
+		// Run ReadPump - should exit gracefully
+		done := make(chan bool)
+		go func() {
+			wsClient.ReadPump(hub)
+			done <- true
+		}()
+
+		<-done
+	})
+}
+
+// createTestConnections creates a websocket server and client connection for testing
+func createTestConnections(t *testing.T) (*websocket.Conn, *websocket.Conn, *httptest.Server) {
+	var upgrader = websocket.Upgrader{
+		ReadBufferSize:  1024,
+		WriteBufferSize: 1024,
+	}
+
+	var serverConn *websocket.Conn
+
+	// Create test HTTP server
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var err error
+		serverConn, err = upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			t.Fatalf("Failed to upgrade connection: %v", err)
+		}
+	}))
+
+	// Create client connection
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http")
+	clientConn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatalf("Failed to dial websocket: %v", err)
+	}
+
+	// Wait for server connection to be established
+	timeout := time.After(time.Second)
+	for serverConn == nil {
+		select {
+		case <-timeout:
+			t.Fatal("Timeout waiting for server connection")
+		default:
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
+
+	return serverConn, clientConn, server
 }
