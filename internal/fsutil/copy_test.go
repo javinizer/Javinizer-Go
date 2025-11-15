@@ -169,3 +169,31 @@ func TestCopyFileAtomic_OverwriteExisting(t *testing.T) {
 		t.Errorf("Content was not overwritten: got %q, want %q", string(dstContent), string(newContent))
 	}
 }
+
+func TestCopyFileAtomic_PreservesPermissions(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create source file with specific permissions
+	srcPath := filepath.Join(tmpDir, "source.txt")
+	testContent := []byte("test content")
+	srcPerms := os.FileMode(0600) // Owner read/write only
+	if err := os.WriteFile(srcPath, testContent, srcPerms); err != nil {
+		t.Fatalf("Failed to create source file: %v", err)
+	}
+
+	// Copy to destination
+	dstPath := filepath.Join(tmpDir, "destination.txt")
+	if err := CopyFileAtomic(srcPath, dstPath); err != nil {
+		t.Fatalf("CopyFileAtomic failed: %v", err)
+	}
+
+	// Verify permissions are preserved
+	dstInfo, err := os.Stat(dstPath)
+	if err != nil {
+		t.Fatalf("Failed to stat destination file: %v", err)
+	}
+
+	if dstInfo.Mode().Perm() != srcPerms {
+		t.Errorf("Permissions not preserved: got %v, want %v", dstInfo.Mode().Perm(), srcPerms)
+	}
+}
