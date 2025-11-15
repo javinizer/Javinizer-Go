@@ -1417,3 +1417,67 @@ func isValidUTF8(s string) bool {
 	runes := []rune(s)
 	return string(runes) == s || len(s) == 0
 }
+
+func TestValidatePathLength(t *testing.T) {
+	engine := NewEngine()
+
+	tests := []struct {
+		name        string
+		path        string
+		maxLen      int
+		expectError bool
+	}{
+		{
+			name:        "path within limit",
+			path:        "/short/path",
+			maxLen:      100,
+			expectError: false,
+		},
+		{
+			name:        "path at limit",
+			path:        "/exact/length",
+			maxLen:      13,
+			expectError: false,
+		},
+		{
+			name:        "path exceeds limit",
+			path:        "/this/is/a/very/long/path",
+			maxLen:      10,
+			expectError: true,
+		},
+		{
+			name:        "maxLen is zero - no validation",
+			path:        "/any/length/path/should/pass",
+			maxLen:      0,
+			expectError: false,
+		},
+		{
+			name:        "maxLen is negative - no validation",
+			path:        "/any/path",
+			maxLen:      -1,
+			expectError: false,
+		},
+		{
+			name:        "empty path",
+			path:        "",
+			maxLen:      100,
+			expectError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := engine.ValidatePathLength(tt.path, tt.maxLen)
+
+			if tt.expectError {
+				if err == nil {
+					t.Error("Expected error, got nil")
+				}
+			} else {
+				if err != nil {
+					t.Errorf("Expected no error, got: %v", err)
+				}
+			}
+		})
+	}
+}
