@@ -197,3 +197,202 @@ func TestCopyFileAtomic_PreservesPermissions(t *testing.T) {
 		t.Errorf("Permissions not preserved: got %v, want %v", dstInfo.Mode().Perm(), srcPerms)
 	}
 }
+
+func TestCopyFileAtomic_SourceIsDirectory(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create source directory (not a file)
+	srcPath := filepath.Join(tmpDir, "source_dir")
+	if err := os.Mkdir(srcPath, 0755); err != nil {
+		t.Fatalf("Failed to create source directory: %v", err)
+	}
+
+	dstPath := filepath.Join(tmpDir, "destination.txt")
+
+	// Should fail when source is a directory
+	err := CopyFileAtomic(srcPath, dstPath)
+	if err == nil {
+		t.Fatal("Expected error when source is a directory, got nil")
+	}
+}
+
+func TestCopyFileAtomic_EmptyFile(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create empty source file
+	srcPath := filepath.Join(tmpDir, "empty.txt")
+	if err := os.WriteFile(srcPath, []byte{}, 0644); err != nil {
+		t.Fatalf("Failed to create empty source file: %v", err)
+	}
+
+	// Copy to destination
+	dstPath := filepath.Join(tmpDir, "destination.txt")
+	if err := CopyFileAtomic(srcPath, dstPath); err != nil {
+		t.Fatalf("CopyFileAtomic failed for empty file: %v", err)
+	}
+
+	// Verify destination exists and is empty
+	dstContent, err := os.ReadFile(dstPath)
+	if err != nil {
+		t.Fatalf("Failed to read destination file: %v", err)
+	}
+
+	if len(dstContent) != 0 {
+		t.Errorf("Expected empty file, got %d bytes", len(dstContent))
+	}
+}
+
+func TestCopyFileAtomic_DestinationIsSymlink(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create source file
+	srcPath := filepath.Join(tmpDir, "source.txt")
+	testContent := []byte("test content")
+	if err := os.WriteFile(srcPath, testContent, 0644); err != nil {
+		t.Fatalf("Failed to create source file: %v", err)
+	}
+
+	// Create a target file for the symlink
+	targetPath := filepath.Join(tmpDir, "target.txt")
+	if err := os.WriteFile(targetPath, []byte("old content"), 0644); err != nil {
+		t.Fatalf("Failed to create target file: %v", err)
+	}
+
+	// Create symlink pointing to target
+	symlinkPath := filepath.Join(tmpDir, "symlink.txt")
+	if err := os.Symlink(targetPath, symlinkPath); err != nil {
+		t.Fatalf("Failed to create symlink: %v", err)
+	}
+
+	// Copy to symlink destination (should follow symlink and replace target)
+	if err := CopyFileAtomic(srcPath, symlinkPath); err != nil {
+		t.Fatalf("CopyFileAtomic failed: %v", err)
+	}
+
+	// Verify content was written to the symlink location
+	symlinkContent, err := os.ReadFile(symlinkPath)
+	if err != nil {
+		t.Fatalf("Failed to read through symlink: %v", err)
+	}
+
+	if string(symlinkContent) != string(testContent) {
+		t.Errorf("Content mismatch: got %q, want %q", string(symlinkContent), string(testContent))
+	}
+}
+
+func TestCopyFileAtomic_SpecialPermissions(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	tests := []struct {
+		name  string
+		perms os.FileMode
+	}{
+		{"executable", 0755},
+		{"read-only", 0444},
+		{"owner-only", 0600},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create source with specific permissions
+			srcPath := filepath.Join(tmpDir, "src_"+tt.name+".txt")
+			if err := os.WriteFile(srcPath, []byte("content"), tt.perms); err != nil {
+				t.Fatalf("Failed to create source: %v", err)
+			}
+
+			// Copy
+			dstPath := filepath.Join(tmpDir, "dst_"+tt.name+".txt")
+			if err := CopyFileAtomic(srcPath, dstPath); err != nil {
+				t.Fatalf("CopyFileAtomic failed: %v", err)
+			}
+
+			// Verify permissions
+			dstInfo, err := os.Stat(dstPath)
+			if err != nil {
+				t.Fatalf("Failed to stat destination: %v", err)
+			}
+
+			if dstInfo.Mode().Perm() != tt.perms {
+				t.Errorf("Permissions not preserved: got %v, want %v",
+					dstInfo.Mode().Perm(), tt.perms)
+			}
+		})
+	}
+}
+
+func TestCopyFileAtomic_ConcurrentCopies(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create source file
+	srcPath := filepath.Join(tmpDir, "source.txt")
+	testContent := []byte("concurrent test content")
+	if err := os.WriteFile(srcPath, testContent, 0644); err != nil {
+		t.Fatalf("Failed to create source file: %v", err)
+	}
+
+	// Copy to same destination concurrently (should use unique temp files)
+	dstPath := filepath.Join(tmpDir, "destination.txt")
+
+	done := make(chan error, 3)
+	for i := 0; i < 3; i++ {
+		go func() {
+			done <- CopyFileAtomic(srcPath, dstPath)
+		}()
+	}
+
+	// Wait for all goroutines
+	for i := 0; i < 3; i++ {
+		if err := <-done; err != nil {
+			t.Errorf("Concurrent copy %d failed: %v", i, err)
+		}
+	}
+
+	// Verify final content is correct
+	dstContent, err := os.ReadFile(dstPath)
+	if err != nil {
+		t.Fatalf("Failed to read destination: %v", err)
+	}
+
+	if string(dstContent) != string(testContent) {
+		t.Errorf("Content mismatch after concurrent copies: got %q, want %q",
+			string(dstContent), string(testContent))
+	}
+}
+
+func TestCopyFileAtomic_BinaryFile(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create binary file with various byte values
+	srcPath := filepath.Join(tmpDir, "binary.bin")
+	binaryData := make([]byte, 256)
+	for i := range binaryData {
+		binaryData[i] = byte(i)
+	}
+	if err := os.WriteFile(srcPath, binaryData, 0644); err != nil {
+		t.Fatalf("Failed to create binary file: %v", err)
+	}
+
+	// Copy
+	dstPath := filepath.Join(tmpDir, "binary_copy.bin")
+	if err := CopyFileAtomic(srcPath, dstPath); err != nil {
+		t.Fatalf("CopyFileAtomic failed for binary file: %v", err)
+	}
+
+	// Verify byte-for-byte match
+	dstData, err := os.ReadFile(dstPath)
+	if err != nil {
+		t.Fatalf("Failed to read destination: %v", err)
+	}
+
+	if len(dstData) != len(binaryData) {
+		t.Fatalf("Length mismatch: got %d, want %d", len(dstData), len(binaryData))
+	}
+
+	for i := range binaryData {
+		if dstData[i] != binaryData[i] {
+			t.Errorf("Byte mismatch at position %d: got %d, want %d",
+				i, dstData[i], binaryData[i])
+			break
+		}
+	}
+}
