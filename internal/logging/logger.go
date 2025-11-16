@@ -239,12 +239,16 @@ func Errorf(format string, args ...interface{}) {
 	GetLogger().Errorf(format, args...)
 }
 
-// Fatal logs a fatal message and exits
+// Fatal logs a fatal message and exits with status code 1.
+// Note: This function calls os.Exit() and cannot be tested in unit tests.
+// Any test attempting to cover this function would terminate the test process.
 func Fatal(args ...interface{}) {
 	GetLogger().Fatal(args...)
 }
 
-// Fatalf logs a formatted fatal message and exits
+// Fatalf logs a formatted fatal message and exits with status code 1.
+// Note: This function calls os.Exit() and cannot be tested in unit tests.
+// Any test attempting to cover this function would terminate the test process.
 func Fatalf(format string, args ...interface{}) {
 	GetLogger().Fatalf(format, args...)
 }

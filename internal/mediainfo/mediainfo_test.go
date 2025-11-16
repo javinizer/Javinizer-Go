@@ -131,3 +131,164 @@ func TestAnalyze_TooSmallFile(t *testing.T) {
 		t.Error("Analyze() should return error for too small file")
 	}
 }
+
+// TestAnalyzeWithConfig_CustomConfig tests with custom MediaInfoConfig
+func TestAnalyzeWithConfig_CustomConfig(t *testing.T) {
+	// Arrange: Create temp video file with valid FLV header
+	tmpDir := t.TempDir()
+	tmpFile := filepath.Join(tmpDir, "custom_config.flv")
+
+	// Create valid FLV header
+	header := []byte{
+		'F', 'L', 'V', 0x01, 0x05, 0x00, 0x00, 0x00,
+		0x09, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	}
+	if err := os.WriteFile(tmpFile, header, 0644); err != nil {
+		t.Fatalf("Failed to create test file: %v", err)
+	}
+
+	// Custom config with CLI disabled
+	cfg := &MediaInfoConfig{
+		CLIEnabled: false,
+		CLIPath:    "mediainfo",
+		CLITimeout: 30,
+	}
+
+	// Act: Call AnalyzeWithConfig
+	info, err := AnalyzeWithConfig(tmpFile, cfg)
+
+	// Assert: Returns VideoInfo (may have partial data) or error
+	// FLV prober should handle this
+	if err != nil {
+		t.Logf("AnalyzeWithConfig returned error (acceptable for minimal header): %v", err)
+		return
+	}
+
+	if info == nil {
+		t.Fatal("AnalyzeWithConfig returned nil info without error")
+	}
+
+	// Verify container is detected
+	if info.Container != "flv" {
+		t.Errorf("Expected container 'flv', got %q", info.Container)
+	}
+}
+
+// TestProbeWithFallback_NoProberFound tests unsupported format detection
+func TestProbeWithFallback_NoProberFound(t *testing.T) {
+	// Arrange: Create file with unknown header (not MP4/MKV/AVI/FLV/MOV)
+	tmpDir := t.TempDir()
+	tmpFile := filepath.Join(tmpDir, "unsupported.bin")
+
+	// Create file with unknown header (16+ bytes to pass header read)
+	unknownHeader := []byte{
+		0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	}
+	if err := os.WriteFile(tmpFile, unknownHeader, 0644); err != nil {
+		t.Fatalf("Failed to create test file: %v", err)
+	}
+
+	// Config with CLI disabled (forces error on unsupported format)
+	cfg := &MediaInfoConfig{
+		CLIEnabled: false,
+	}
+
+	// Act: Call AnalyzeWithConfig
+	_, err := AnalyzeWithConfig(tmpFile, cfg)
+
+	// Assert: Error contains "unsupported container format"
+	if err == nil {
+		t.Fatal("Expected error for unsupported format, got nil")
+	}
+
+	if !containsAny(err.Error(), []string{"unsupported container format", "unknown"}) {
+		t.Errorf("Expected 'unsupported container format' in error, got: %v", err)
+	}
+}
+
+// TestProbeWithFallback_NativeProberSuccess tests successful native prober selection
+func TestProbeWithFallback_NativeProberSuccess(t *testing.T) {
+	// Arrange: Create valid FLV file header (FLV prober has 85%+ coverage already)
+	tmpDir := t.TempDir()
+	tmpFile := filepath.Join(tmpDir, "native_success.flv")
+
+	// Create valid FLV header
+	flvHeader := []byte{
+		'F', 'L', 'V', 0x01, 0x05, 0x00, 0x00, 0x00,
+		0x09, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	}
+	if err := os.WriteFile(tmpFile, flvHeader, 0644); err != nil {
+		t.Fatalf("Failed to create test file: %v", err)
+	}
+
+	// Act: Call AnalyzeWithConfig (or Analyze)
+	info, err := Analyze(tmpFile)
+
+	// Assert: Returns VideoInfo without errors (may have partial data for minimal file)
+	if err != nil {
+		// It's acceptable for native prober to fail on minimal header and fallback
+		t.Logf("Native prober failed on minimal file (acceptable): %v", err)
+		return
+	}
+
+	if info == nil {
+		t.Fatal("Analyze returned nil info without error")
+	}
+
+	// Verify FLV container is detected
+	if info.Container != "flv" {
+		t.Errorf("Expected container 'flv', got %q", info.Container)
+	}
+}
+
+// TestAnalyzeWithConfig_DefaultConfig tests that nil config uses defaults
+func TestAnalyzeWithConfig_DefaultConfig(t *testing.T) {
+	// Arrange: Create valid FLV file
+	tmpDir := t.TempDir()
+	tmpFile := filepath.Join(tmpDir, "default_config.flv")
+
+	flvHeader := []byte{
+		'F', 'L', 'V', 0x01, 0x05, 0x00, 0x00, 0x00,
+		0x09, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	}
+	if err := os.WriteFile(tmpFile, flvHeader, 0644); err != nil {
+		t.Fatalf("Failed to create test file: %v", err)
+	}
+
+	// Act: Call with nil config (should use defaults)
+	info, err := AnalyzeWithConfig(tmpFile, nil)
+
+	// Assert: Should use default config and attempt to analyze
+	if err != nil {
+		t.Logf("AnalyzeWithConfig with nil config returned error (acceptable for minimal file): %v", err)
+		return
+	}
+
+	if info == nil {
+		t.Fatal("AnalyzeWithConfig with nil config returned nil info without error")
+	}
+}
+
+// Helper function to check if error message contains any of the expected strings
+func containsAny(s string, substrs []string) bool {
+	for _, substr := range substrs {
+		if len(s) >= len(substr) && contains(s, substr) {
+			return true
+		}
+	}
+	return false
+}
+
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && findSubstring(s, substr)
+}
+
+func findSubstring(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}

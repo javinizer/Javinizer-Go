@@ -438,3 +438,221 @@ func TestNormalizeImageURL(t *testing.T) {
 		})
 	}
 }
+
+// TestExtractTrailerURLNewSite verifies trailer URL extraction from video.dmm.co.jp
+func TestExtractTrailerURLNewSite(t *testing.T) {
+	tests := []struct {
+		name     string
+		html     string
+		expected string
+	}{
+		{
+			name: "Strategy 1: video source with litevideo",
+			html: `<html><body>
+				<video>
+					<source src="https://cc3001.dmm.co.jp/litevideo/freepv/123/ipx00535/ipx00535_dmb_w.mp4" />
+				</video>
+			</body></html>`,
+			expected: "https://cc3001.dmm.co.jp/litevideo/freepv/123/ipx00535/ipx00535_dmb_w.mp4",
+		},
+		{
+			name: "Strategy 1: video source with sample keyword",
+			html: `<html><body>
+				<video>
+					<source src="https://sample.dmm.co.jp/video/test.mp4" />
+				</video>
+			</body></html>`,
+			expected: "https://sample.dmm.co.jp/video/test.mp4",
+		},
+		{
+			name: "Strategy 1: video source with .mp4 extension",
+			html: `<html><body>
+				<video>
+					<source src="https://cdn.dmm.co.jp/videos/trailer.mp4" />
+				</video>
+			</body></html>`,
+			expected: "https://cdn.dmm.co.jp/videos/trailer.mp4",
+		},
+		{
+			name: "Strategy 2: video tag with data-src attribute",
+			html: `<html><body>
+				<video data-src="https://cdn.dmm.co.jp/trailer.mp4"></video>
+			</body></html>`,
+			expected: "https://cdn.dmm.co.jp/trailer.mp4",
+		},
+		{
+			name: "Strategy 2: video tag with data-video-url attribute",
+			html: `<html><body>
+				<video data-video-url="https://cdn.dmm.co.jp/video.mp4"></video>
+			</body></html>`,
+			expected: "https://cdn.dmm.co.jp/video.mp4",
+		},
+		{
+			name: "Strategy 2: video tag with data-sample-url attribute",
+			html: `<html><body>
+				<video data-sample-url="https://cdn.dmm.co.jp/sample.mp4"></video>
+			</body></html>`,
+			expected: "https://cdn.dmm.co.jp/sample.mp4",
+		},
+		{
+			name: "Strategy 2: video tag with src attribute",
+			html: `<html><body>
+				<video src="https://cdn.dmm.co.jp/direct.mp4"></video>
+			</body></html>`,
+			expected: "https://cdn.dmm.co.jp/direct.mp4",
+		},
+		{
+			name: "Strategy 3: onclick attribute with video URL",
+			html: `<html><body>
+				<a onclick="playVideo('https://cdn.dmm.co.jp/trailer_video.mp4')">Play</a>
+			</body></html>`,
+			expected: "https://cdn.dmm.co.jp/trailer_video.mp4",
+		},
+		{
+			name: "Strategy 3: onclick with escaped slashes",
+			html: `<html><body>
+				<a onclick="playVideo('https:\/\/cdn.dmm.co.jp\/video_trailer.mp4')">Play</a>
+			</body></html>`,
+			expected: "https://cdn.dmm.co.jp/video_trailer.mp4",
+		},
+		{
+			name: "Strategy 4: script tag with sampleUrl in JSON",
+			html: `<html><head>
+				<script>
+					var videoData = {"sampleUrl":"https://cdn.dmm.co.jp/sample.mp4","title":"Test"};
+				</script>
+			</head><body></body></html>`,
+			expected: "https://cdn.dmm.co.jp/sample.mp4",
+		},
+		{
+			name: "Strategy 4: script tag with videoUrl in JSON",
+			html: `<html><head>
+				<script>
+					var config = {'videoUrl':'https://cdn.dmm.co.jp/video.mp4'};
+				</script>
+			</head><body></body></html>`,
+			expected: "https://cdn.dmm.co.jp/video.mp4",
+		},
+		{
+			name: "Strategy 4: script tag with escaped slashes",
+			html: `<html><head>
+				<script>
+					var data = {"sampleUrl":"https:\/\/cdn.dmm.co.jp\/escaped.mp4"};
+				</script>
+			</head><body></body></html>`,
+			expected: "https://cdn.dmm.co.jp/escaped.mp4",
+		},
+		{
+			name: "Protocol-relative URL gets normalized",
+			html: `<html><body>
+				<video>
+					<source src="//cdn.dmm.co.jp/video.mp4" />
+				</video>
+			</body></html>`,
+			expected: "https://cdn.dmm.co.jp/video.mp4",
+		},
+		{
+			name: "URL with query parameters gets cleaned",
+			html: `<html><body>
+				<video>
+					<source src="https://cdn.dmm.co.jp/video.mp4?v=123&t=456" />
+				</video>
+			</body></html>`,
+			expected: "https://cdn.dmm.co.jp/video.mp4",
+		},
+		{
+			name:     "No trailer URL found",
+			html:     `<html><body><p>No video here</p></body></html>`,
+			expected: "",
+		},
+		{
+			name: "Multiple strategies, first one wins",
+			html: `<html><body>
+				<video>
+					<source src="https://first.dmm.co.jp/video1.mp4" />
+				</video>
+				<video data-src="https://second.dmm.co.jp/video2.mp4"></video>
+			</body></html>`,
+			expected: "https://first.dmm.co.jp/video1.mp4",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &config.Config{
+				Scrapers: config.ScrapersConfig{
+					DMM: config.DMMConfig{Enabled: true},
+				},
+			}
+			scraper := New(cfg, nil)
+
+			doc, err := parseHTMLString(tt.html)
+			require.NoError(t, err)
+
+			result := scraper.extractTrailerURLNewSite(doc)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+// TestNormalizeTrailerURL verifies trailer URL normalization
+func TestNormalizeTrailerURL(t *testing.T) {
+	tests := []struct {
+		name     string
+		url      string
+		expected string
+	}{
+		{
+			name:     "protocol-relative URL",
+			url:      "//cdn.dmm.co.jp/litevideo/freepv/123/ipx00535/ipx00535_dmb_w.mp4",
+			expected: "https://cdn.dmm.co.jp/litevideo/freepv/123/ipx00535/ipx00535_dmb_w.mp4",
+		},
+		{
+			name:     "HTTPS URL unchanged",
+			url:      "https://cdn.dmm.co.jp/video/trailer.mp4",
+			expected: "https://cdn.dmm.co.jp/video/trailer.mp4",
+		},
+		{
+			name:     "HTTP URL unchanged",
+			url:      "http://cdn.dmm.co.jp/video/trailer.mp4",
+			expected: "http://cdn.dmm.co.jp/video/trailer.mp4",
+		},
+		{
+			name:     "escaped slashes get unescaped",
+			url:      `https:\/\/cdn.dmm.co.jp\/video\/trailer.mp4`,
+			expected: "https://cdn.dmm.co.jp/video/trailer.mp4",
+		},
+		{
+			name:     "query parameters removed",
+			url:      "https://cdn.dmm.co.jp/video/trailer.mp4?v=123&t=456",
+			expected: "https://cdn.dmm.co.jp/video/trailer.mp4",
+		},
+		{
+			name:     "protocol-relative with escaped slashes",
+			url:      `\/\/cdn.dmm.co.jp\/video.mp4`,
+			expected: "//cdn.dmm.co.jp/video.mp4", // Unescapes but no https: prefix
+		},
+		{
+			name:     "all normalizations combined",
+			url:      `\/\/cdn.dmm.co.jp\/video\/trailer.mp4?v=123`,
+			expected: "//cdn.dmm.co.jp/video/trailer.mp4", // Unescapes and removes query
+		},
+		{
+			name:     "empty URL",
+			url:      "",
+			expected: "",
+		},
+		{
+			name:     "URL with fragment",
+			url:      "https://cdn.dmm.co.jp/video.mp4#start",
+			expected: "https://cdn.dmm.co.jp/video.mp4#start", // Fragments not removed
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := normalizeTrailerURL(tt.url)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}

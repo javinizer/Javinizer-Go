@@ -1,6 +1,7 @@
 package websocket
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -260,7 +261,9 @@ func TestHub_Run(t *testing.T) {
 	hub := NewHub()
 
 	// Start the hub in a goroutine
-	go hub.Run()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go hub.Run(ctx)
 
 	// Give the hub time to start
 	// (in production this runs indefinitely, we'll test specific operations)
@@ -410,7 +413,9 @@ func TestClient_ReadPump(t *testing.T) {
 
 	t.Run("read messages and unregister on close", func(t *testing.T) {
 		hub := NewHub()
-		go hub.Run()
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		go hub.Run(ctx)
 
 		// Create test connections
 		serverConn, clientConn, httpServer := createTestConnections(t)
@@ -442,7 +447,9 @@ func TestClient_ReadPump(t *testing.T) {
 
 	t.Run("handle connection errors gracefully", func(t *testing.T) {
 		hub := NewHub()
-		go hub.Run()
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		go hub.Run(ctx)
 
 		serverConn, clientConn, httpServer := createTestConnections(t)
 		defer httpServer.Close()

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -42,6 +43,7 @@ type ServerDependencies struct {
 	ActressRepo *database.ActressRepository
 	Matcher     *matcher.Matcher
 	JobQueue    *worker.JobQueue
+	wsCancel    context.CancelFunc // Cancel function for WebSocket hub context
 }
 
 // GetConfig returns the current configuration (thread-safe)
@@ -61,6 +63,13 @@ func (d *ServerDependencies) SetConfig(cfg *config.Config) {
 		panic("SetConfig() called with nil config - config must not be nil")
 	}
 	d.config.Store(cfg)
+}
+
+// Shutdown gracefully shuts down server resources, including the WebSocket hub
+func (d *ServerDependencies) Shutdown() {
+	if d.wsCancel != nil {
+		d.wsCancel()
+	}
 }
 
 // GetRegistry returns the current scraper registry (thread-safe)
@@ -183,7 +192,9 @@ func acceptsHTML(c *gin.Context) bool {
 func NewServer(deps *ServerDependencies) *gin.Engine {
 	// Initialize job queue and WebSocket hub
 	wsHub = ws.NewHub()
-	go wsHub.Run()
+	ctx, cancel := context.WithCancel(context.Background())
+	deps.wsCancel = cancel
+	go wsHub.Run(ctx)
 
 	// Configure WebSocket upgrader with dynamic origin checking from config
 	// Read allowedOrigins from deps.GetConfig() each time to respect config reloads

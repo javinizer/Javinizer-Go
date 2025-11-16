@@ -26,7 +26,7 @@ func NewCommand() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			configFile, _ := cmd.Flags().GetString("config")
-			return run(cmd, args, configFile)
+			return Run(cmd, args, configFile)
 		},
 	}
 	sortCmd.Flags().BoolP("dry-run", "n", false, "Preview operations without making changes")
@@ -42,7 +42,7 @@ func NewCommand() *cobra.Command {
 	return sortCmd
 }
 
-func run(cmd *cobra.Command, args []string, configFile string) error {
+func Run(cmd *cobra.Command, args []string, configFile string) error {
 	sourcePath := args[0]
 
 	// Get flags

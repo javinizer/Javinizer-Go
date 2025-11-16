@@ -310,3 +310,175 @@ func TestGetLogger_UninitializedReturnsDefault(t *testing.T) {
 		t.Fatal("GetLogger returned nil when uninitialized")
 	}
 }
+
+// TestCloseLogger tests cleanup of file handles
+func TestCloseLogger(t *testing.T) {
+	// Arrange: Init logger with file output
+	tmpDir := t.TempDir()
+	logFile := filepath.Join(tmpDir, "close_test.log")
+
+	cfg := &Config{
+		Level:  "info",
+		Format: "text",
+		Output: logFile,
+	}
+
+	err := InitLogger(cfg)
+	if err != nil {
+		t.Fatalf("InitLogger failed: %v", err)
+	}
+
+	// Write a test log
+	Info("Before close")
+
+	// Verify file was created
+	if _, err := os.Stat(logFile); os.IsNotExist(err) {
+		t.Fatal("Log file was not created")
+	}
+
+	// Act: Call CloseLogger()
+	CloseLogger()
+
+	// Assert: Subsequent logs use fallback logger (not the closed file)
+	// Reinitialize to verify old file was closed
+	newLogFile := filepath.Join(tmpDir, "new.log")
+	cfg.Output = newLogFile
+	err = InitLogger(cfg)
+	if err != nil {
+		t.Fatalf("InitLogger after close failed: %v", err)
+	}
+
+	Info("After close")
+
+	// Verify new file receives logs
+	if _, err := os.Stat(newLogFile); os.IsNotExist(err) {
+		t.Fatal("New log file was not created after close")
+	}
+
+	content, err := os.ReadFile(newLogFile)
+	if err != nil {
+		t.Fatalf("Failed to read new log file: %v", err)
+	}
+
+	if !strings.Contains(string(content), "After close") {
+		t.Error("New log file does not contain message after close")
+	}
+}
+
+// TestCloseLogger_MultipleCallsSafe tests idempotency
+func TestCloseLogger_MultipleCallsSafe(t *testing.T) {
+	// Arrange: Init logger with file output
+	tmpDir := t.TempDir()
+	logFile := filepath.Join(tmpDir, "multi_close.log")
+
+	cfg := &Config{
+		Level:  "info",
+		Format: "text",
+		Output: logFile,
+	}
+
+	err := InitLogger(cfg)
+	if err != nil {
+		t.Fatalf("InitLogger failed: %v", err)
+	}
+
+	// Act: Call CloseLogger() twice
+	CloseLogger()
+	CloseLogger() // Should not panic
+
+	// Assert: No panic, no error - test passes if we reach here
+}
+
+// TestInitLogger_MkdirAllFailure tests directory creation error
+func TestInitLogger_MkdirAllFailure(t *testing.T) {
+	// Arrange: Create read-only parent directory
+	tmpDir := t.TempDir()
+	readOnlyParent := filepath.Join(tmpDir, "readonly")
+	if err := os.Mkdir(readOnlyParent, 0755); err != nil {
+		t.Fatalf("Failed to create parent directory: %v", err)
+	}
+
+	// Make parent read-only (no write permission)
+	if err := os.Chmod(readOnlyParent, 0444); err != nil {
+		t.Fatalf("Failed to chmod parent directory: %v", err)
+	}
+
+	// Restore permissions at end of test for cleanup
+	defer os.Chmod(readOnlyParent, 0755)
+
+	logFile := filepath.Join(readOnlyParent, "subdir", "test.log")
+
+	cfg := &Config{
+		Level:  "info",
+		Format: "text",
+		Output: logFile,
+	}
+
+	// Act: Init logger with path under read-only dir
+	err := InitLogger(cfg)
+
+	// Assert: Error returned, no file handles leaked
+	if err == nil {
+		t.Fatal("Expected error for directory creation failure, got nil")
+	}
+
+	if !strings.Contains(err.Error(), "failed to create log directory") {
+		t.Errorf("Expected 'failed to create log directory' in error, got: %v", err)
+	}
+}
+
+// TestInitLogger_ConfigReload tests logger hot-reload with file handle cleanup
+func TestInitLogger_ConfigReload(t *testing.T) {
+	// Arrange: Init logger with file1
+	tmpDir := t.TempDir()
+	logFile1 := filepath.Join(tmpDir, "reload1.log")
+
+	cfg := &Config{
+		Level:  "info",
+		Format: "text",
+		Output: logFile1,
+	}
+
+	err := InitLogger(cfg)
+	if err != nil {
+		t.Fatalf("InitLogger (first) failed: %v", err)
+	}
+
+	// Write to first file
+	Info("Message to file1")
+
+	// Act: Init logger again with file2
+	logFile2 := filepath.Join(tmpDir, "reload2.log")
+	cfg.Output = logFile2
+	err = InitLogger(cfg)
+	if err != nil {
+		t.Fatalf("InitLogger (reload) failed: %v", err)
+	}
+
+	// Write to second file
+	Info("Message to file2")
+
+	// Assert: Old file handle closed, new file receives logs
+	content1, err := os.ReadFile(logFile1)
+	if err != nil {
+		t.Fatalf("Failed to read first log file: %v", err)
+	}
+
+	if !strings.Contains(string(content1), "Message to file1") {
+		t.Error("First log file does not contain message from before reload")
+	}
+
+	content2, err := os.ReadFile(logFile2)
+	if err != nil {
+		t.Fatalf("Failed to read second log file: %v", err)
+	}
+
+	if !strings.Contains(string(content2), "Message to file2") {
+		t.Error("Second log file does not contain message after reload")
+	}
+
+	// Verify file2 does not contain message from file1
+	if strings.Contains(string(content2), "Message to file1") {
+		t.Error("Second log file should not contain messages from first file")
+	}
+}

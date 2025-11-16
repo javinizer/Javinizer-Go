@@ -30,7 +30,7 @@ help:
 	@echo "  make coverage           - Generate coverage report (coverage.out)"
 	@echo "  make coverage-html      - Open coverage report in browser"
 	@echo "  make coverage-func      - Display function-by-function coverage"
-	@echo "  make coverage-check     - Enforce 60%% minimum coverage threshold"
+	@echo "  make coverage-check     - Enforce 75%% minimum coverage threshold"
 	@echo ""
 	@echo "Code Quality:"
 	@echo "  make fmt                - Format code with go fmt"
@@ -139,9 +139,9 @@ coverage-html: coverage
 coverage-func: coverage
 	go tool cover -func=coverage.out
 
-# Check if coverage meets minimum threshold (60% as per CLAUDE.md)
+# Check if coverage meets minimum threshold (75% as per CLAUDE.md)
 coverage-check: coverage
-	@./scripts/check_coverage.sh 60 coverage.out
+	@./scripts/check_coverage.sh 75 coverage.out
 
 # Run full CI test suite
 ci: vet lint coverage-check test-race

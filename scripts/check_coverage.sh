@@ -2,7 +2,7 @@
 # check_coverage.sh - Enforce test coverage thresholds for javinizer-go
 #
 # Usage: ./scripts/check_coverage.sh [min_coverage] [coverage_profile]
-#   min_coverage: Minimum required coverage percentage (default: 60)
+#   min_coverage: Minimum required coverage percentage (default: 75)
 #   coverage_profile: Path to coverage profile (default: coverage.out)
 #
 # Exit codes:
@@ -13,7 +13,7 @@
 set -euo pipefail
 
 # Configuration
-MIN_COVERAGE="${1:-60}"
+MIN_COVERAGE="${1:-75}"
 COVERAGE_PROFILE="${2:-coverage.out}"
 
 # Colors for output

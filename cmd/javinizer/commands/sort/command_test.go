@@ -1,9 +1,13 @@
 package sort_test
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/javinizer/javinizer-go/cmd/javinizer/commands/sort"
+	"github.com/javinizer/javinizer-go/internal/config"
+	"github.com/javinizer/javinizer-go/internal/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -73,6 +77,83 @@ func TestFlags_ShortForms(t *testing.T) {
 	assert.NotNil(t, cmd.Flags().ShorthandLookup("f"), "should have -f for force-update")
 }
 
-// Note: Full integration tests for sort command remain in cmd/cli/sort_test.go
-// until the complete migration to the new command structure is finished.
-// These smoke tests verify the command structure and flags are correct.
+// Integration tests
+
+// TestRun_Integration_NoVideoFiles tests graceful handling when no video files exist
+func TestRun_Integration_NoVideoFiles(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath, _ := testutil.CreateTestConfig(t, nil)
+
+	// Create a non-video file
+	textFile := filepath.Join(tmpDir, "readme.txt")
+	require.NoError(t, os.WriteFile(textFile, []byte("not a video"), 0644))
+
+	cmd := sort.NewCommand()
+	err := sort.Run(cmd, []string{tmpDir}, configPath)
+
+	// Should succeed (graceful exit when no videos found)
+	assert.NoError(t, err)
+}
+
+// TestRun_Integration_InvalidPath tests error handling for invalid paths
+func TestRun_Integration_InvalidPath(t *testing.T) {
+	configPath, _ := testutil.CreateTestConfig(t, nil)
+
+	cmd := sort.NewCommand()
+	err := sort.Run(cmd, []string{"/nonexistent/path/that/does/not/exist"}, configPath)
+
+	// Should return error for invalid path
+	assert.Error(t, err)
+}
+
+// TestRun_Integration_InvalidConfig tests error handling for invalid config
+func TestRun_Integration_InvalidConfig(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	cmd := sort.NewCommand()
+	err := sort.Run(cmd, []string{tmpDir}, "/nonexistent/config.yaml")
+
+	// Should return error for invalid config
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to load config")
+}
+
+// TestRun_Integration_DryRunMode tests that dry-run mode doesn't modify files
+func TestRun_Integration_DryRunMode(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+
+	tmpDir := t.TempDir()
+	configPath, _ := testutil.CreateTestConfig(t, nil)
+	videoFile := testutil.CreateTestVideoFile(t, tmpDir, "IPX-123.mp4")
+
+	cmd := sort.NewCommand()
+	cmd.SetArgs([]string{tmpDir, "--dry-run"})
+	err := sort.Run(cmd, []string{tmpDir}, configPath)
+
+	// Should succeed
+	assert.NoError(t, err)
+	// File should still exist in original location (dry-run doesn't move)
+	assert.FileExists(t, videoFile)
+}
+
+// TestRun_Integration_FlagOverrides tests that flags override config values
+func TestRun_Integration_FlagOverrides(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+
+	tmpDir := t.TempDir()
+	configPath, _ := testutil.CreateTestConfig(t, func(c *config.Config) {
+		c.Output.DownloadExtrafanart = false // Config says false
+	})
+	testutil.CreateTestVideoFile(t, tmpDir, "IPX-123.mp4")
+
+	cmd := sort.NewCommand()
+	cmd.SetArgs([]string{tmpDir, "--extrafanart", "--scrapers=r18dev,dmm"})
+	err := sort.Run(cmd, []string{tmpDir}, configPath)
+
+	// Should succeed (flag overrides are applied)
+	assert.NoError(t, err)
+}

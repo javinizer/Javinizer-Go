@@ -222,6 +222,11 @@ func GenerateNFOs(
 			}
 		}
 
+		// Skip if no matches found for this movie ID
+		if len(idMatches) == 0 {
+			continue
+		}
+
 		// Determine output directory: either organized folder or source directory
 		var outputDir string
 		if moveToFolder {

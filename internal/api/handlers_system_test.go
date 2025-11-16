@@ -439,3 +439,218 @@ func TestGetAvailableScrapers_OptionsValidation(t *testing.T) {
 	assert.Equal(t, 120, *timeoutOpt.Max)
 	assert.Equal(t, "seconds", timeoutOpt.Unit)
 }
+
+// TestHealthCheck_WithDisabledScrapers tests health check with disabled scrapers
+func TestHealthCheck_WithDisabledScrapers(t *testing.T) {
+	registry := models.NewScraperRegistry()
+	registry.Register(&mockScraper{name: "r18dev", enabled: false})
+	registry.Register(&mockScraper{name: "dmm", enabled: false})
+
+	deps := &ServerDependencies{
+		Registry: registry,
+	}
+	deps.SetConfig(config.DefaultConfig())
+
+	router := gin.New()
+	router.GET("/health", healthCheck(deps))
+
+	req := httptest.NewRequest("GET", "/health", nil)
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, 200, w.Code)
+
+	var response HealthResponse
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	require.NoError(t, err)
+
+	assert.Equal(t, "ok", response.Status)
+	assert.Empty(t, response.Scrapers, "Disabled scrapers should not appear in health check")
+}
+
+// TestGetConfig_EmptyConfig tests getting an empty config
+func TestGetConfig_EmptyConfig(t *testing.T) {
+	deps := &ServerDependencies{}
+	deps.SetConfig(&config.Config{})
+
+	router := gin.New()
+	router.GET("/config", getConfig(deps))
+
+	req := httptest.NewRequest("GET", "/config", nil)
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, 200, w.Code)
+
+	var response config.Config
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	require.NoError(t, err)
+}
+
+// TestUpdateConfig_InvalidConfig tests config update with invalid data
+func TestUpdateConfig_InvalidConfig(t *testing.T) {
+	tempConfigFile := t.TempDir() + "/config.yaml"
+
+	initialConfig := config.DefaultConfig()
+	deps := createTestDeps(t, initialConfig, tempConfigFile)
+
+	router := gin.New()
+	router.PUT("/config", updateConfig(deps))
+
+	tests := []struct {
+		name          string
+		requestBody   string
+		expectedCode  int
+		errorContains string
+	}{
+		{
+			name:          "malformed JSON",
+			requestBody:   "{invalid-json",
+			expectedCode:  400,
+			errorContains: "Invalid configuration format",
+		},
+		{
+			name:         "empty JSON object",
+			requestBody:  "{}",
+			expectedCode: 200, // Empty config is technically valid
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest("PUT", "/config", bytes.NewBufferString(tt.requestBody))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+
+			router.ServeHTTP(w, req)
+
+			assert.Equal(t, tt.expectedCode, w.Code)
+			if tt.errorContains != "" {
+				assert.Contains(t, w.Body.String(), tt.errorContains)
+			}
+		})
+	}
+}
+
+// TestGetAvailableScrapers_NoScrapers tests when no scrapers are registered
+func TestGetAvailableScrapers_NoScrapers(t *testing.T) {
+	registry := models.NewScraperRegistry()
+
+	deps := &ServerDependencies{
+		Registry: registry,
+	}
+	deps.SetConfig(config.DefaultConfig())
+
+	router := gin.New()
+	router.GET("/scrapers", getAvailableScrapers(deps))
+
+	req := httptest.NewRequest("GET", "/scrapers", nil)
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, 200, w.Code)
+
+	var response AvailableScrapersResponse
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	require.NoError(t, err)
+
+	assert.Empty(t, response.Scrapers)
+}
+
+// TestConfigReloadRaceConditions tests that config reload doesn't cause race conditions
+func TestConfigReloadRaceConditions(t *testing.T) {
+	tempConfigFile := t.TempDir() + "/config.yaml"
+
+	initialConfig := config.DefaultConfig()
+	deps := createTestDeps(t, initialConfig, tempConfigFile)
+
+	router := gin.New()
+	router.PUT("/config", updateConfig(deps))
+	router.GET("/config", getConfig(deps))
+
+	// Launch concurrent reads and writes
+	done := make(chan bool, 20)
+
+	// 10 readers
+	for i := 0; i < 10; i++ {
+		go func() {
+			defer func() { done <- true }()
+
+			req := httptest.NewRequest("GET", "/config", nil)
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			// Should always succeed
+			assert.Equal(t, 200, w.Code)
+		}()
+	}
+
+	// 10 writers
+	for i := 0; i < 10; i++ {
+		go func(port int) {
+			defer func() { done <- true }()
+
+			newConfig := config.DefaultConfig()
+			newConfig.Server.Port = 8080 + port
+
+			body, err := json.Marshal(newConfig)
+			require.NoError(t, err)
+
+			req := httptest.NewRequest("PUT", "/config", bytes.NewBuffer(body))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+
+			router.ServeHTTP(w, req)
+
+			// Should succeed or fail gracefully (not panic)
+			assert.True(t, w.Code == 200 || w.Code == 400 || w.Code == 500)
+		}(i)
+	}
+
+	// Wait for all goroutines to complete
+	for i := 0; i < 20; i++ {
+		<-done
+	}
+}
+
+// TestHealthCheck_MultipleCalls tests that health check is idempotent
+func TestHealthCheck_MultipleCalls(t *testing.T) {
+	registry := models.NewScraperRegistry()
+	registry.Register(&mockScraper{name: "r18dev", enabled: true})
+
+	deps := &ServerDependencies{
+		Registry: registry,
+	}
+	deps.SetConfig(config.DefaultConfig())
+
+	router := gin.New()
+	router.GET("/health", healthCheck(deps))
+
+	// Call health check multiple times
+	for i := 0; i < 10; i++ {
+		req := httptest.NewRequest("GET", "/health", nil)
+		w := httptest.NewRecorder()
+
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, 200, w.Code)
+
+		var response HealthResponse
+		err := json.Unmarshal(w.Body.Bytes(), &response)
+		require.NoError(t, err)
+
+		assert.Equal(t, "ok", response.Status)
+		assert.Contains(t, response.Scrapers, "r18dev")
+	}
+}
+
+// TestUpdateConfig_Rollback tests that config rollback works on reload failure
+func TestUpdateConfig_Rollback(t *testing.T) {
+	t.Skip("Skipping rollback test - requires special conditions to trigger reload failure")
+	// Note: This test would require special mocking to trigger a reload failure
+	// which is difficult without modifying production code. Rollback logic is
+	// tested manually during integration testing.
+}

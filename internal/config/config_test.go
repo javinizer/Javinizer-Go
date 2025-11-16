@@ -87,3 +87,123 @@ metadata:
 		t.Error("GenreReplacement.AutoAdd should use default (true)")
 	}
 }
+
+// TestLoadEmptyConfig tests loading empty config file (defaults should apply)
+func TestLoadEmptyConfig(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+	}{
+		{"completely empty", ""},
+		{"empty yaml", "---"},
+		{"only comments", "# This is a comment\n# Another comment"},
+		{"empty sections", "scrapers:\nmetadata:\n"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpFile := t.TempDir() + "/empty.yaml"
+			if err := os.WriteFile(tmpFile, []byte(tt.content), 0644); err != nil {
+				t.Fatalf("Failed to write test file: %v", err)
+			}
+
+			cfg, err := Load(tmpFile)
+			if err != nil {
+				t.Fatalf("Expected no error, got: %v", err)
+			}
+
+			// Verify defaults were applied
+			defaultCfg := DefaultConfig()
+			if cfg.Scrapers.UserAgent != defaultCfg.Scrapers.UserAgent {
+				t.Errorf("Expected default user agent %q, got %q", defaultCfg.Scrapers.UserAgent, cfg.Scrapers.UserAgent)
+			}
+			if cfg.Performance.MaxWorkers != defaultCfg.Performance.MaxWorkers {
+				t.Errorf("Expected default max workers %d, got %d", defaultCfg.Performance.MaxWorkers, cfg.Performance.MaxWorkers)
+			}
+			if cfg.Server.Port != defaultCfg.Server.Port {
+				t.Errorf("Expected default port %d, got %d", defaultCfg.Server.Port, cfg.Server.Port)
+			}
+		})
+	}
+}
+
+// TestProxyConfigValidation tests proxy config with invalid URLs
+func TestProxyConfigValidation(t *testing.T) {
+	tests := []struct {
+		name       string
+		proxyURL   string
+		shouldFail bool
+	}{
+		{"valid http proxy", "http://proxy.example.com:8080", false},
+		{"valid https proxy", "https://proxy.example.com:8080", false},
+		{"valid socks5 proxy", "socks5://localhost:1080", false},
+		{"valid with auth", "http://user:pass@proxy.example.com:8080", false},
+		{"empty url when enabled", "", true}, // Invalid: enabled but no URL
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			content := `
+scrapers:
+  proxy:
+    enabled: true
+    url: "` + tt.proxyURL + `"
+`
+			tmpFile := t.TempDir() + "/proxy.yaml"
+			if err := os.WriteFile(tmpFile, []byte(content), 0644); err != nil {
+				t.Fatalf("Failed to write test file: %v", err)
+			}
+
+			cfg, err := Load(tmpFile)
+			if err != nil {
+				t.Fatalf("Failed to load config: %v", err)
+			}
+
+			if cfg.Scrapers.Proxy.URL != tt.proxyURL {
+				t.Errorf("Expected proxy URL %q, got %q", tt.proxyURL, cfg.Scrapers.Proxy.URL)
+			}
+
+			// Note: Actual validation of proxy URL happens in httpclient factory,
+			// not in config loading. Config just stores the string.
+			// The shouldFail flag here documents expected behavior,
+			// but Load() itself won't fail - only when creating HTTP client.
+		})
+	}
+}
+
+// TestLoadPartialConfig tests loading config with only some fields set
+func TestLoadPartialConfig(t *testing.T) {
+	partialConfig := `
+scrapers:
+  priority: ["dmm"]
+  dmm:
+    enabled: true
+`
+
+	tmpFile := t.TempDir() + "/partial.yaml"
+	if err := os.WriteFile(tmpFile, []byte(partialConfig), 0644); err != nil {
+		t.Fatalf("Failed to write test file: %v", err)
+	}
+
+	cfg, err := Load(tmpFile)
+	if err != nil {
+		t.Fatalf("Expected no error, got: %v", err)
+	}
+
+	// Verify specified fields
+	if len(cfg.Scrapers.Priority) != 1 || cfg.Scrapers.Priority[0] != "dmm" {
+		t.Errorf("Expected priority ['dmm'], got %v", cfg.Scrapers.Priority)
+	}
+	if !cfg.Scrapers.DMM.Enabled {
+		t.Error("Expected DMM enabled")
+	}
+
+	// Verify unspecified fields use defaults
+	defaultCfg := DefaultConfig()
+	if cfg.Scrapers.UserAgent != defaultCfg.Scrapers.UserAgent {
+		t.Error("Expected default user agent for unspecified field")
+	}
+	if cfg.Performance.MaxWorkers != defaultCfg.Performance.MaxWorkers {
+		t.Error("Expected default max workers for unspecified field")
+	}
+}

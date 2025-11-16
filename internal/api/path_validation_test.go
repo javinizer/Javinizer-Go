@@ -686,3 +686,400 @@ func BenchmarkNormalizeWindowsPath(b *testing.B) {
 		})
 	}
 }
+
+// Security tests for path traversal prevention
+
+func TestValidateScanPath_PathTraversal(t *testing.T) {
+	tempDir := t.TempDir()
+	allowedDir := filepath.Join(tempDir, "allowed")
+	require.NoError(t, os.Mkdir(allowedDir, 0755))
+
+	securityCfg := &config.SecurityConfig{
+		AllowedDirectories: []string{allowedDir},
+		DeniedDirectories:  []string{},
+		MaxFilesPerScan:    10000,
+		ScanTimeoutSeconds: 30,
+	}
+
+	tests := []struct {
+		name          string
+		inputPath     string
+		expectedError bool
+		errorContains string
+	}{
+		{
+			name:          "path traversal with ../ to escape allowed dir",
+			inputPath:     filepath.Join(allowedDir, "..", "forbidden"),
+			expectedError: true,
+			errorContains: "does not exist", // Path won't exist, caught before allowlist check
+		},
+		{
+			name:          "path traversal with multiple ../",
+			inputPath:     filepath.Join(allowedDir, "..", "..", "etc"),
+			expectedError: true,
+			errorContains: "does not exist",
+		},
+		{
+			name:          "path traversal attempt with mixed slashes",
+			inputPath:     filepath.Join(allowedDir, ".."+string(filepath.Separator)+"forbidden"),
+			expectedError: true,
+			errorContains: "does not exist",
+		},
+		{
+			name:          "clean path within allowed directory",
+			inputPath:     allowedDir,
+			expectedError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			validPath, err := validateScanPath(tt.inputPath, securityCfg)
+
+			if tt.expectedError {
+				assert.Error(t, err)
+				if tt.errorContains != "" {
+					assert.Contains(t, err.Error(), tt.errorContains)
+				}
+			} else {
+				assert.NoError(t, err)
+				assert.NotEmpty(t, validPath)
+				assert.True(t, filepath.IsAbs(validPath))
+			}
+		})
+	}
+}
+
+func TestValidateScanPath_SymlinkResolution(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Skipping symlink tests on Windows (requires admin privileges)")
+	}
+
+	tempDir := t.TempDir()
+	allowedDir := filepath.Join(tempDir, "allowed")
+	require.NoError(t, os.Mkdir(allowedDir, 0755))
+
+	// Create a directory outside allowed
+	forbiddenDir := filepath.Join(tempDir, "forbidden")
+	require.NoError(t, os.Mkdir(forbiddenDir, 0755))
+
+	// Create symlink pointing to forbidden directory
+	symlinkPath := filepath.Join(allowedDir, "link_to_forbidden")
+	require.NoError(t, os.Symlink(forbiddenDir, symlinkPath))
+
+	securityCfg := &config.SecurityConfig{
+		AllowedDirectories: []string{allowedDir},
+		DeniedDirectories:  []string{},
+		MaxFilesPerScan:    10000,
+		ScanTimeoutSeconds: 30,
+	}
+
+	// Attempt to access via symlink should be blocked (symlink resolves to forbidden path)
+	_, err := validateScanPath(symlinkPath, securityCfg)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "outside allowed directories")
+}
+
+func TestPathHasPrefix_CaseSensitivity(t *testing.T) {
+	tests := []struct {
+		name     string
+		path     string
+		prefix   string
+		expected bool
+		skipOS   string // Skip test on specific OS
+	}{
+		{
+			name:     "Windows case-insensitive match - lowercase path",
+			path:     `c:\windows\system32`,
+			prefix:   `C:\Windows`,
+			expected: true,
+			skipOS:   "!windows", // Only run on Windows
+		},
+		{
+			name:     "Windows case-insensitive match - uppercase path",
+			path:     `C:\WINDOWS\SYSTEM32`,
+			prefix:   `c:\windows`,
+			expected: true,
+			skipOS:   "!windows",
+		},
+		{
+			name:     "Windows case-insensitive match - mixed case",
+			path:     `C:\WiNdOwS\SyStEm32`,
+			prefix:   `c:\windows`,
+			expected: true,
+			skipOS:   "!windows",
+		},
+		{
+			name:     "Unix case-sensitive - exact match",
+			path:     `/etc/passwd`,
+			prefix:   `/etc`,
+			expected: true,
+		},
+		{
+			name:     "Unix case-sensitive - different case should not match",
+			path:     `/ETC/passwd`,
+			prefix:   `/etc`,
+			expected: false,
+			skipOS:   "windows", // Skip on Windows (case-insensitive FS)
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.skipOS == "!windows" && runtime.GOOS != "windows" {
+				t.Skip("Test requires Windows")
+			}
+			if tt.skipOS == "windows" && runtime.GOOS == "windows" {
+				t.Skip("Test not applicable on Windows")
+			}
+
+			result := pathHasPrefix(tt.path, tt.prefix)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestPathHasPrefix_WindowsExtendedPaths(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows-specific test")
+	}
+
+	tests := []struct {
+		name     string
+		path     string
+		prefix   string
+		expected bool
+	}{
+		{
+			name:     "Extended path prefix with normal prefix",
+			path:     `\\?\C:\Windows\System32`,
+			prefix:   `C:\Windows`,
+			expected: true,
+		},
+		{
+			name:     "Normal path with extended prefix",
+			path:     `C:\Windows\System32`,
+			prefix:   `\\?\C:\Windows`,
+			expected: true,
+		},
+		{
+			name:     "Both extended paths",
+			path:     `\\?\C:\Windows\System32`,
+			prefix:   `\\?\C:\Windows`,
+			expected: true,
+		},
+		{
+			name:     "NT namespace path",
+			path:     `\??\C:\Windows\System32`,
+			prefix:   `C:\Windows`,
+			expected: true,
+		},
+		{
+			name:     "Device namespace path",
+			path:     `\\.\C:\Windows\System32`,
+			prefix:   `C:\Windows`,
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := pathHasPrefix(tt.path, tt.prefix)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestIsDirAllowed_Allowlist(t *testing.T) {
+	tempDir := t.TempDir()
+	allowedDir1 := filepath.Join(tempDir, "allowed1")
+	allowedDir2 := filepath.Join(tempDir, "allowed2")
+	forbiddenDir := filepath.Join(tempDir, "forbidden")
+
+	require.NoError(t, os.Mkdir(allowedDir1, 0755))
+	require.NoError(t, os.Mkdir(allowedDir2, 0755))
+	require.NoError(t, os.Mkdir(forbiddenDir, 0755))
+
+	allow := []string{allowedDir1, allowedDir2}
+	deny := []string{}
+
+	tests := []struct {
+		name     string
+		dir      string
+		expected bool
+	}{
+		{
+			name:     "allowed directory 1",
+			dir:      allowedDir1,
+			expected: true,
+		},
+		{
+			name:     "allowed directory 2",
+			dir:      allowedDir2,
+			expected: true,
+		},
+		{
+			name:     "forbidden directory",
+			dir:      forbiddenDir,
+			expected: false,
+		},
+		{
+			name:     "subdirectory of allowed",
+			dir:      filepath.Join(allowedDir1, "subdir"),
+			expected: false, // Will be denied since it doesn't exist (isDirAllowed uses EvalSymlinks which fails for non-existent paths)
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := isDirAllowed(tt.dir, allow, deny)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestIsDirAllowed_Denylist(t *testing.T) {
+	tempDir := t.TempDir()
+	allowedDir := filepath.Join(tempDir, "allowed")
+	deniedDir := filepath.Join(tempDir, "denied")
+
+	require.NoError(t, os.Mkdir(allowedDir, 0755))
+	require.NoError(t, os.Mkdir(deniedDir, 0755))
+
+	allow := []string{tempDir}  // Allow entire tempDir
+	deny := []string{deniedDir} // But deny deniedDir
+
+	tests := []struct {
+		name     string
+		dir      string
+		expected bool
+	}{
+		{
+			name:     "allowed directory",
+			dir:      allowedDir,
+			expected: true,
+		},
+		{
+			name:     "explicitly denied directory",
+			dir:      deniedDir,
+			expected: false,
+		},
+		{
+			name:     "subdirectory of denied",
+			dir:      filepath.Join(deniedDir, "subdir"),
+			expected: false, // Should be denied even if doesn't exist
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := isDirAllowed(tt.dir, allow, deny)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestIsDirAllowed_BuiltInDenied(t *testing.T) {
+	// Test that built-in system directories are always denied
+	tests := []struct {
+		name     string
+		dir      string
+		expected bool
+		skipOS   string
+	}{
+		{
+			name:     "deny /etc",
+			dir:      "/etc",
+			expected: false,
+			skipOS:   "windows",
+		},
+		{
+			name:     "deny /var/log",
+			dir:      "/var/log",
+			expected: false,
+			skipOS:   "windows",
+		},
+		{
+			name:     "deny /usr/bin",
+			dir:      "/usr/bin",
+			expected: false,
+			skipOS:   "windows",
+		},
+		{
+			name:     "deny C:\\Windows",
+			dir:      `C:\Windows`,
+			expected: false,
+			skipOS:   "!windows",
+		},
+		{
+			name:     "deny C:\\Program Files",
+			dir:      `C:\Program Files`,
+			expected: false,
+			skipOS:   "!windows",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.skipOS == "!windows" && runtime.GOOS != "windows" {
+				t.Skip("Test requires Windows")
+			}
+			if tt.skipOS == "windows" && runtime.GOOS == "windows" {
+				t.Skip("Test not applicable on Windows")
+			}
+
+			// Skip if directory doesn't exist (can't test denied check)
+			if _, err := os.Stat(tt.dir); os.IsNotExist(err) {
+				t.Skip("System directory doesn't exist on this platform")
+			}
+
+			// Even with allowlist that includes everything, built-in denied dirs should be blocked
+			allow := []string{"/"}
+			if runtime.GOOS == "windows" {
+				allow = []string{`C:\`}
+			}
+			deny := []string{}
+
+			result := isDirAllowed(tt.dir, allow, deny)
+			assert.Equal(t, tt.expected, result, "Built-in denied directory should be blocked even with root allowlist")
+		})
+	}
+}
+
+func TestIsDirAllowed_EmptyAllowlist(t *testing.T) {
+	tempDir := t.TempDir()
+
+	// Empty allowlist should deny everything (secure by default)
+	allow := []string{}
+	deny := []string{}
+
+	result := isDirAllowed(tempDir, allow, deny)
+	assert.False(t, result, "Empty allowlist should deny all access (secure by default)")
+}
+
+func TestIsDirAllowed_SymlinkResolution(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Skipping symlink tests on Windows (requires admin privileges)")
+	}
+
+	tempDir := t.TempDir()
+	realDir := filepath.Join(tempDir, "real")
+	require.NoError(t, os.Mkdir(realDir, 0755))
+
+	// Create symlink to real directory
+	symlinkDir := filepath.Join(tempDir, "symlink")
+	require.NoError(t, os.Symlink(realDir, symlinkDir))
+
+	// Allow only the real directory
+	allow := []string{realDir}
+	deny := []string{}
+
+	// Access via symlink should be allowed (symlink resolves to allowed path)
+	result := isDirAllowed(symlinkDir, allow, deny)
+	assert.True(t, result, "Access via symlink should be allowed when symlink resolves to allowed path")
+
+	// Now test the inverse: allow symlink, access real dir
+	allow2 := []string{symlinkDir}
+	result2 := isDirAllowed(realDir, allow2, []string{})
+	assert.True(t, result2, "Real directory should be accessible when symlink to it is in allowlist")
+}
