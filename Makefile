@@ -1,6 +1,6 @@
 .PHONY: help build run run-api test test-short test-race test-verbose bench clean clean-all deps install web-dev web-build web-preview web-install web-clean
 .PHONY: coverage coverage-html coverage-check coverage-func ci simulate-ci
-.PHONY: fmt lint vet swagger docs
+.PHONY: fmt lint vet swagger docs mocks
 .PHONY: build-cli-linux build-cli-darwin build-cli-windows build-cli-all
 .PHONY: act-list act-test act-build act-lint act-docker act-cli-release act-ci act-dry act-help
 .PHONY: docker-build docker-build-no-cache docker-run docker-stop docker-clean docker-push docker-test docker-logs docker-help
@@ -37,6 +37,7 @@ help:
 	@echo "  make vet                - Run go vet"
 	@echo "  make lint               - Run golangci-lint"
 	@echo "  make swagger            - Generate Swagger API documentation"
+	@echo "  make mocks              - Generate mocks from interfaces (mockery v3)"
 	@echo ""
 	@echo "CI/CD:"
 	@echo "  make ci                 - Run full CI suite (vet + lint + coverage + race)"
@@ -193,6 +194,21 @@ swagger:
 
 # Alias for backward compatibility
 docs: swagger
+
+# Generate mocks from interfaces using mockery v3
+# Requires: mockery v3.5+ (install: go install github.com/vektra/mockery/v3@latest)
+# Config: .mockery.yaml
+# Output: internal/mocks/
+mocks:
+	@echo "Generating mocks with mockery..."
+	@go run github.com/vektra/mockery/v3@latest --config .mockery.yaml
+	@echo "Post-processing: Unifying package names to 'mocks'..."
+	@for file in internal/mocks/*.go; do \
+		sed -i '' 's/^package models$$/package mocks/' "$$file"; \
+		sed -i '' 's/^package database$$/package mocks/' "$$file"; \
+		sed -i '' 's/^package httpclient$$/package mocks/' "$$file"; \
+	done
+	@echo "Mock generation complete! Generated mocks in internal/mocks/"
 
 # Web frontend targets
 web-dev:

@@ -1,0 +1,96 @@
+package database
+
+import (
+	"time"
+
+	"github.com/javinizer/javinizer-go/internal/models"
+	"gorm.io/gorm"
+)
+
+// MovieRepositoryInterface defines the contract for movie database operations
+type MovieRepositoryInterface interface {
+	Create(movie *models.Movie) error
+	Update(movie *models.Movie) error
+	Upsert(movie *models.Movie) error
+	FindByID(id string) (*models.Movie, error)
+	FindByContentID(contentID string) (*models.Movie, error)
+	Delete(id string) error
+	List(limit, offset int) ([]models.Movie, error)
+}
+
+// ActressRepositoryInterface defines the contract for actress database operations
+type ActressRepositoryInterface interface {
+	Create(actress *models.Actress) error
+	Update(actress *models.Actress) error
+	FindByJapaneseName(name string) (*models.Actress, error)
+	FindOrCreate(actress *models.Actress) error
+	List(limit, offset int) ([]models.Actress, error)
+	Search(query string) ([]models.Actress, error)
+}
+
+// MovieTranslationRepositoryInterface defines the contract for movie translation operations
+type MovieTranslationRepositoryInterface interface {
+	Upsert(translation *models.MovieTranslation) error
+	UpsertTx(tx *gorm.DB, translation *models.MovieTranslation) error
+	FindByMovieAndLanguage(movieID, language string) (*models.MovieTranslation, error)
+	FindAllByMovie(movieID string) ([]models.MovieTranslation, error)
+	Delete(movieID, language string) error
+}
+
+// GenreReplacementRepositoryInterface defines the contract for genre replacement operations
+type GenreReplacementRepositoryInterface interface {
+	Create(replacement *models.GenreReplacement) error
+	Upsert(replacement *models.GenreReplacement) error
+	FindByOriginal(original string) (*models.GenreReplacement, error)
+	List() ([]models.GenreReplacement, error)
+	Delete(original string) error
+	GetReplacementMap() (map[string]string, error)
+}
+
+// HistoryRepositoryInterface defines the contract for history tracking operations
+type HistoryRepositoryInterface interface {
+	Create(history *models.History) error
+	FindByID(id uint) (*models.History, error)
+	FindByMovieID(movieID string) ([]models.History, error)
+	FindByOperation(operation string, limit int) ([]models.History, error)
+	FindByStatus(status string, limit int) ([]models.History, error)
+	FindRecent(limit int) ([]models.History, error)
+	FindByDateRange(start, end time.Time) ([]models.History, error)
+	Count() (int64, error)
+	CountByStatus(status string) (int64, error)
+	CountByOperation(operation string) (int64, error)
+	Delete(id uint) error
+	DeleteByMovieID(movieID string) error
+	DeleteOlderThan(date time.Time) error
+	List(limit, offset int) ([]models.History, error)
+}
+
+// ActressAliasRepositoryInterface defines the contract for actress alias operations
+type ActressAliasRepositoryInterface interface {
+	Create(alias *models.ActressAlias) error
+	Upsert(alias *models.ActressAlias) error
+	FindByAliasName(aliasName string) (*models.ActressAlias, error)
+	FindByCanonicalName(canonicalName string) ([]models.ActressAlias, error)
+	List() ([]models.ActressAlias, error)
+	Delete(aliasName string) error
+	GetAliasMap() (map[string]string, error)
+}
+
+// MovieTagRepositoryInterface defines the contract for movie tag operations
+type MovieTagRepositoryInterface interface {
+	AddTag(movieID, tag string) error
+	RemoveTag(movieID, tag string) error
+	RemoveAllTags(movieID string) error
+	GetTagsForMovie(movieID string) ([]string, error)
+	GetMoviesWithTag(tag string) ([]string, error)
+	ListAll() (map[string][]string, error)
+	GetUniqueTagsList() ([]string, error)
+}
+
+// ContentIDMappingRepositoryInterface defines the contract for content ID mapping operations
+type ContentIDMappingRepositoryInterface interface {
+	FindBySearchID(searchID string) (*models.ContentIDMapping, error)
+	Create(mapping *models.ContentIDMapping) error
+	Delete(searchID string) error
+	GetAll() ([]models.ContentIDMapping, error)
+}

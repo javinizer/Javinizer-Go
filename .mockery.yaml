@@ -1,0 +1,35 @@
+# Mockery v3 configuration for javinizer-go
+# Generates type-safe mocks for all repository and client interfaces
+# Usage: make mocks
+
+packages:
+  # Repository interfaces (8 total) from internal/database/
+  github.com/javinizer/javinizer-go/internal/database:
+    config:
+      dir: "internal/mocks"
+      filename: "{{.InterfaceName}}.go"
+    interfaces:
+      MovieRepositoryInterface:
+      ActressRepositoryInterface:
+      GenreReplacementRepositoryInterface:
+      HistoryRepositoryInterface:
+      MovieTagRepositoryInterface:
+      ActressAliasRepositoryInterface:
+      ContentIDMappingRepositoryInterface:
+      MovieTranslationRepositoryInterface:
+
+  # HTTP client interface from internal/httpclient
+  github.com/javinizer/javinizer-go/internal/httpclient:
+    config:
+      dir: "internal/mocks"
+      filename: "{{.InterfaceName}}.go"
+    interfaces:
+      HTTPClient:
+
+  # Scraper interface from internal/models
+  github.com/javinizer/javinizer-go/internal/models:
+    config:
+      dir: "internal/mocks"
+      filename: "{{.InterfaceName}}.go"
+    interfaces:
+      Scraper:
