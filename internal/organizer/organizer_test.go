@@ -1,6 +1,7 @@
 package organizer
 
 import (
+	"github.com/spf13/afero"
 	"os"
 	"path/filepath"
 	"testing"
@@ -34,7 +35,7 @@ func TestOrganizer_Plan(t *testing.T) {
 		RenameFile:   true,
 	}
 
-	org := NewOrganizer(cfg)
+	org := NewOrganizer(afero.NewOsFs(), cfg)
 	movie := createTestMovie()
 
 	match := matcher.MatchResult{
@@ -90,7 +91,7 @@ func TestOrganizer_Execute_DryRun(t *testing.T) {
 		RenameFile:   true,
 	}
 
-	org := NewOrganizer(cfg)
+	org := NewOrganizer(afero.NewOsFs(), cfg)
 	movie := createTestMovie()
 
 	match := matcher.MatchResult{
@@ -147,7 +148,7 @@ func TestOrganizer_Execute_ActualMove(t *testing.T) {
 		RenameFile:   true,
 	}
 
-	org := NewOrganizer(cfg)
+	org := NewOrganizer(afero.NewOsFs(), cfg)
 	movie := createTestMovie()
 
 	match := matcher.MatchResult{
@@ -211,7 +212,7 @@ func TestOrganizer_Execute_Conflict(t *testing.T) {
 		RenameFile:   true,
 	}
 
-	org := NewOrganizer(cfg)
+	org := NewOrganizer(afero.NewOsFs(), cfg)
 	movie := createTestMovie()
 
 	match := matcher.MatchResult{
@@ -276,7 +277,7 @@ func TestOrganizer_Copy(t *testing.T) {
 		RenameFile:   true,
 	}
 
-	org := NewOrganizer(cfg)
+	org := NewOrganizer(afero.NewOsFs(), cfg)
 	movie := createTestMovie()
 
 	match := matcher.MatchResult{
@@ -336,7 +337,7 @@ func TestOrganizer_Revert(t *testing.T) {
 		RenameFile:   true,
 	}
 
-	org := NewOrganizer(cfg)
+	org := NewOrganizer(afero.NewOsFs(), cfg)
 	movie := createTestMovie()
 
 	match := matcher.MatchResult{
@@ -378,6 +379,8 @@ func TestOrganizer_Revert(t *testing.T) {
 
 func TestValidatePlan(t *testing.T) {
 	tmpDir := t.TempDir()
+	cfg := &config.OutputConfig{}
+	org := NewOrganizer(afero.NewOsFs(), cfg)
 
 	// Create a valid source file
 	sourceFile := filepath.Join(tmpDir, "source.mp4")
@@ -395,7 +398,7 @@ func TestValidatePlan(t *testing.T) {
 			Conflicts:  []string{},
 		}
 
-		issues := ValidatePlan(plan)
+		issues := org.ValidatePlan(plan)
 		if len(issues) != 0 {
 			t.Errorf("Expected no issues, got %d: %v", len(issues), issues)
 		}
@@ -409,7 +412,7 @@ func TestValidatePlan(t *testing.T) {
 			TargetPath: filepath.Join(tmpDir, "target.mp4"),
 		}
 
-		issues := ValidatePlan(plan)
+		issues := org.ValidatePlan(plan)
 		if len(issues) == 0 {
 			t.Error("Expected issues for nonexistent source")
 		}
@@ -423,7 +426,7 @@ func TestValidatePlan(t *testing.T) {
 			TargetFile: "source.mp4",
 		}
 
-		issues := ValidatePlan(plan)
+		issues := org.ValidatePlan(plan)
 		if len(issues) == 0 {
 			t.Error("Expected issues for identical source and target")
 		}
@@ -438,7 +441,7 @@ func TestValidatePlan(t *testing.T) {
 			Conflicts:  []string{"target exists"},
 		}
 
-		issues := ValidatePlan(plan)
+		issues := org.ValidatePlan(plan)
 		if len(issues) == 0 {
 			t.Error("Expected issues for plan with conflicts")
 		}
@@ -468,7 +471,7 @@ func TestOrganizer_OrganizeBatch(t *testing.T) {
 		RenameFile:   true,
 	}
 
-	org := NewOrganizer(cfg)
+	org := NewOrganizer(afero.NewOsFs(), cfg)
 
 	// Create matches
 	matches := []matcher.MatchResult{
@@ -522,6 +525,8 @@ func TestOrganizer_OrganizeBatch(t *testing.T) {
 
 func TestCleanEmptyDirectories(t *testing.T) {
 	tmpDir := t.TempDir()
+	cfg := &config.OutputConfig{}
+	org := NewOrganizer(afero.NewOsFs(), cfg)
 
 	// Create nested empty directories with a file
 	deepDir := filepath.Join(tmpDir, "a", "b", "c", "d")
@@ -541,7 +546,7 @@ func TestCleanEmptyDirectories(t *testing.T) {
 	}
 
 	// Clean from file path
-	if err := CleanEmptyDirectories(filePath, tmpDir); err != nil {
+	if err := org.CleanEmptyDirectories(filePath, tmpDir); err != nil {
 		t.Fatalf("CleanEmptyDirectories failed: %v", err)
 	}
 
@@ -553,6 +558,8 @@ func TestCleanEmptyDirectories(t *testing.T) {
 
 func TestCleanEmptyDirectories_WithHiddenFiles(t *testing.T) {
 	tmpDir := t.TempDir()
+	cfg := &config.OutputConfig{}
+	org := NewOrganizer(afero.NewOsFs(), cfg)
 
 	// Create nested directories
 	deepDir := filepath.Join(tmpDir, "a", "b", "c")
@@ -567,7 +574,7 @@ func TestCleanEmptyDirectories_WithHiddenFiles(t *testing.T) {
 	}
 
 	// Try to clean from deepest directory
-	if err := CleanEmptyDirectories(filepath.Join(deepDir, "file.mp4"), tmpDir); err != nil {
+	if err := org.CleanEmptyDirectories(filepath.Join(deepDir, "file.mp4"), tmpDir); err != nil {
 		t.Fatalf("CleanEmptyDirectories failed: %v", err)
 	}
 
@@ -591,7 +598,7 @@ func TestOrganizer_Copy_SourceDoesNotExist(t *testing.T) {
 		RenameFile:   true,
 	}
 
-	org := NewOrganizer(cfg)
+	org := NewOrganizer(afero.NewOsFs(), cfg)
 	movie := createTestMovie()
 
 	// Create plan with nonexistent source
@@ -625,7 +632,7 @@ func TestOrganizer_Plan_WithSubfolderFormat(t *testing.T) {
 		SubfolderFormat: []string{"<STUDIO>", "<YEAR>"},
 	}
 
-	org := NewOrganizer(cfg)
+	org := NewOrganizer(afero.NewOsFs(), cfg)
 	movie := createTestMovie()
 
 	sourceFile := filepath.Join(tmpDir, "ipx-535.mp4")
@@ -680,7 +687,7 @@ func TestOrganizer_Execute_InPlaceRename_DirectoryAlreadyExists(t *testing.T) {
 		RenameFile:   true,
 	}
 
-	org := NewOrganizer(cfg)
+	org := NewOrganizer(afero.NewOsFs(), cfg)
 	movie := createTestMovie()
 
 	// Create plan with in-place rename
@@ -730,7 +737,7 @@ func TestOrganizer_OrganizeBatch_PartialFailure(t *testing.T) {
 		RenameFile:   true,
 	}
 
-	org := NewOrganizer(cfg)
+	org := NewOrganizer(afero.NewOsFs(), cfg)
 
 	matches := []matcher.MatchResult{
 		{
@@ -795,7 +802,7 @@ func TestOrganizer_OrganizeBatch_MissingMovieData(t *testing.T) {
 		RenameFile:   true,
 	}
 
-	org := NewOrganizer(cfg)
+	org := NewOrganizer(afero.NewOsFs(), cfg)
 
 	matches := []matcher.MatchResult{
 		{

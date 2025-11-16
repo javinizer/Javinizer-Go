@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/spf13/afero"
+
 	"github.com/javinizer/javinizer-go/internal/config"
 	"github.com/javinizer/javinizer-go/internal/models"
 )
@@ -57,7 +59,7 @@ func TestNFOGenerationEndToEnd(t *testing.T) {
 
 	// Test with default config
 	t.Run("Default Config", func(t *testing.T) {
-		gen := NewGenerator(DefaultConfig())
+		gen := NewGenerator(afero.NewOsFs(), DefaultConfig())
 
 		err := gen.Generate(movie, tmpDir, "", "")
 		if err != nil {
@@ -97,7 +99,7 @@ func TestNFOGenerationEndToEnd(t *testing.T) {
 			IncludeTrailer:       true,
 			DefaultRatingSource:  "javinizer",
 		}
-		gen := NewGenerator(cfg)
+		gen := NewGenerator(afero.NewOsFs(), cfg)
 
 		tmpDir2 := t.TempDir()
 		err := gen.Generate(movie, tmpDir2, "", "")
@@ -156,7 +158,7 @@ func TestNFOGenerationEndToEnd(t *testing.T) {
 			IncludeTrailer:       false,
 			DefaultRatingSource:  "themoviedb",
 		}
-		gen := NewGenerator(cfg)
+		gen := NewGenerator(afero.NewOsFs(), cfg)
 
 		tmpDir3 := t.TempDir()
 		err := gen.Generate(movie, tmpDir3, "", "")
@@ -268,7 +270,7 @@ func TestNFOFromScraperResult(t *testing.T) {
 		TrailerURL: "https://example.com/trailer.mp4",
 	}
 
-	gen := NewGenerator(DefaultConfig())
+	gen := NewGenerator(afero.NewOsFs(), DefaultConfig())
 	tmpDir := t.TempDir()
 
 	err := gen.GenerateFromScraperResult(result, tmpDir)
@@ -317,7 +319,7 @@ func TestXMLFormatting(t *testing.T) {
 		ReleaseDate: &releaseDate,
 	}
 
-	gen := NewGenerator(DefaultConfig())
+	gen := NewGenerator(afero.NewOsFs(), DefaultConfig())
 	tmpDir := t.TempDir()
 
 	err := gen.Generate(movie, tmpDir, "", "")
@@ -470,7 +472,7 @@ func TestMultipleActresses(t *testing.T) {
 		},
 	}
 
-	gen := NewGenerator(DefaultConfig())
+	gen := NewGenerator(afero.NewOsFs(), DefaultConfig())
 	nfo := gen.MovieToNFO(movie, "")
 
 	if len(nfo.Actors) != 3 {

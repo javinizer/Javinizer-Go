@@ -5,6 +5,8 @@ import (
 	"os"
 	"time"
 
+	"github.com/spf13/afero"
+
 	"github.com/javinizer/javinizer-go/internal/models"
 	"github.com/javinizer/javinizer-go/internal/nfo"
 )
@@ -38,7 +40,7 @@ func ExampleGenerator_Generate() {
 	}
 
 	// Create generator with default config
-	gen := nfo.NewGenerator(nfo.DefaultConfig())
+	gen := nfo.NewGenerator(afero.NewOsFs(), nfo.DefaultConfig())
 
 	// Generate NFO file (no part suffix for single file)
 	tmpDir := os.TempDir()
@@ -63,7 +65,7 @@ func ExampleGenerator_MovieToNFO() {
 		Maker:       "IdeaPocket",
 	}
 
-	gen := nfo.NewGenerator(nfo.DefaultConfig())
+	gen := nfo.NewGenerator(afero.NewOsFs(), nfo.DefaultConfig())
 	nfoMovie := gen.MovieToNFO(movie, "")
 
 	fmt.Printf("ID: %s\n", nfoMovie.ID)

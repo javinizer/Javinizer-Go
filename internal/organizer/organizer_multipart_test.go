@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/spf13/afero"
+
 	"github.com/javinizer/javinizer-go/internal/config"
 	"github.com/javinizer/javinizer-go/internal/matcher"
 	"github.com/javinizer/javinizer-go/internal/models"
@@ -20,7 +22,7 @@ func TestPlan_AppendsPartSuffix(t *testing.T) {
 		MaxTitleLength:  0,
 		MaxPathLength:   260,
 	}
-	o := NewOrganizer(cfg)
+	o := NewOrganizer(afero.NewOsFs(), cfg)
 
 	movie := &models.Movie{
 		ID:          "IPX-535",
@@ -103,7 +105,7 @@ func TestOrganizeBatch_GroupsAndSortsParts(t *testing.T) {
 		RenameFile:      true,
 		SubfolderFormat: []string{},
 	}
-	o := NewOrganizer(cfg)
+	o := NewOrganizer(afero.NewOsFs(), cfg)
 
 	movie := &models.Movie{
 		ID:    "IPX-535",

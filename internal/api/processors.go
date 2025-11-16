@@ -23,6 +23,7 @@ import (
 	"github.com/javinizer/javinizer-go/internal/template"
 	ws "github.com/javinizer/javinizer-go/internal/websocket"
 	"github.com/javinizer/javinizer-go/internal/worker"
+	"github.com/spf13/afero"
 )
 
 // processBatchJob processes a batch scraping job (metadata only, no file organization)
@@ -276,8 +277,8 @@ func processUpdateJob(job *worker.BatchJob, cfg *config.Config, db *database.DB)
 // processUpdateMode handles update mode: generate NFOs and download media files in place (no file organization)
 func processUpdateMode(job *worker.BatchJob, cfg *config.Config, db *database.DB, ctx context.Context) {
 	// Initialize components
-	nfoGen := nfo.NewGenerator(nfo.ConfigFromAppConfig(&cfg.Metadata.NFO, &cfg.Output, &cfg.Metadata, db))
-	dl := downloader.NewDownloaderWithNFOConfig(&cfg.Output, cfg.Scrapers.UserAgent, cfg.Metadata.NFO.ActressLanguageJA, cfg.Metadata.NFO.FirstNameOrder)
+	nfoGen := nfo.NewGenerator(afero.NewOsFs(), nfo.ConfigFromAppConfig(&cfg.Metadata.NFO, &cfg.Output, &cfg.Metadata, db))
+	dl := downloader.NewDownloaderWithNFOConfig(afero.NewOsFs(), &cfg.Output, cfg.Scrapers.UserAgent, cfg.Metadata.NFO.ActressLanguageJA, cfg.Metadata.NFO.FirstNameOrder)
 
 	// Broadcast update started
 	wsHub.BroadcastProgress(&ws.ProgressMessage{
@@ -435,7 +436,7 @@ func processUpdateMode(job *worker.BatchJob, cfg *config.Config, db *database.DB
 			// NFO exists - parse and merge
 			logging.Infof("Found existing NFO, merging data: %s", foundPath)
 
-			parseResult, err := nfo.ParseNFO(foundPath)
+			parseResult, err := nfo.ParseNFO(afero.NewOsFs(), foundPath)
 			if err != nil {
 				logging.Warnf("Failed to parse existing NFO %s: %v (will overwrite)", foundPath, err)
 			} else {
@@ -528,9 +529,9 @@ func processUpdateMode(job *worker.BatchJob, cfg *config.Config, db *database.DB
 // processOrganizeJob processes file organization for a completed scrape job
 func processOrganizeJob(job *worker.BatchJob, mat *matcher.Matcher, destination string, copyOnly bool, db *database.DB, cfg *config.Config) {
 	// Initialize organizer, downloader, and NFO generator
-	org := organizer.NewOrganizer(&cfg.Output)
-	dl := downloader.NewDownloaderWithNFOConfig(&cfg.Output, "Javinizer/1.0", cfg.Metadata.NFO.ActressLanguageJA, cfg.Metadata.NFO.FirstNameOrder)
-	nfoGen := nfo.NewGenerator(nfo.ConfigFromAppConfig(&cfg.Metadata.NFO, &cfg.Output, &cfg.Metadata, db))
+	org := organizer.NewOrganizer(afero.NewOsFs(), &cfg.Output)
+	dl := downloader.NewDownloaderWithNFOConfig(afero.NewOsFs(), &cfg.Output, "Javinizer/1.0", cfg.Metadata.NFO.ActressLanguageJA, cfg.Metadata.NFO.FirstNameOrder)
+	nfoGen := nfo.NewGenerator(afero.NewOsFs(), nfo.ConfigFromAppConfig(&cfg.Metadata.NFO, &cfg.Output, &cfg.Metadata, db))
 
 	// Broadcast organization started
 	wsHub.BroadcastProgress(&ws.ProgressMessage{

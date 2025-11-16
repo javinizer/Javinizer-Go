@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/spf13/afero"
+
 	"github.com/javinizer/javinizer-go/internal/config"
 	"github.com/javinizer/javinizer-go/internal/downloader"
 	"github.com/javinizer/javinizer-go/internal/matcher"
@@ -59,8 +61,8 @@ func TestGenerateNFOs(t *testing.T) {
 			{ID: "IPX-123", File: scanner.FileInfo{Name: "ipx-123.mp4", Path: "/tmp/ipx-123.mp4"}},
 		}
 
-		nfoGen := nfo.NewGenerator(nfo.DefaultConfig())
-		org := organizer.NewOrganizer(&config.OutputConfig{})
+		nfoGen := nfo.NewGenerator(afero.NewOsFs(), nfo.DefaultConfig())
+		org := organizer.NewOrganizer(afero.NewOsFs(), &config.OutputConfig{})
 
 		count, err := GenerateNFOs(movies, matches, nfoGen, org, false, false, false, "", false, false)
 
@@ -72,8 +74,8 @@ func TestGenerateNFOs(t *testing.T) {
 		movies := map[string]*models.Movie{}
 		matches := []matcher.MatchResult{}
 
-		nfoGen := nfo.NewGenerator(nfo.DefaultConfig())
-		org := organizer.NewOrganizer(&config.OutputConfig{})
+		nfoGen := nfo.NewGenerator(afero.NewOsFs(), nfo.DefaultConfig())
+		org := organizer.NewOrganizer(afero.NewOsFs(), &config.OutputConfig{})
 
 		count, err := GenerateNFOs(movies, matches, nfoGen, org, true, false, false, "", false, false)
 
@@ -109,8 +111,8 @@ func TestGenerateNFOs(t *testing.T) {
 			},
 		}
 
-		nfoGen := nfo.NewGenerator(nfo.DefaultConfig())
-		org := organizer.NewOrganizer(&config.OutputConfig{})
+		nfoGen := nfo.NewGenerator(afero.NewOsFs(), nfo.DefaultConfig())
+		org := organizer.NewOrganizer(afero.NewOsFs(), &config.OutputConfig{})
 
 		count, err := GenerateNFOs(movies, matches, nfoGen, org, true, false, false, "", false, false)
 
@@ -170,8 +172,8 @@ func TestGenerateNFOs(t *testing.T) {
 		// Create NFO generator with PerFile enabled
 		nfoCfg := nfo.DefaultConfig()
 		nfoCfg.PerFile = true
-		nfoGen := nfo.NewGenerator(nfoCfg)
-		org := organizer.NewOrganizer(&config.OutputConfig{})
+		nfoGen := nfo.NewGenerator(afero.NewOsFs(), nfoCfg)
+		org := organizer.NewOrganizer(afero.NewOsFs(), &config.OutputConfig{})
 
 		// per_file = true should generate one NFO per part
 		count, err := GenerateNFOs(movies, matches, nfoGen, org, true, false, true, "", false, false)
@@ -231,8 +233,8 @@ func TestGenerateNFOs(t *testing.T) {
 			},
 		}
 
-		nfoGen := nfo.NewGenerator(nfo.DefaultConfig())
-		org := organizer.NewOrganizer(&config.OutputConfig{})
+		nfoGen := nfo.NewGenerator(afero.NewOsFs(), nfo.DefaultConfig())
+		org := organizer.NewOrganizer(afero.NewOsFs(), &config.OutputConfig{})
 
 		// per_file = false should generate single shared NFO
 		count, err := GenerateNFOs(movies, matches, nfoGen, org, true, false, false, "", false, false)
@@ -272,8 +274,8 @@ func TestGenerateNFOs(t *testing.T) {
 			},
 		}
 
-		nfoGen := nfo.NewGenerator(nfo.DefaultConfig())
-		org := organizer.NewOrganizer(&config.OutputConfig{})
+		nfoGen := nfo.NewGenerator(afero.NewOsFs(), nfo.DefaultConfig())
+		org := organizer.NewOrganizer(afero.NewOsFs(), &config.OutputConfig{})
 
 		// Dry run should count but not create
 		count, err := GenerateNFOs(movies, matches, nfoGen, org, true, false, false, "", false, true)
@@ -316,11 +318,11 @@ func TestGenerateNFOs(t *testing.T) {
 			},
 		}
 
-		nfoGen := nfo.NewGenerator(nfo.DefaultConfig())
+		nfoGen := nfo.NewGenerator(afero.NewOsFs(), nfo.DefaultConfig())
 		outputCfg := &config.OutputConfig{
 			FolderFormat: "<ID>",
 		}
-		org := organizer.NewOrganizer(outputCfg)
+		org := organizer.NewOrganizer(afero.NewOsFs(), outputCfg)
 		destPath := filepath.Join(tmpDir, "dest")
 
 		// moveToFolder=true should use organizer.Plan to determine output dir
@@ -356,8 +358,8 @@ func TestGenerateNFOs(t *testing.T) {
 			},
 		}
 
-		nfoGen := nfo.NewGenerator(nfo.DefaultConfig())
-		org := organizer.NewOrganizer(&config.OutputConfig{})
+		nfoGen := nfo.NewGenerator(afero.NewOsFs(), nfo.DefaultConfig())
+		org := organizer.NewOrganizer(afero.NewOsFs(), &config.OutputConfig{})
 
 		// Should generate NFO for IPX-456 only, skip IPX-123 (no matches)
 		count, err := GenerateNFOs(movies, matches, nfoGen, org, true, false, false, "", false, false)
@@ -380,7 +382,7 @@ func TestDownloadMediaFiles(t *testing.T) {
 		matches := []matcher.MatchResult{}
 
 		mockDownloader := NewMockDownloader(nil, nil)
-		org := organizer.NewOrganizer(&config.OutputConfig{})
+		org := organizer.NewOrganizer(afero.NewOsFs(), &config.OutputConfig{})
 
 		count, err := DownloadMediaFiles(movies, matches, mockDownloader, org, true, true, false, "", false, false)
 
@@ -395,7 +397,7 @@ func TestDownloadMediaFiles(t *testing.T) {
 		matches := []matcher.MatchResult{} // No matches
 
 		mockDownloader := NewMockDownloader(nil, nil)
-		org := organizer.NewOrganizer(&config.OutputConfig{})
+		org := organizer.NewOrganizer(afero.NewOsFs(), &config.OutputConfig{})
 
 		count, err := DownloadMediaFiles(movies, matches, mockDownloader, org, true, true, false, "", false, false)
 
@@ -435,7 +437,7 @@ func TestDownloadMediaFiles(t *testing.T) {
 			{LocalPath: filepath.Join(tmpDir, "ss2.jpg"), Size: 512, Downloaded: true},
 		}
 		mockDownloader := NewMockDownloader(downloadResults, nil)
-		org := organizer.NewOrganizer(&config.OutputConfig{})
+		org := organizer.NewOrganizer(afero.NewOsFs(), &config.OutputConfig{})
 
 		count, err := DownloadMediaFiles(movies, matches, mockDownloader, org, true, true, false, "", false, false)
 
@@ -468,7 +470,7 @@ func TestDownloadMediaFiles(t *testing.T) {
 		}
 
 		mockDownloader := NewMockDownloader(nil, nil)
-		org := organizer.NewOrganizer(&config.OutputConfig{})
+		org := organizer.NewOrganizer(afero.NewOsFs(), &config.OutputConfig{})
 
 		// Dry run should show intent but return 0
 		count, err := DownloadMediaFiles(movies, matches, mockDownloader, org, true, true, false, "", false, true)
@@ -514,7 +516,7 @@ func TestDownloadMediaFiles(t *testing.T) {
 			{LocalPath: filepath.Join(tmpDir, "cover.jpg"), Size: 1024, Downloaded: true},
 		}
 		mockDownloader := NewMockDownloaderWithTracking(downloadResults, nil)
-		org := organizer.NewOrganizer(&config.OutputConfig{})
+		org := organizer.NewOrganizer(afero.NewOsFs(), &config.OutputConfig{})
 
 		count, err := DownloadMediaFiles(movies, matches, mockDownloader, org, true, false, false, "", false, false)
 
@@ -559,7 +561,7 @@ func TestDownloadMediaFiles(t *testing.T) {
 			{LocalPath: filepath.Join(tmpDir, "ss2.jpg"), Size: 0, Downloaded: false, Error: failedError}, // Failed (error)
 		}
 		mockDownloader := NewMockDownloader(downloadResults, nil)
-		org := organizer.NewOrganizer(&config.OutputConfig{})
+		org := organizer.NewOrganizer(afero.NewOsFs(), &config.OutputConfig{})
 
 		count, err := DownloadMediaFiles(movies, matches, mockDownloader, org, true, true, false, "", false, false)
 
@@ -593,7 +595,7 @@ func TestDownloadMediaFiles(t *testing.T) {
 			{LocalPath: filepath.Join(tmpDir, "cover.jpg"), Size: 1024, Downloaded: true},
 		}
 		mockDownloader := NewMockDownloaderWithTracking(downloadResults, nil)
-		org := organizer.NewOrganizer(&config.OutputConfig{})
+		org := organizer.NewOrganizer(afero.NewOsFs(), &config.OutputConfig{})
 
 		// moveToFolder=false should download to source dir
 		count, err := DownloadMediaFiles(movies, matches, mockDownloader, org, true, false, false, "", false, false)

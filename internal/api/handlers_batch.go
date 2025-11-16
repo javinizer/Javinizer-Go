@@ -16,6 +16,7 @@ import (
 	"github.com/javinizer/javinizer-go/internal/nfo"
 	"github.com/javinizer/javinizer-go/internal/scanner"
 	"github.com/javinizer/javinizer-go/internal/worker"
+	"github.com/spf13/afero"
 )
 
 const (
@@ -121,7 +122,7 @@ func discoverSiblingParts(files []string, fileMatcher *matcher.Matcher, cfg *con
 	}
 
 	// First, match all submitted files to understand what we have
-	scan := scanner.NewScanner(&cfg.Matching)
+	scan := scanner.NewScanner(afero.NewOsFs(), &cfg.Matching)
 	seenPaths := make(map[string]bool)
 	fileInfos := make([]scanner.FileInfo, 0, len(files))
 

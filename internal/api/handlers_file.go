@@ -9,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/javinizer/javinizer-go/internal/matcher"
 	"github.com/javinizer/javinizer-go/internal/scanner"
+	"github.com/spf13/afero"
 )
 
 // scanDirectory godoc
@@ -51,7 +52,7 @@ func scanDirectory(deps *ServerDependencies) gin.HandlerFunc {
 		defer cancel()
 
 		// Scan directory with resource limits
-		scan := scanner.NewScanner(&cfg.Matching)
+		scan := scanner.NewScanner(afero.NewOsFs(), &cfg.Matching)
 		result, err := scan.ScanWithLimits(ctx, validPath, cfg.API.Security.MaxFilesPerScan)
 		if err != nil {
 			c.JSON(500, ErrorResponse{Error: err.Error()})

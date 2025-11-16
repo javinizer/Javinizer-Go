@@ -16,6 +16,7 @@ import (
 	"github.com/javinizer/javinizer-go/internal/nfo"
 	"github.com/javinizer/javinizer-go/internal/organizer"
 	"github.com/javinizer/javinizer-go/internal/scanner"
+	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -97,7 +98,7 @@ func TestNFOTask_Execute(t *testing.T) {
 				UnknownActress:      "Unknown",
 				NFOFilenameTemplate: "<ID>.nfo",
 			}
-			gen := nfo.NewGenerator(nfoCfg)
+			gen := nfo.NewGenerator(afero.NewOsFs(), nfoCfg)
 
 			// Create task
 			taskID := "nfo-" + tt.movie.ID + tt.partSuffix
@@ -159,7 +160,7 @@ func TestNFOTask_Execute_Cancellation(t *testing.T) {
 		UnknownActress:      "Unknown",
 		NFOFilenameTemplate: "<ID>.nfo",
 	}
-	gen := nfo.NewGenerator(nfoCfg)
+	gen := nfo.NewGenerator(afero.NewOsFs(), nfoCfg)
 
 	movie := &models.Movie{
 		ID:    "IPX-999",
@@ -233,7 +234,7 @@ func TestDownloadTask_Execute(t *testing.T) {
 				DownloadCover:  true,
 				DownloadPoster: true,
 			}
-			dl := downloader.NewDownloader(outputCfg, "test-agent")
+			dl := downloader.NewDownloader(afero.NewOsFs(), outputCfg, "test-agent")
 
 			// Create task
 			task := NewDownloadTask(tt.movie, tmpDir, dl, tracker, tt.dryRun, tt.partNumber)
@@ -281,7 +282,7 @@ func TestDownloadTask_Execute_Cancellation(t *testing.T) {
 		DownloadCover:  true,
 		DownloadPoster: true,
 	}
-	dl := downloader.NewDownloader(outputCfg, "test-agent")
+	dl := downloader.NewDownloader(afero.NewOsFs(), outputCfg, "test-agent")
 
 	movie := &models.Movie{
 		ID:       "IPX-999",
@@ -387,7 +388,7 @@ func TestOrganizeTask_Execute(t *testing.T) {
 				FileFormat:   "<ID>",
 				RenameFile:   true,
 			}
-			org := organizer.NewOrganizer(outputCfg)
+			org := organizer.NewOrganizer(afero.NewOsFs(), outputCfg)
 
 			// Create task
 			task := NewOrganizeTask(
@@ -481,7 +482,7 @@ func TestOrganizeTask_Execute_Cancellation(t *testing.T) {
 		FileFormat:   "<ID>",
 		RenameFile:   true,
 	}
-	org := organizer.NewOrganizer(outputCfg)
+	org := organizer.NewOrganizer(afero.NewOsFs(), outputCfg)
 
 	task := NewOrganizeTask(match, movie, tmpDestDir, true, false, org, tracker, false)
 
@@ -808,10 +809,10 @@ func TestProcessFileTask_Execute_DisabledSteps(t *testing.T) {
 				},
 			}
 
-			dl := downloader.NewDownloader(&cfg.Output, "test-agent")
-			org := organizer.NewOrganizer(&cfg.Output)
+			dl := downloader.NewDownloader(afero.NewOsFs(), &cfg.Output, "test-agent")
+			org := organizer.NewOrganizer(afero.NewOsFs(), &cfg.Output)
 			nfoCfg := &nfo.Config{}
-			nfoGen := nfo.NewGenerator(nfoCfg)
+			nfoGen := nfo.NewGenerator(afero.NewOsFs(), nfoCfg)
 
 			task := NewProcessFileTask(
 				match,
@@ -887,7 +888,7 @@ func TestNewTaskConstructors(t *testing.T) {
 
 	t.Run("NewDownloadTask", func(t *testing.T) {
 		outputCfg := &config.OutputConfig{}
-		dl := downloader.NewDownloader(outputCfg, "test-agent")
+		dl := downloader.NewDownloader(afero.NewOsFs(), outputCfg, "test-agent")
 		movie := &models.Movie{ID: "IPX-001"}
 
 		task := NewDownloadTask(movie, "/tmp", dl, tracker, false, 0)
@@ -901,7 +902,7 @@ func TestNewTaskConstructors(t *testing.T) {
 			FolderFormat: "<ID>",
 			FileFormat:   "<ID>",
 		}
-		org := organizer.NewOrganizer(outputCfg)
+		org := organizer.NewOrganizer(afero.NewOsFs(), outputCfg)
 		match := matcher.MatchResult{
 			ID:   "IPX-001",
 			File: scanner.FileInfo{Name: "IPX-001.mp4"},
@@ -916,7 +917,7 @@ func TestNewTaskConstructors(t *testing.T) {
 
 	t.Run("NewNFOTask", func(t *testing.T) {
 		nfoCfg := &nfo.Config{}
-		gen := nfo.NewGenerator(nfoCfg)
+		gen := nfo.NewGenerator(afero.NewOsFs(), nfoCfg)
 		movie := &models.Movie{ID: "IPX-001"}
 
 		task := NewNFOTask(movie, "/tmp", gen, tracker, false, "", "")
@@ -935,10 +936,10 @@ func TestNewTaskConstructors(t *testing.T) {
 		movieRepo := database.NewMovieRepository(db)
 		agg := aggregator.New(cfg)
 		outputCfg := &config.OutputConfig{}
-		dl := downloader.NewDownloader(outputCfg, "test-agent")
-		org := organizer.NewOrganizer(outputCfg)
+		dl := downloader.NewDownloader(afero.NewOsFs(), outputCfg, "test-agent")
+		org := organizer.NewOrganizer(afero.NewOsFs(), outputCfg)
 		nfoCfg := &nfo.Config{}
-		gen := nfo.NewGenerator(nfoCfg)
+		gen := nfo.NewGenerator(afero.NewOsFs(), nfoCfg)
 
 		match := matcher.MatchResult{ID: "IPX-001"}
 

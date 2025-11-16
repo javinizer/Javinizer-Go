@@ -7,12 +7,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/spf13/afero"
+
 	"github.com/javinizer/javinizer-go/internal/models"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestMovieToNFO(t *testing.T) {
-	gen := NewGenerator(DefaultConfig())
+	gen := NewGenerator(afero.NewOsFs(), DefaultConfig())
 	releaseDate := time.Date(2020, 9, 13, 0, 0, 0, 0, time.UTC)
 
 	movie := &models.Movie{
@@ -261,7 +263,7 @@ func TestActressNameFormatting(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gen := NewGenerator(tt.config)
+			gen := NewGenerator(afero.NewOsFs(), tt.config)
 			result := gen.formatActressName(tt.actress)
 			if result != tt.expectedName {
 				t.Errorf("Expected '%s', got '%s'", tt.expectedName, result)
@@ -271,7 +273,7 @@ func TestActressNameFormatting(t *testing.T) {
 }
 
 func TestWriteNFO(t *testing.T) {
-	gen := NewGenerator(DefaultConfig())
+	gen := NewGenerator(afero.NewOsFs(), DefaultConfig())
 
 	// Create a test NFO structure
 	nfo := &Movie{
@@ -347,7 +349,7 @@ func TestConfigDefaults(t *testing.T) {
 }
 
 func TestNFOWithoutOptionalFields(t *testing.T) {
-	gen := NewGenerator(DefaultConfig())
+	gen := NewGenerator(afero.NewOsFs(), DefaultConfig())
 
 	// Movie with minimal data
 	movie := &models.Movie{
@@ -382,7 +384,7 @@ func TestNFOWithoutOptionalFields(t *testing.T) {
 func TestGenerateWithTemplate(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.NFOFilenameTemplate = "<ID> - <TITLE>.nfo"
-	gen := NewGenerator(cfg)
+	gen := NewGenerator(afero.NewOsFs(), cfg)
 
 	releaseDate := time.Date(2020, 9, 13, 0, 0, 0, 0, time.UTC)
 	movie := &models.Movie{
@@ -428,7 +430,7 @@ func TestGenerator_GenerateMultiPart(t *testing.T) {
 		DefaultRatingSource:  "themoviedb",
 	}
 
-	gen := NewGenerator(cfg)
+	gen := NewGenerator(afero.NewOsFs(), cfg)
 
 	releaseDate := time.Date(2023, 5, 1, 0, 0, 0, 0, time.UTC)
 	movie := &models.Movie{
@@ -525,7 +527,7 @@ func TestIncludeOriginalPath(t *testing.T) {
 				DefaultRatingSource:  "themoviedb",
 			}
 
-			gen := NewGenerator(cfg)
+			gen := NewGenerator(afero.NewOsFs(), cfg)
 
 			movie := &models.Movie{
 				ID:               "IPX-535",
@@ -556,7 +558,7 @@ func TestOriginalPathInXML(t *testing.T) {
 		DefaultRatingSource:  "themoviedb",
 	}
 
-	gen := NewGenerator(cfg)
+	gen := NewGenerator(afero.NewOsFs(), cfg)
 
 	movie := &models.Movie{
 		ID:               "IPX-535",
@@ -676,7 +678,7 @@ func TestActressAsTag(t *testing.T) {
 				DefaultRatingSource:  "themoviedb",
 			}
 
-			gen := NewGenerator(cfg)
+			gen := NewGenerator(afero.NewOsFs(), cfg)
 
 			movie := &models.Movie{
 				ID:        "IPX-535",
@@ -721,7 +723,7 @@ func TestActressAsTagInXML(t *testing.T) {
 		DefaultRatingSource:  "themoviedb",
 	}
 
-	gen := NewGenerator(cfg)
+	gen := NewGenerator(afero.NewOsFs(), cfg)
 
 	movie := &models.Movie{
 		ID:    "IPX-535",
@@ -781,7 +783,7 @@ func TestStaticNFOFields(t *testing.T) {
 		StaticCredits:       []string{"Scraped by Javinizer", "Organized automatically"},
 	}
 
-	gen := NewGenerator(cfg)
+	gen := NewGenerator(afero.NewOsFs(), cfg)
 
 	movie := &models.Movie{
 		ID:    "IPX-001",
@@ -810,7 +812,7 @@ func TestStaticTagsWithActressAsTag(t *testing.T) {
 		StaticTags:          []string{"JAV", "Collection"},
 	}
 
-	gen := NewGenerator(cfg)
+	gen := NewGenerator(afero.NewOsFs(), cfg)
 
 	movie := &models.Movie{
 		ID:    "IPX-001",
@@ -836,7 +838,7 @@ func TestStaticFieldsEmpty(t *testing.T) {
 		// No static fields configured
 	}
 
-	gen := NewGenerator(cfg)
+	gen := NewGenerator(afero.NewOsFs(), cfg)
 
 	movie := &models.Movie{
 		ID:    "IPX-001",

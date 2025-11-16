@@ -12,6 +12,7 @@ import (
 	"github.com/javinizer/javinizer-go/internal/matcher"
 	"github.com/javinizer/javinizer-go/internal/models"
 	"github.com/javinizer/javinizer-go/internal/nfo"
+	"github.com/spf13/afero"
 )
 
 // Sentinel errors for NFO validation
@@ -444,7 +445,7 @@ func compareNFO(deps *ServerDependencies) gin.HandlerFunc {
 		response.NFOPath = filepath.Base(validatedPath)
 
 		// Step 2: Parse NFO file
-		parseResult, err := nfo.ParseNFO(validatedPath)
+		parseResult, err := nfo.ParseNFO(afero.NewOsFs(), validatedPath)
 		if err != nil {
 			c.JSON(500, ErrorResponse{Error: "Failed to parse NFO file"})
 			return

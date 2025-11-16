@@ -15,6 +15,7 @@ import (
 	"github.com/javinizer/javinizer-go/internal/nfo"
 	"github.com/javinizer/javinizer-go/internal/organizer"
 	"github.com/javinizer/javinizer-go/internal/scanner"
+	"github.com/spf13/afero"
 	"github.com/spf13/cobra"
 )
 
@@ -96,14 +97,14 @@ func Run(cmd *cobra.Command, args []string, configFile string) error {
 	movieRepo := database.NewMovieRepository(deps.DB)
 	registry := deps.ScraperRegistry
 	agg := aggregator.NewWithDatabase(deps.Config, deps.DB)
-	fileScanner := scanner.NewScanner(&deps.Config.Matching)
+	fileScanner := scanner.NewScanner(afero.NewOsFs(), &deps.Config.Matching)
 	fileMatcher, err := matcher.NewMatcher(&deps.Config.Matching)
 	if err != nil {
 		return fmt.Errorf("failed to create matcher: %w", err)
 	}
-	fileOrganizer := organizer.NewOrganizer(&deps.Config.Output)
-	nfoGenerator := nfo.NewGenerator(nfo.ConfigFromAppConfig(&deps.Config.Metadata.NFO, &deps.Config.Output, &deps.Config.Metadata, deps.DB))
-	mediaDownloader := downloader.NewDownloaderWithNFOConfig(&deps.Config.Output, deps.Config.Scrapers.UserAgent, deps.Config.Metadata.NFO.ActressLanguageJA, deps.Config.Metadata.NFO.FirstNameOrder)
+	fileOrganizer := organizer.NewOrganizer(afero.NewOsFs(), &deps.Config.Output)
+	nfoGenerator := nfo.NewGenerator(afero.NewOsFs(), nfo.ConfigFromAppConfig(&deps.Config.Metadata.NFO, &deps.Config.Output, &deps.Config.Metadata, deps.DB))
+	mediaDownloader := downloader.NewDownloaderWithNFOConfig(afero.NewOsFs(), &deps.Config.Output, deps.Config.Scrapers.UserAgent, deps.Config.Metadata.NFO.ActressLanguageJA, deps.Config.Metadata.NFO.FirstNameOrder)
 
 	// Print configuration
 	fmt.Println("=== Javinizer Sort ===")
@@ -184,7 +185,7 @@ func Run(cmd *cobra.Command, args []string, configFile string) error {
 
 			// Validate plan (skip if force update)
 			if !forceUpdate {
-				if issues := organizer.ValidatePlan(plan); len(issues) > 0 {
+				if issues := fileOrganizer.ValidatePlan(plan); len(issues) > 0 {
 					fmt.Printf("   ⚠️  %s: %v\n", match.File.Name, issues)
 					logging.Debugf("[%s] Validation failed with %d issues: %v", match.ID, len(issues), issues)
 					continue

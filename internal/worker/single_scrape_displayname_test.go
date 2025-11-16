@@ -8,6 +8,7 @@ import (
 	"github.com/javinizer/javinizer-go/internal/models"
 	"github.com/javinizer/javinizer-go/internal/nfo"
 	"github.com/javinizer/javinizer-go/internal/template"
+	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -94,12 +95,12 @@ func TestDisplayNameRegenerationWithMergeStrategies(t *testing.T) {
 				ID:    "ABP-960",
 				Title: tt.nfoTitle,
 			}
-			generator := nfo.NewGenerator(&nfo.Config{})
+			generator := nfo.NewGenerator(afero.NewOsFs(), &nfo.Config{})
 			err := generator.WriteNFO(testNFO, nfoPath)
 			require.NoError(t, err, "Failed to create test NFO file")
 
 			// Parse the NFO (simulating what happens in single_scrape.go)
-			parseResult, err := nfo.ParseNFO(nfoPath)
+			parseResult, err := nfo.ParseNFO(afero.NewOsFs(), nfoPath)
 			require.NoError(t, err, "Failed to parse test NFO")
 			assert.Equal(t, tt.nfoTitle, parseResult.Movie.Title, "NFO parser should preserve title as-is")
 
@@ -185,11 +186,11 @@ func TestDisplayNameWithEmptyNFOTitle(t *testing.T) {
 		ID:    "TEST-001",
 		Title: "", // Empty title
 	}
-	generator := nfo.NewGenerator(&nfo.Config{})
+	generator := nfo.NewGenerator(afero.NewOsFs(), &nfo.Config{})
 	err := generator.WriteNFO(testNFO, nfoPath)
 	require.NoError(t, err)
 
-	parseResult, err := nfo.ParseNFO(nfoPath)
+	parseResult, err := nfo.ParseNFO(afero.NewOsFs(), nfoPath)
 	require.NoError(t, err)
 
 	scrapedMovie := &models.Movie{
@@ -310,12 +311,12 @@ func TestDisplayNameWithCachedMovie(t *testing.T) {
 				ID:    "TEST-001",
 				Title: tt.nfoTitle,
 			}
-			generator := nfo.NewGenerator(&nfo.Config{})
+			generator := nfo.NewGenerator(afero.NewOsFs(), &nfo.Config{})
 			err := generator.WriteNFO(testNFO, nfoPath)
 			require.NoError(t, err)
 
 			// Parse NFO (simulates NFO parsing in cached movie path)
-			parseResult, err := nfo.ParseNFO(nfoPath)
+			parseResult, err := nfo.ParseNFO(afero.NewOsFs(), nfoPath)
 			require.NoError(t, err)
 
 			// Create cached movie (simulates database-cached movie)

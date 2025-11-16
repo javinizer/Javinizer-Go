@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/spf13/afero"
+
 	"github.com/javinizer/javinizer-go/internal/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -34,7 +36,7 @@ func TestAddGenericRole(t *testing.T) {
 				ActorFirstNameOrder: true,
 				AddGenericRole:      tt.addGenericRole,
 			}
-			gen := NewGenerator(cfg)
+			gen := NewGenerator(afero.NewOsFs(), cfg)
 
 			movie := &models.Movie{
 				ID:    "IPX-001",
@@ -89,7 +91,7 @@ func TestAltNameRole(t *testing.T) {
 				ActorFirstNameOrder: true,
 				AltNameRole:         tt.altNameRole,
 			}
-			gen := NewGenerator(cfg)
+			gen := NewGenerator(afero.NewOsFs(), cfg)
 
 			movie := &models.Movie{
 				ID:    "IPX-001",
@@ -119,7 +121,7 @@ func TestBothRoleOptions(t *testing.T) {
 			AddGenericRole:      true, // This should be overridden
 			AltNameRole:         true,
 		}
-		gen := NewGenerator(cfg)
+		gen := NewGenerator(afero.NewOsFs(), cfg)
 
 		movie := &models.Movie{
 			ID:    "IPX-001",
@@ -146,7 +148,7 @@ func TestBothRoleOptions(t *testing.T) {
 			AddGenericRole:      true,
 			AltNameRole:         true, // Enabled but no Japanese name available
 		}
-		gen := NewGenerator(cfg)
+		gen := NewGenerator(afero.NewOsFs(), cfg)
 
 		movie := &models.Movie{
 			ID:    "IPX-001",
@@ -173,7 +175,7 @@ func TestRoleInXML(t *testing.T) {
 		ActorFirstNameOrder: true,
 		AddGenericRole:      true,
 	}
-	gen := NewGenerator(cfg)
+	gen := NewGenerator(afero.NewOsFs(), cfg)
 
 	movie := &models.Movie{
 		ID:    "IPX-001",
@@ -201,7 +203,7 @@ func TestAltNameRoleInXML(t *testing.T) {
 		ActorFirstNameOrder: true,
 		AltNameRole:         true,
 	}
-	gen := NewGenerator(cfg)
+	gen := NewGenerator(afero.NewOsFs(), cfg)
 
 	movie := &models.Movie{
 		ID:    "IPX-001",

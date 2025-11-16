@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/spf13/afero"
 	"time"
 
 	"github.com/javinizer/javinizer-go/internal/models"
@@ -12,7 +14,7 @@ import (
 )
 
 func TestParseNFO_MinimalNFO(t *testing.T) {
-	result, err := ParseNFO("../../testdata/nfo/minimal.nfo")
+	result, err := ParseNFO(afero.NewOsFs(), "../../testdata/nfo/minimal.nfo")
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.NotNil(t, result.Movie)
@@ -25,7 +27,7 @@ func TestParseNFO_MinimalNFO(t *testing.T) {
 }
 
 func TestParseNFO_CompleteNFO(t *testing.T) {
-	result, err := ParseNFO("../../testdata/nfo/complete.nfo")
+	result, err := ParseNFO(afero.NewOsFs(), "../../testdata/nfo/complete.nfo")
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.NotNil(t, result.Movie)
@@ -86,21 +88,21 @@ func TestParseNFO_CompleteNFO(t *testing.T) {
 }
 
 func TestParseNFO_MalformedXML(t *testing.T) {
-	result, err := ParseNFO("../../testdata/nfo/malformed.xml")
+	result, err := ParseNFO(afero.NewOsFs(), "../../testdata/nfo/malformed.xml")
 	assert.Error(t, err)
 	assert.Nil(t, result)
 	assert.Contains(t, err.Error(), "failed to parse NFO XML")
 }
 
 func TestParseNFO_FileNotFound(t *testing.T) {
-	result, err := ParseNFO("../../testdata/nfo/nonexistent.nfo")
+	result, err := ParseNFO(afero.NewOsFs(), "../../testdata/nfo/nonexistent.nfo")
 	assert.Error(t, err)
 	assert.Nil(t, result)
 	assert.Contains(t, err.Error(), "failed to read NFO file")
 }
 
 func TestParseNFO_EmptyFields(t *testing.T) {
-	result, err := ParseNFO("../../testdata/nfo/empty_fields.nfo")
+	result, err := ParseNFO(afero.NewOsFs(), "../../testdata/nfo/empty_fields.nfo")
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -325,7 +327,7 @@ func TestRoundTrip(t *testing.T) {
 	}
 
 	// Generate NFO
-	generator := NewGenerator(DefaultConfig())
+	generator := NewGenerator(afero.NewOsFs(), DefaultConfig())
 	generator.config.IncludeFanart = true
 	generator.config.IncludeTrailer = true
 	generator.config.AltNameRole = true // Include Japanese names in role field for round-trip
@@ -342,7 +344,7 @@ func TestRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 
 	// Parse it back
-	result, err := ParseNFO(nfoPath)
+	result, err := ParseNFO(afero.NewOsFs(), nfoPath)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 

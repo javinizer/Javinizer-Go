@@ -16,7 +16,6 @@ func TestLoadGoldenFile_Success(t *testing.T) {
 	testdataDir := "testdata"
 	err := os.MkdirAll(testdataDir, 0755)
 	require.NoError(t, err)
-	defer os.RemoveAll(testdataDir) // Cleanup
 
 	goldenContent := []byte("test golden content")
 	goldenPath := filepath.Join(testdataDir, "test_success.golden")

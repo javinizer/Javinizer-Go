@@ -13,6 +13,7 @@ import (
 
 	"github.com/javinizer/javinizer-go/internal/config"
 	"github.com/javinizer/javinizer-go/internal/models"
+	"github.com/spf13/afero"
 )
 
 func createTestMovie() *models.Movie {
@@ -61,7 +62,7 @@ func TestDownloader_DownloadCover(t *testing.T) {
 		FanartFormat:  "<ID>-fanart.jpg",
 	}
 
-	downloader := NewDownloader(cfg, "test-agent")
+	downloader := NewDownloader(afero.NewOsFs(), cfg, "test-agent")
 
 	result, err := downloader.DownloadCover(movie, tmpDir)
 	if err != nil {
@@ -104,7 +105,7 @@ func TestDownloader_DownloadCover_Disabled(t *testing.T) {
 		DownloadCover: false,
 	}
 
-	downloader := NewDownloader(cfg, "test-agent")
+	downloader := NewDownloader(afero.NewOsFs(), cfg, "test-agent")
 
 	result, err := downloader.DownloadCover(movie, tmpDir)
 	if err != nil {
@@ -125,7 +126,7 @@ func TestDownloader_DownloadCover_AlreadyExists(t *testing.T) {
 		FanartFormat:  "<ID>-fanart.jpg",
 	}
 
-	downloader := NewDownloader(cfg, "test-agent")
+	downloader := NewDownloader(afero.NewOsFs(), cfg, "test-agent")
 
 	// Create existing file
 	existingPath := filepath.Join(tmpDir, "IPX-535-fanart.jpg")
@@ -172,7 +173,7 @@ func TestDownloader_DownloadExtrafanart(t *testing.T) {
 		ScreenshotPadding:   2,
 	}
 
-	downloader := NewDownloader(cfg, "test-agent")
+	downloader := NewDownloader(afero.NewOsFs(), cfg, "test-agent")
 
 	results, err := downloader.DownloadExtrafanart(movie, tmpDir)
 	if err != nil {
@@ -215,7 +216,7 @@ func TestDownloader_DownloadTrailer(t *testing.T) {
 		DownloadTrailer: true,
 	}
 
-	downloader := NewDownloader(cfg, "test-agent")
+	downloader := NewDownloader(afero.NewOsFs(), cfg, "test-agent")
 
 	result, err := downloader.DownloadTrailer(movie, tmpDir)
 	if err != nil {
@@ -261,7 +262,7 @@ func TestDownloader_DownloadActressImages(t *testing.T) {
 		DownloadActress: true,
 	}
 
-	downloader := NewDownloader(cfg, "test-agent")
+	downloader := NewDownloader(afero.NewOsFs(), cfg, "test-agent")
 
 	results, err := downloader.DownloadActressImages(movie, tmpDir)
 	if err != nil {
@@ -303,7 +304,7 @@ func TestDownloader_Download_BadStatusCode(t *testing.T) {
 		DownloadCover: true,
 	}
 
-	downloader := NewDownloader(cfg, "test-agent")
+	downloader := NewDownloader(afero.NewOsFs(), cfg, "test-agent")
 
 	result, err := downloader.DownloadCover(movie, tmpDir)
 	if err == nil {
@@ -355,7 +356,7 @@ func TestDownloader_DownloadAll_MultiPartDeduplication(t *testing.T) {
 		},
 	}
 
-	downloader := NewDownloader(cfg, "test-agent")
+	downloader := NewDownloader(afero.NewOsFs(), cfg, "test-agent")
 
 	// Part 1 should download everything
 	resultsPart1, err := downloader.DownloadAll(movie, tmpDir, 1)
@@ -414,7 +415,7 @@ func TestDownloader_DownloadAll(t *testing.T) {
 		DownloadActress:     true,
 	}
 
-	downloader := NewDownloader(cfg, "test-agent")
+	downloader := NewDownloader(afero.NewOsFs(), cfg, "test-agent")
 
 	results, err := downloader.DownloadAll(movie, tmpDir, 0) // Part 0 = single file
 	if err != nil {
@@ -475,7 +476,7 @@ func TestDownloader_generateFilename(t *testing.T) {
 		ActressFolder:    ".actors",
 	}
 
-	downloader := NewDownloader(cfg, "test-agent")
+	downloader := NewDownloader(afero.NewOsFs(), cfg, "test-agent")
 
 	movie := createTestMovie()
 
@@ -542,7 +543,7 @@ func TestDownloader_generateFilenameActress(t *testing.T) {
 		ActressFolder:    ".actors",
 	}
 
-	downloader := NewDownloader(cfg, "test-agent")
+	downloader := NewDownloader(afero.NewOsFs(), cfg, "test-agent")
 
 	actressMovie := &models.Movie{
 		ID:    "IPX-535",
@@ -600,7 +601,7 @@ func TestCleanupPartialDownloads(t *testing.T) {
 	}
 
 	// Cleanup
-	if err := CleanupPartialDownloads(tmpDir); err != nil {
+	if err := CleanupPartialDownloads(afero.NewOsFs(), tmpDir); err != nil {
 		t.Fatalf("CleanupPartialDownloads failed: %v", err)
 	}
 
@@ -623,7 +624,7 @@ func TestDownloader_SetDownloadExtrafanart(t *testing.T) {
 		DownloadExtrafanart: false,
 	}
 
-	downloader := NewDownloader(cfg, "test-agent")
+	downloader := NewDownloader(afero.NewOsFs(), cfg, "test-agent")
 
 	// Verify initial state
 	if downloader.config.DownloadExtrafanart {
@@ -670,7 +671,7 @@ func TestDownloader_DownloadPoster_WithPosterURL(t *testing.T) {
 		PosterFormat:   "<ID>-poster.jpg",
 	}
 
-	downloader := NewDownloader(cfg, "test-agent")
+	downloader := NewDownloader(afero.NewOsFs(), cfg, "test-agent")
 
 	result, err := downloader.DownloadPoster(movie, tmpDir)
 	if err != nil {
@@ -709,7 +710,7 @@ func TestDownloader_DownloadPoster_Disabled(t *testing.T) {
 		DownloadPoster: false,
 	}
 
-	downloader := NewDownloader(cfg, "test-agent")
+	downloader := NewDownloader(afero.NewOsFs(), cfg, "test-agent")
 
 	result, err := downloader.DownloadPoster(movie, tmpDir)
 	if err != nil {
@@ -733,7 +734,7 @@ func TestDownloader_DownloadExtrafanart_Disabled(t *testing.T) {
 		DownloadExtrafanart: false,
 	}
 
-	downloader := NewDownloader(cfg, "test-agent")
+	downloader := NewDownloader(afero.NewOsFs(), cfg, "test-agent")
 
 	results, err := downloader.DownloadExtrafanart(movie, tmpDir)
 	if err != nil {
@@ -755,7 +756,7 @@ func TestDownloader_DownloadExtrafanart_EmptyScreenshots(t *testing.T) {
 		ScreenshotFolder:    "extrafanart",
 	}
 
-	downloader := NewDownloader(cfg, "test-agent")
+	downloader := NewDownloader(afero.NewOsFs(), cfg, "test-agent")
 
 	results, err := downloader.DownloadExtrafanart(movie, tmpDir)
 	if err != nil {
@@ -794,7 +795,7 @@ func TestDownloader_DownloadExtrafanart_PartialFailure(t *testing.T) {
 		ScreenshotFolder:    "extrafanart",
 	}
 
-	downloader := NewDownloader(cfg, "test-agent")
+	downloader := NewDownloader(afero.NewOsFs(), cfg, "test-agent")
 
 	results, err := downloader.DownloadExtrafanart(movie, tmpDir)
 	if err != nil {
@@ -833,7 +834,7 @@ func TestDownloader_DownloadTrailer_Disabled(t *testing.T) {
 		DownloadTrailer: false,
 	}
 
-	downloader := NewDownloader(cfg, "test-agent")
+	downloader := NewDownloader(afero.NewOsFs(), cfg, "test-agent")
 
 	result, err := downloader.DownloadTrailer(movie, tmpDir)
 	if err != nil {
@@ -854,7 +855,7 @@ func TestDownloader_DownloadTrailer_EmptyURL(t *testing.T) {
 		DownloadTrailer: true,
 	}
 
-	downloader := NewDownloader(cfg, "test-agent")
+	downloader := NewDownloader(afero.NewOsFs(), cfg, "test-agent")
 
 	result, err := downloader.DownloadTrailer(movie, tmpDir)
 	if err != nil {
@@ -874,7 +875,7 @@ func TestDownloader_DownloadActressImages_Disabled(t *testing.T) {
 		DownloadActress: false,
 	}
 
-	downloader := NewDownloader(cfg, "test-agent")
+	downloader := NewDownloader(afero.NewOsFs(), cfg, "test-agent")
 
 	results, err := downloader.DownloadActressImages(movie, tmpDir)
 	if err != nil {
@@ -896,7 +897,7 @@ func TestDownloader_DownloadActressImages_EmptyActresses(t *testing.T) {
 		ActressFolder:   ".actors",
 	}
 
-	downloader := NewDownloader(cfg, "test-agent")
+	downloader := NewDownloader(afero.NewOsFs(), cfg, "test-agent")
 
 	results, err := downloader.DownloadActressImages(movie, tmpDir)
 	if err != nil {
@@ -926,7 +927,7 @@ func TestDownloader_DownloadActressImages_SkipEmptyThumbURL(t *testing.T) {
 		ActressFolder:   ".actors",
 	}
 
-	downloader := NewDownloader(cfg, "test-agent")
+	downloader := NewDownloader(afero.NewOsFs(), cfg, "test-agent")
 
 	results, err := downloader.DownloadActressImages(movie, tmpDir)
 	if err != nil {
@@ -952,7 +953,7 @@ func TestDownloader_Download_InvalidURL(t *testing.T) {
 		DownloadCover: true,
 	}
 
-	downloader := NewDownloader(cfg, "test-agent")
+	downloader := NewDownloader(afero.NewOsFs(), cfg, "test-agent")
 
 	result, err := downloader.DownloadCover(movie, tmpDir)
 	if err == nil {
@@ -982,7 +983,7 @@ func TestDownloader_Download_ServerError(t *testing.T) {
 		DownloadCover: true,
 	}
 
-	downloader := NewDownloader(cfg, "test-agent")
+	downloader := NewDownloader(afero.NewOsFs(), cfg, "test-agent")
 
 	result, err := downloader.DownloadCover(movie, tmpDir)
 	if err == nil {
@@ -1016,7 +1017,7 @@ func TestDownloader_Download_Timeout(t *testing.T) {
 		DownloadTimeout: 1, // 1 second timeout
 	}
 
-	downloader := NewDownloader(cfg, "test-agent")
+	downloader := NewDownloader(afero.NewOsFs(), cfg, "test-agent")
 
 	result, err := downloader.DownloadCover(movie, tmpDir)
 	if err == nil {
@@ -1047,7 +1048,7 @@ func TestDownloader_Download_WithUserAgent(t *testing.T) {
 	}
 
 	expectedUserAgent := "test-custom-agent/1.0"
-	downloader := NewDownloader(cfg, expectedUserAgent)
+	downloader := NewDownloader(afero.NewOsFs(), cfg, expectedUserAgent)
 
 	_, err := downloader.DownloadCover(movie, tmpDir)
 	if err != nil {
@@ -1064,7 +1065,7 @@ func TestDownloader_NewDownloader_DefaultTimeout(t *testing.T) {
 		DownloadTimeout: 0, // Should default to 60
 	}
 
-	downloader := NewDownloader(cfg, "test-agent")
+	downloader := NewDownloader(afero.NewOsFs(), cfg, "test-agent")
 
 	if downloader.httpClient.Timeout != 60*time.Second {
 		t.Errorf("Expected default timeout 60s, got %v", downloader.httpClient.Timeout)
@@ -1076,7 +1077,7 @@ func TestDownloader_NewDownloader_CustomTimeout(t *testing.T) {
 		DownloadTimeout: 30,
 	}
 
-	downloader := NewDownloader(cfg, "test-agent")
+	downloader := NewDownloader(afero.NewOsFs(), cfg, "test-agent")
 
 	if downloader.httpClient.Timeout != 30*time.Second {
 		t.Errorf("Expected timeout 30s, got %v", downloader.httpClient.Timeout)
@@ -1095,7 +1096,7 @@ func TestDownloader_DownloadAll_AllDisabled(t *testing.T) {
 		DownloadActress:     false,
 	}
 
-	downloader := NewDownloader(cfg, "test-agent")
+	downloader := NewDownloader(afero.NewOsFs(), cfg, "test-agent")
 
 	results, err := downloader.DownloadAll(movie, tmpDir, 0)
 	if err != nil {
@@ -1112,7 +1113,7 @@ func TestDownloader_DownloadAll_AllDisabled(t *testing.T) {
 }
 
 func TestCleanupPartialDownloads_NonExistentDir(t *testing.T) {
-	err := CleanupPartialDownloads("/nonexistent/directory")
+	err := CleanupPartialDownloads(afero.NewOsFs(), "/nonexistent/directory")
 	if err == nil {
 		t.Error("Expected error for non-existent directory")
 	}
@@ -1134,7 +1135,7 @@ func TestCleanupPartialDownloads_WithSubdirectory(t *testing.T) {
 	}
 
 	// Cleanup should ignore subdirectories
-	if err := CleanupPartialDownloads(tmpDir); err != nil {
+	if err := CleanupPartialDownloads(afero.NewOsFs(), tmpDir); err != nil {
 		t.Fatalf("CleanupPartialDownloads failed: %v", err)
 	}
 
@@ -1193,7 +1194,7 @@ func TestNewDownloaderWithNFOConfig(t *testing.T) {
 				DownloadTimeout: 30,
 			}
 
-			downloader := NewDownloaderWithNFOConfig(cfg, "test-agent", tt.actorJapaneseNames, tt.actorFirstNameOrder)
+			downloader := NewDownloaderWithNFOConfig(afero.NewMemMapFs(), cfg, "test-agent", tt.actorJapaneseNames, tt.actorFirstNameOrder)
 
 			if downloader == nil {
 				t.Fatal("NewDownloaderWithNFOConfig returned nil")
@@ -1322,7 +1323,7 @@ func TestFormatActressName(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := &config.OutputConfig{}
-			downloader := NewDownloaderWithNFOConfig(cfg, "test", tt.useJapanese, tt.firstNameOrder)
+			downloader := NewDownloaderWithNFOConfig(afero.NewMemMapFs(), cfg, "test", tt.useJapanese, tt.firstNameOrder)
 
 			result := downloader.formatActressName(tt.actress)
 
@@ -1360,7 +1361,7 @@ func TestDownloader_DownloadPoster_WithCropping(t *testing.T) {
 		PosterFormat:   "<ID>-poster.jpg",
 	}
 
-	downloader := NewDownloader(cfg, "test-agent")
+	downloader := NewDownloader(afero.NewOsFs(), cfg, "test-agent")
 
 	result, err := downloader.DownloadPoster(movie, tmpDir)
 	if err != nil {
@@ -1449,7 +1450,7 @@ func TestDownloader_DownloadActressImages_WithNFOConfig(t *testing.T) {
 				ActressFolder:   ".actors",
 			}
 
-			downloader := NewDownloaderWithNFOConfig(cfg, "test", tt.useJapanese, tt.firstNameOrder)
+			downloader := NewDownloaderWithNFOConfig(afero.NewMemMapFs(), cfg, "test", tt.useJapanese, tt.firstNameOrder)
 
 			results, err := downloader.DownloadActressImages(movie, testDir)
 			if err != nil {

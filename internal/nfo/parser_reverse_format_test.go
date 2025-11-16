@@ -4,6 +4,8 @@ import (
 	"os"
 	"testing"
 
+	"github.com/spf13/afero"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -27,7 +29,7 @@ func TestReverseFormatNFO_Integration(t *testing.T) {
 	defer os.Remove(testFile)
 
 	// Parse the reverse format NFO
-	result, err := ParseNFO(testFile)
+	result, err := ParseNFO(afero.NewOsFs(), testFile)
 	require.NoError(t, err, "Should parse NFO successfully")
 	require.NotNil(t, result)
 	require.NotNil(t, result.Movie)

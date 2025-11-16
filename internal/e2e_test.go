@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/spf13/afero"
+
 	"github.com/javinizer/javinizer-go/internal/aggregator"
 	"github.com/javinizer/javinizer-go/internal/config"
 	"github.com/javinizer/javinizer-go/internal/database"
@@ -84,7 +86,7 @@ func TestFullWorkflow(t *testing.T) {
 
 	// Step 1: Scan directory for video files
 	t.Log("Step 1: Scanning directory for video files")
-	scnr := scanner.NewScanner(&cfg.Matching)
+	scnr := scanner.NewScanner(afero.NewOsFs(), &cfg.Matching)
 	scanResult, err := scnr.Scan(sourceDir)
 	if err != nil {
 		t.Fatalf("Scan failed: %v", err)
@@ -154,7 +156,7 @@ func TestFullWorkflow(t *testing.T) {
 		IncludeTrailer:       true,
 		DefaultRatingSource:  "themoviedb",
 	}
-	nfoGen := nfo.NewGenerator(nfoConfig)
+	nfoGen := nfo.NewGenerator(afero.NewOsFs(), nfoConfig)
 
 	for id, movie := range movies {
 		if err := nfoGen.Generate(movie, tmpDir, "", ""); err != nil {
@@ -214,7 +216,7 @@ func TestFullWorkflow(t *testing.T) {
 
 	// Step 7: Organize files
 	t.Log("Step 7: Organizing files")
-	org := organizer.NewOrganizer(&cfg.Output)
+	org := organizer.NewOrganizer(afero.NewOsFs(), &cfg.Output)
 
 	organized := 0
 	for _, match := range matches {
@@ -287,7 +289,7 @@ func TestFullWorkflow(t *testing.T) {
 
 	// Step 8: Test downloader (dry run with mock URLs)
 	t.Log("Step 8: Testing downloader (mock)")
-	_ = downloader.NewDownloader(&cfg.Output, cfg.Scrapers.UserAgent)
+	_ = downloader.NewDownloader(afero.NewOsFs(), &cfg.Output, cfg.Scrapers.UserAgent)
 
 	for id, movie := range movies {
 		if movie.CoverURL == "" {

@@ -14,6 +14,7 @@ import (
 	"github.com/javinizer/javinizer-go/internal/nfo"
 	"github.com/javinizer/javinizer-go/internal/organizer"
 	"github.com/javinizer/javinizer-go/internal/scanner"
+	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -34,8 +35,8 @@ func TestNewProcessFileTask(t *testing.T) {
 		agg := &aggregator.Aggregator{}
 		movieRepo := &database.MovieRepository{}
 		dl := &downloader.Downloader{}
-		org := organizer.NewOrganizer(&config.OutputConfig{})
-		nfoGen := nfo.NewGenerator(&nfo.Config{})
+		org := organizer.NewOrganizer(afero.NewMemMapFs(), &config.OutputConfig{})
+		nfoGen := nfo.NewGenerator(afero.NewMemMapFs(), &nfo.Config{})
 
 		task := NewProcessFileTask(
 			match,
@@ -81,8 +82,8 @@ func TestNewProcessFileTask(t *testing.T) {
 		agg := &aggregator.Aggregator{}
 		movieRepo := &database.MovieRepository{}
 		dl := &downloader.Downloader{}
-		org := organizer.NewOrganizer(&config.OutputConfig{})
-		nfoGen := nfo.NewGenerator(&nfo.Config{})
+		org := organizer.NewOrganizer(afero.NewMemMapFs(), &config.OutputConfig{})
+		nfoGen := nfo.NewGenerator(afero.NewMemMapFs(), &nfo.Config{})
 
 		task := NewProcessFileTask(
 			match,
@@ -125,8 +126,8 @@ func TestNewProcessFileTask(t *testing.T) {
 		agg := &aggregator.Aggregator{}
 		movieRepo := &database.MovieRepository{}
 		dl := &downloader.Downloader{}
-		org := organizer.NewOrganizer(&config.OutputConfig{})
-		nfoGen := nfo.NewGenerator(&nfo.Config{})
+		org := organizer.NewOrganizer(afero.NewMemMapFs(), &config.OutputConfig{})
+		nfoGen := nfo.NewGenerator(afero.NewMemMapFs(), &nfo.Config{})
 
 		// Only enable scrape and organize, disable download and NFO
 		task := NewProcessFileTask(
@@ -179,8 +180,8 @@ func TestProcessFileTask_Execute_DryRun(t *testing.T) {
 		agg := &aggregator.Aggregator{}
 		movieRepo := &database.MovieRepository{}
 		dl := &downloader.Downloader{}
-		org := organizer.NewOrganizer(&config.OutputConfig{})
-		nfoGen := nfo.NewGenerator(&nfo.Config{})
+		org := organizer.NewOrganizer(afero.NewMemMapFs(), &config.OutputConfig{})
+		nfoGen := nfo.NewGenerator(afero.NewMemMapFs(), &nfo.Config{})
 
 		task := NewProcessFileTask(
 			match,
@@ -251,8 +252,8 @@ func TestProcessFileTask_Execute_ContextCancellation(t *testing.T) {
 		agg := &aggregator.Aggregator{}
 		movieRepo := &database.MovieRepository{}
 		dl := &downloader.Downloader{}
-		org := organizer.NewOrganizer(&config.OutputConfig{})
-		nfoGen := nfo.NewGenerator(&nfo.Config{})
+		org := organizer.NewOrganizer(afero.NewMemMapFs(), &config.OutputConfig{})
+		nfoGen := nfo.NewGenerator(afero.NewMemMapFs(), &nfo.Config{})
 
 		task := NewProcessFileTask(
 			match,
@@ -312,8 +313,8 @@ func TestProcessFileTask_Execute_ProgressTracking(t *testing.T) {
 		agg := &aggregator.Aggregator{}
 		movieRepo := &database.MovieRepository{}
 		dl := &downloader.Downloader{}
-		org := organizer.NewOrganizer(&config.OutputConfig{})
-		nfoGen := nfo.NewGenerator(&nfo.Config{})
+		org := organizer.NewOrganizer(afero.NewMemMapFs(), &config.OutputConfig{})
+		nfoGen := nfo.NewGenerator(afero.NewMemMapFs(), &nfo.Config{})
 
 		task := NewProcessFileTask(
 			match,
@@ -388,8 +389,8 @@ func TestProcessFileTask_Execute_NoScraperEnabled(t *testing.T) {
 		agg := &aggregator.Aggregator{}
 		movieRepo := &database.MovieRepository{}
 		dl := &downloader.Downloader{}
-		org := organizer.NewOrganizer(&config.OutputConfig{})
-		nfoGen := nfo.NewGenerator(&nfo.Config{})
+		org := organizer.NewOrganizer(afero.NewMemMapFs(), &config.OutputConfig{})
+		nfoGen := nfo.NewGenerator(afero.NewMemMapFs(), &nfo.Config{})
 
 		task := NewProcessFileTask(
 			match,
@@ -453,8 +454,8 @@ func TestProcessFileTask_Interface(t *testing.T) {
 		agg := &aggregator.Aggregator{}
 		movieRepo := &database.MovieRepository{}
 		dl := &downloader.Downloader{}
-		org := organizer.NewOrganizer(&config.OutputConfig{})
-		nfoGen := nfo.NewGenerator(&nfo.Config{})
+		org := organizer.NewOrganizer(afero.NewMemMapFs(), &config.OutputConfig{})
+		nfoGen := nfo.NewGenerator(afero.NewMemMapFs(), &nfo.Config{})
 
 		task := NewProcessFileTask(
 			match,
@@ -502,8 +503,8 @@ func TestProcessFileTask_ConcurrentExecution(t *testing.T) {
 		agg := &aggregator.Aggregator{}
 		movieRepo := &database.MovieRepository{}
 		dl := &downloader.Downloader{}
-		org := organizer.NewOrganizer(&config.OutputConfig{})
-		nfoGen := nfo.NewGenerator(&nfo.Config{})
+		org := organizer.NewOrganizer(afero.NewMemMapFs(), &config.OutputConfig{})
+		nfoGen := nfo.NewGenerator(afero.NewMemMapFs(), &nfo.Config{})
 
 		// Submit multiple process tasks
 		numTasks := 5
@@ -566,8 +567,8 @@ func TestProcessFileTask_ForceRefreshFlag(t *testing.T) {
 		agg := &aggregator.Aggregator{}
 		movieRepo := &database.MovieRepository{}
 		dl := &downloader.Downloader{}
-		org := organizer.NewOrganizer(&config.OutputConfig{})
-		nfoGen := nfo.NewGenerator(&nfo.Config{})
+		org := organizer.NewOrganizer(afero.NewMemMapFs(), &config.OutputConfig{})
+		nfoGen := nfo.NewGenerator(afero.NewMemMapFs(), &nfo.Config{})
 
 		// Create with forceRefresh=true
 		task := NewProcessFileTask(
@@ -616,8 +617,8 @@ func TestProcessFileTask_AllOperationsDisabled(t *testing.T) {
 		agg := &aggregator.Aggregator{}
 		movieRepo := &database.MovieRepository{}
 		dl := &downloader.Downloader{}
-		org := organizer.NewOrganizer(&config.OutputConfig{})
-		nfoGen := nfo.NewGenerator(&nfo.Config{})
+		org := organizer.NewOrganizer(afero.NewMemMapFs(), &config.OutputConfig{})
+		nfoGen := nfo.NewGenerator(afero.NewMemMapFs(), &nfo.Config{})
 
 		// All operations disabled
 		task := NewProcessFileTask(
@@ -681,8 +682,8 @@ func TestProcessFileTask_MoveVsCopyFlag(t *testing.T) {
 		agg := &aggregator.Aggregator{}
 		movieRepo := &database.MovieRepository{}
 		dl := &downloader.Downloader{}
-		org := organizer.NewOrganizer(&config.OutputConfig{})
-		nfoGen := nfo.NewGenerator(&nfo.Config{})
+		org := organizer.NewOrganizer(afero.NewMemMapFs(), &config.OutputConfig{})
+		nfoGen := nfo.NewGenerator(afero.NewMemMapFs(), &nfo.Config{})
 
 		// Test with moveFiles=true
 		taskMove := NewProcessFileTask(

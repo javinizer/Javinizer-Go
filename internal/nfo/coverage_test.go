@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/spf13/afero"
+
 	"github.com/javinizer/javinizer-go/internal/config"
 	"github.com/javinizer/javinizer-go/internal/database"
 	"github.com/javinizer/javinizer-go/internal/models"
@@ -158,7 +160,7 @@ func TestConfigFromAppConfig_AllFields(t *testing.T) {
 
 // TestWriteNFO_ErrorPaths tests error handling in WriteNFO
 func TestWriteNFO_ErrorPaths(t *testing.T) {
-	gen := NewGenerator(DefaultConfig())
+	gen := NewGenerator(afero.NewOsFs(), DefaultConfig())
 
 	t.Run("Invalid directory path", func(t *testing.T) {
 		nfo := &Movie{
@@ -206,7 +208,7 @@ func TestWriteNFO_ErrorPaths(t *testing.T) {
 
 // TestExtractStreamDetails tests stream details extraction
 func TestExtractStreamDetails(t *testing.T) {
-	gen := NewGenerator(&Config{
+	gen := NewGenerator(afero.NewOsFs(), &Config{
 		IncludeStreamDetails: true,
 	})
 
@@ -237,7 +239,7 @@ func TestExtractStreamDetails(t *testing.T) {
 	})
 
 	t.Run("Stream details disabled", func(t *testing.T) {
-		genNoStream := NewGenerator(&Config{
+		genNoStream := NewGenerator(afero.NewOsFs(), &Config{
 			IncludeStreamDetails: false,
 		})
 
@@ -277,7 +279,7 @@ func TestExtractStreamDetails(t *testing.T) {
 // TestGenerateFromScraperResult_ErrorPaths tests error handling
 func TestGenerateFromScraperResult_ErrorPaths(t *testing.T) {
 	t.Run("Invalid write location", func(t *testing.T) {
-		gen := NewGenerator(DefaultConfig())
+		gen := NewGenerator(afero.NewOsFs(), DefaultConfig())
 
 		result := &models.ScraperResult{
 			ID:    "TEST-001",
@@ -295,7 +297,7 @@ func TestGenerateFromScraperResult_ErrorPaths(t *testing.T) {
 // TestGenerate_ErrorPaths tests error handling in Generate
 func TestGenerate_ErrorPaths(t *testing.T) {
 	t.Run("Write to invalid directory", func(t *testing.T) {
-		gen := NewGenerator(DefaultConfig())
+		gen := NewGenerator(afero.NewOsFs(), DefaultConfig())
 
 		movie := &models.Movie{
 			ID:    "TEST-001",
@@ -360,7 +362,7 @@ func TestFormatActressNameFromInfo_EdgeCases(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gen := NewGenerator(tt.config)
+			gen := NewGenerator(afero.NewOsFs(), tt.config)
 
 			// Use the private method via a public one
 			actress := models.Actress{
@@ -378,7 +380,7 @@ func TestFormatActressNameFromInfo_EdgeCases(t *testing.T) {
 // TestNewGenerator_ConfigDefaults tests default value handling
 func TestNewGenerator_ConfigDefaults(t *testing.T) {
 	t.Run("Nil config", func(t *testing.T) {
-		gen := NewGenerator(nil)
+		gen := NewGenerator(afero.NewOsFs(), nil)
 
 		assert.NotNil(t, gen)
 		// Should use default config
@@ -390,7 +392,7 @@ func TestNewGenerator_ConfigDefaults(t *testing.T) {
 			NFOFilenameTemplate: "<ID>.nfo",
 		}
 
-		gen := NewGenerator(cfg)
+		gen := NewGenerator(afero.NewOsFs(), cfg)
 
 		// Should set default
 		movie := &models.Movie{
@@ -410,7 +412,7 @@ func TestNewGenerator_ConfigDefaults(t *testing.T) {
 			UnknownActress:      "Unknown",
 		}
 
-		gen := NewGenerator(cfg)
+		gen := NewGenerator(afero.NewOsFs(), cfg)
 
 		movie := &models.Movie{
 			ID:    "TEST-001",
@@ -468,7 +470,7 @@ func TestMovieToNFO_DatabaseTags(t *testing.T) {
 		TagDatabase:         tagRepo,
 	}
 
-	gen := NewGenerator(nfoCfg)
+	gen := NewGenerator(afero.NewOsFs(), nfoCfg)
 
 	nfo := gen.MovieToNFO(movie, "")
 
@@ -515,7 +517,7 @@ func TestMovieToNFO_TagDeduplication(t *testing.T) {
 		TagDatabase:         tagRepo,
 	}
 
-	gen := NewGenerator(nfoCfg)
+	gen := NewGenerator(afero.NewOsFs(), nfoCfg)
 
 	nfo := gen.MovieToNFO(movie, "")
 
@@ -534,7 +536,7 @@ func TestMovieToNFO_TagDeduplication(t *testing.T) {
 
 // TestScraperResultToNFO_AllFields tests comprehensive scraper result conversion
 func TestScraperResultToNFO_AllFields(t *testing.T) {
-	gen := NewGenerator(DefaultConfig())
+	gen := NewGenerator(afero.NewOsFs(), DefaultConfig())
 
 	result := &models.ScraperResult{
 		ID:            "IPX-001",

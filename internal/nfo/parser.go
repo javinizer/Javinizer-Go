@@ -4,12 +4,12 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 	"time"
 	"unicode"
 
 	"github.com/javinizer/javinizer-go/internal/models"
+	"github.com/spf13/afero"
 )
 
 // ParseResult contains the parsed NFO data and any warnings
@@ -24,9 +24,9 @@ const maxNFOSize = 1 << 20 // 1 MiB
 
 // ParseNFO parses a Kodi-compatible NFO file into a models.Movie struct
 // Uses streaming XML parsing with a size limit to prevent memory exhaustion.
-func ParseNFO(filePath string) (*ParseResult, error) {
+func ParseNFO(fs afero.Fs, filePath string) (*ParseResult, error) {
 	// Open file
-	f, err := os.Open(filePath)
+	f, err := fs.Open(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read NFO file: %w", err)
 	}

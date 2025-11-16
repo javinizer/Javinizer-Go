@@ -2,6 +2,7 @@ package organizer
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -11,10 +12,12 @@ import (
 	"github.com/javinizer/javinizer-go/internal/matcher"
 	"github.com/javinizer/javinizer-go/internal/models"
 	"github.com/javinizer/javinizer-go/internal/template"
+	"github.com/spf13/afero"
 )
 
 // Organizer handles file organization (moving/renaming)
 type Organizer struct {
+	fs              afero.Fs
 	config          *config.OutputConfig
 	templateEngine  *template.Engine
 	subtitleHandler *SubtitleHandler
@@ -22,11 +25,12 @@ type Organizer struct {
 }
 
 // NewOrganizer creates a new file organizer
-func NewOrganizer(cfg *config.OutputConfig) *Organizer {
+func NewOrganizer(fs afero.Fs, cfg *config.OutputConfig) *Organizer {
 	return &Organizer{
+		fs:              fs,
 		config:          cfg,
 		templateEngine:  template.NewEngine(),
-		subtitleHandler: NewSubtitleHandler(cfg),
+		subtitleHandler: NewSubtitleHandler(fs, cfg),
 		matcher:         nil, // Set via SetMatcher if needed
 	}
 }
@@ -78,7 +82,7 @@ type OrganizePlan struct {
 // It scans the directory for video files and checks if they all belong to the same ID
 func (o *Organizer) isDedicatedFolder(dir string, id string, m *matcher.Matcher) bool {
 	// Read directory contents
-	entries, err := os.ReadDir(dir)
+	entries, err := afero.ReadDir(o.fs, dir)
 	if err != nil {
 		return false
 	}
@@ -292,7 +296,7 @@ func (o *Organizer) Plan(match matcher.MatchResult, movie *models.Movie, destDir
 	// Check for conflicts (skip if forceUpdate is enabled)
 	conflicts := make([]string, 0)
 	if !forceUpdate {
-		if _, err := os.Stat(targetPath); err == nil {
+		if _, err := o.fs.Stat(targetPath); err == nil {
 			conflicts = append(conflicts, fmt.Sprintf("target file exists: %s", targetPath))
 		}
 	}
@@ -342,7 +346,7 @@ func (o *Organizer) Execute(plan *OrganizePlan, dryRun bool) (*OrganizeResult, e
 	// In-place rename: rename directory first, then rename file within
 	if plan.InPlace {
 		// Safety check: verify old directory exists and is a directory
-		info, err := os.Stat(plan.OldDir)
+		info, err := o.fs.Stat(plan.OldDir)
 		if err != nil {
 			result.Error = fmt.Errorf("failed to stat old directory: %w", err)
 			return result, result.Error
@@ -353,13 +357,13 @@ func (o *Organizer) Execute(plan *OrganizePlan, dryRun bool) (*OrganizeResult, e
 		}
 
 		// Check if target directory already exists (conflict)
-		if _, err := os.Stat(plan.TargetDir); err == nil {
+		if _, err := o.fs.Stat(plan.TargetDir); err == nil {
 			result.Error = fmt.Errorf("target directory already exists: %s", plan.TargetDir)
 			return result, result.Error
 		}
 
 		// Rename the directory
-		if err := os.Rename(plan.OldDir, plan.TargetDir); err != nil {
+		if err := o.fs.Rename(plan.OldDir, plan.TargetDir); err != nil {
 			result.Error = fmt.Errorf("failed to rename directory: %w", err)
 			return result, result.Error
 		}
@@ -376,9 +380,9 @@ func (o *Organizer) Execute(plan *OrganizePlan, dryRun bool) (*OrganizeResult, e
 
 		// Only rename file if the name actually changed
 		if oldFileName != plan.TargetFile {
-			if err := os.Rename(currentFilePath, plan.TargetPath); err != nil {
+			if err := o.fs.Rename(currentFilePath, plan.TargetPath); err != nil {
 				// Try to rollback directory rename on file rename failure
-				os.Rename(plan.TargetDir, plan.OldDir)
+				o.fs.Rename(plan.TargetDir, plan.OldDir)
 				result.Error = fmt.Errorf("failed to rename file after directory rename: %w", err)
 				return result, result.Error
 			}
@@ -388,13 +392,13 @@ func (o *Organizer) Execute(plan *OrganizePlan, dryRun bool) (*OrganizeResult, e
 	} else {
 		// Normal move: create target directory and move file
 		// Create target directory
-		if err := os.MkdirAll(plan.TargetDir, 0777); err != nil {
+		if err := o.fs.MkdirAll(plan.TargetDir, 0777); err != nil {
 			result.Error = fmt.Errorf("failed to create directory: %w", err)
 			return result, result.Error
 		}
 
 		// Move/rename the file
-		if err := os.Rename(plan.SourcePath, plan.TargetPath); err != nil {
+		if err := o.fs.Rename(plan.SourcePath, plan.TargetPath); err != nil {
 			result.Error = fmt.Errorf("failed to move file: %w", err)
 			return result, result.Error
 		}
@@ -432,7 +436,7 @@ func (o *Organizer) Execute(plan *OrganizePlan, dryRun bool) (*OrganizeResult, e
 
 				// Move subtitle file
 				if !dryRun {
-					if err := os.Rename(subtitle.OriginalPath, subtitleResult.NewPath); err != nil {
+					if err := o.fs.Rename(subtitle.OriginalPath, subtitleResult.NewPath); err != nil {
 						subtitleResult.Error = fmt.Errorf("failed to move subtitle: %w", err)
 					} else {
 						subtitleResult.Moved = true
@@ -563,20 +567,20 @@ func (o *Organizer) Copy(plan *OrganizePlan, dryRun bool) (*OrganizeResult, erro
 	}
 
 	// Create target directory
-	if err := os.MkdirAll(plan.TargetDir, 0777); err != nil {
+	if err := o.fs.MkdirAll(plan.TargetDir, 0777); err != nil {
 		result.Error = fmt.Errorf("failed to create directory: %w", err)
 		return result, result.Error
 	}
 
 	// Copy the file
-	sourceFile, err := os.Open(plan.SourcePath)
+	sourceFile, err := o.fs.Open(plan.SourcePath)
 	if err != nil {
 		result.Error = fmt.Errorf("failed to open source file: %w", err)
 		return result, result.Error
 	}
 	defer sourceFile.Close()
 
-	targetFile, err := os.Create(plan.TargetPath)
+	targetFile, err := o.fs.Create(plan.TargetPath)
 	if err != nil {
 		result.Error = fmt.Errorf("failed to create target file: %w", err)
 		return result, result.Error
@@ -584,7 +588,7 @@ func (o *Organizer) Copy(plan *OrganizePlan, dryRun bool) (*OrganizeResult, erro
 	defer targetFile.Close()
 
 	// Copy data
-	if _, err := targetFile.ReadFrom(sourceFile); err != nil {
+	if _, err := io.Copy(targetFile, sourceFile); err != nil {
 		result.Error = fmt.Errorf("failed to copy file: %w", err)
 		return result, result.Error
 	}
@@ -600,26 +604,26 @@ func (o *Organizer) Revert(result *OrganizeResult) error {
 	}
 
 	// Move file back to original location
-	if err := os.Rename(result.NewPath, result.OriginalPath); err != nil {
+	if err := o.fs.Rename(result.NewPath, result.OriginalPath); err != nil {
 		return fmt.Errorf("failed to revert move: %w", err)
 	}
 
 	// Try to remove the directory if it's empty
 	dir := filepath.Dir(result.NewPath)
-	os.Remove(dir) // Ignore error - directory might not be empty
+	o.fs.Remove(dir) // Ignore error - directory might not be empty
 
 	return nil
 }
 
 // ValidatePlan checks if a plan is valid and safe to execute
-func ValidatePlan(plan *OrganizePlan) []string {
+func (o *Organizer) ValidatePlan(plan *OrganizePlan) []string {
 	issues := make([]string, 0)
 
 	// Check for conflicts
 	issues = append(issues, plan.Conflicts...)
 
 	// Check source exists
-	if _, err := os.Stat(plan.SourcePath); os.IsNotExist(err) {
+	if _, err := o.fs.Stat(plan.SourcePath); os.IsNotExist(err) {
 		issues = append(issues, fmt.Sprintf("source file does not exist: %s", plan.SourcePath))
 	}
 
@@ -642,7 +646,7 @@ func ValidatePlan(plan *OrganizePlan) []string {
 }
 
 // CleanEmptyDirectories removes empty directories up to the base path
-func CleanEmptyDirectories(path string, baseDir string) error {
+func (o *Organizer) CleanEmptyDirectories(path string, baseDir string) error {
 	// Get the directory of the file
 	dir := filepath.Dir(path)
 
@@ -678,7 +682,7 @@ func CleanEmptyDirectories(path string, baseDir string) error {
 		}
 
 		// Check if directory is empty
-		entries, err := os.ReadDir(dir)
+		entries, err := afero.ReadDir(o.fs, dir)
 		if err != nil {
 			return err
 		}
@@ -689,7 +693,7 @@ func CleanEmptyDirectories(path string, baseDir string) error {
 		}
 
 		// Safe to remove (we've verified dir != baseDir)
-		if err := os.Remove(dir); err != nil {
+		if err := o.fs.Remove(dir); err != nil {
 			return err
 		}
 

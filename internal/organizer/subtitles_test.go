@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/spf13/afero"
+
 	"github.com/javinizer/javinizer-go/internal/config"
 	"github.com/javinizer/javinizer-go/internal/scanner"
 )
@@ -14,7 +16,7 @@ func TestSubtitleHandler_FindSubtitles(t *testing.T) {
 		SubtitleExtensions: []string{".srt", ".ass", ".ssa", ".smi", ".vtt"},
 	}
 
-	handler := NewSubtitleHandler(cfg)
+	handler := NewSubtitleHandler(afero.NewOsFs(), cfg)
 
 	// Create temporary directory structure
 	tmpDir := t.TempDir()
@@ -88,7 +90,7 @@ func TestSubtitleHandler_FindSubtitles_CaseInsensitive(t *testing.T) {
 		SubtitleExtensions: []string{".srt", ".ass"},
 	}
 
-	handler := NewSubtitleHandler(cfg)
+	handler := NewSubtitleHandler(afero.NewOsFs(), cfg)
 
 	// Create temporary directory structure
 	tmpDir := t.TempDir()
@@ -161,7 +163,7 @@ func TestSubtitleHandler_MoveSubtitles(t *testing.T) {
 		SubtitleExtensions: []string{".srt", ".ass"},
 	}
 
-	handler := NewSubtitleHandler(cfg)
+	handler := NewSubtitleHandler(afero.NewOsFs(), cfg)
 
 	// Create temporary directory structure
 	sourceDir := t.TempDir()
@@ -245,7 +247,7 @@ func TestSubtitleHandler_extractLanguageCode(t *testing.T) {
 		SubtitleExtensions: []string{".srt"},
 	}
 
-	handler := NewSubtitleHandler(cfg)
+	handler := NewSubtitleHandler(afero.NewOsFs(), cfg)
 
 	tests := []struct {
 		name                string
@@ -318,7 +320,7 @@ func TestSubtitleHandler_generateSubtitleFileName(t *testing.T) {
 		SubtitleExtensions: []string{".srt", ".ass"},
 	}
 
-	handler := NewSubtitleHandler(cfg)
+	handler := NewSubtitleHandler(afero.NewOsFs(), cfg)
 
 	tests := []struct {
 		name                string
@@ -378,7 +380,7 @@ func TestSubtitleHandler_FindSubtitles_NonexistentDirectory(t *testing.T) {
 	cfg := &config.OutputConfig{
 		SubtitleExtensions: []string{".srt"},
 	}
-	handler := NewSubtitleHandler(cfg)
+	handler := NewSubtitleHandler(afero.NewOsFs(), cfg)
 
 	videoFile := scanner.FileInfo{
 		Path:      "/nonexistent/path/video.mp4",
@@ -396,7 +398,7 @@ func TestSubtitleHandler_FindSubtitles_EmptyExtensions(t *testing.T) {
 	cfg := &config.OutputConfig{
 		SubtitleExtensions: []string{}, // No extensions configured
 	}
-	handler := NewSubtitleHandler(cfg)
+	handler := NewSubtitleHandler(afero.NewOsFs(), cfg)
 
 	tmpDir := t.TempDir()
 	videoPath := filepath.Join(tmpDir, "IPX-535.mp4")

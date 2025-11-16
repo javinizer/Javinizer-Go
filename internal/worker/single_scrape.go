@@ -21,6 +21,7 @@ import (
 	"github.com/javinizer/javinizer-go/internal/scanner"
 	"github.com/javinizer/javinizer-go/internal/scraper/dmm"
 	"github.com/javinizer/javinizer-go/internal/template"
+	"github.com/spf13/afero"
 )
 
 // processedMovieIDsMutex protects concurrent access to processedMovieIDs map
@@ -277,7 +278,7 @@ func RunBatchScrapeOnce(
 					logging.Infof("[Batch %s] File %d: Found existing NFO, merging with cached data: %s", job.ID, fileIndex, foundPath)
 					logging.Infof("[Batch %s] File %d: *** DEBUG *** Scalar=%s Array=%s", job.ID, fileIndex, scalarStrategy, arrayStrategy)
 
-					parseResult, err := nfo.ParseNFO(foundPath)
+					parseResult, err := nfo.ParseNFO(afero.NewOsFs(), foundPath)
 					if err != nil {
 						logging.Warnf("[Batch %s] File %d: Failed to parse existing NFO %s: %v (will use cached data only)", job.ID, fileIndex, foundPath, err)
 					} else {
@@ -598,7 +599,7 @@ func RunBatchScrapeOnce(
 			// NFO exists - parse and merge
 			logging.Infof("[Batch %s] File %d: Found existing NFO, merging data: %s", job.ID, fileIndex, foundPath)
 
-			parseResult, err := nfo.ParseNFO(foundPath)
+			parseResult, err := nfo.ParseNFO(afero.NewOsFs(), foundPath)
 			if err != nil {
 				logging.Warnf("[Batch %s] File %d: Failed to parse existing NFO %s: %v (will use scraper data only)", job.ID, fileIndex, foundPath, err)
 			} else {

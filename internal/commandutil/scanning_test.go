@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/spf13/afero"
+
 	"github.com/javinizer/javinizer-go/internal/matcher"
 	"github.com/javinizer/javinizer-go/internal/scanner"
 	"github.com/stretchr/testify/assert"
@@ -27,7 +29,7 @@ func TestScanAndMatch_Success(t *testing.T) {
 	)
 	_ = configPath
 
-	fileScanner := scanner.NewScanner(&testCfg.Matching)
+	fileScanner := scanner.NewScanner(afero.NewOsFs(), &testCfg.Matching)
 	fileMatcher, err := matcher.NewMatcher(&testCfg.Matching)
 	require.NoError(t, err)
 
@@ -60,7 +62,7 @@ func TestScanAndMatch_NonRecursive(t *testing.T) {
 	)
 	_ = configPath
 
-	fileScanner := scanner.NewScanner(&testCfg.Matching)
+	fileScanner := scanner.NewScanner(afero.NewOsFs(), &testCfg.Matching)
 	fileMatcher, err := matcher.NewMatcher(&testCfg.Matching)
 	require.NoError(t, err)
 
@@ -80,7 +82,7 @@ func TestScanAndMatch_ScanError(t *testing.T) {
 	)
 	_ = configPath
 
-	fileScanner := scanner.NewScanner(&testCfg.Matching)
+	fileScanner := scanner.NewScanner(afero.NewOsFs(), &testCfg.Matching)
 	fileMatcher, err := matcher.NewMatcher(&testCfg.Matching)
 	require.NoError(t, err)
 
@@ -108,7 +110,7 @@ func TestScanAndMatch_NoFilesFound(t *testing.T) {
 	)
 	_ = configPath
 
-	fileScanner := scanner.NewScanner(&testCfg.Matching)
+	fileScanner := scanner.NewScanner(afero.NewOsFs(), &testCfg.Matching)
 	fileMatcher, err := matcher.NewMatcher(&testCfg.Matching)
 	require.NoError(t, err)
 
@@ -139,7 +141,7 @@ func TestScanAndMatch_NoMatchesFound(t *testing.T) {
 	)
 	_ = configPath
 
-	fileScanner := scanner.NewScanner(&testCfg.Matching)
+	fileScanner := scanner.NewScanner(afero.NewOsFs(), &testCfg.Matching)
 	fileMatcher, err := matcher.NewMatcher(&testCfg.Matching)
 	require.NoError(t, err)
 
@@ -177,7 +179,7 @@ func TestScanAndMatch_WithSkippedFiles(t *testing.T) {
 	)
 	_ = configPath
 
-	fileScanner := scanner.NewScanner(&testCfg.Matching)
+	fileScanner := scanner.NewScanner(afero.NewOsFs(), &testCfg.Matching)
 	fileMatcher, err := matcher.NewMatcher(&testCfg.Matching)
 	require.NoError(t, err)
 
@@ -215,7 +217,7 @@ func TestScanAndMatch_MultipleFiles(t *testing.T) {
 	)
 	_ = configPath
 
-	fileScanner := scanner.NewScanner(&testCfg.Matching)
+	fileScanner := scanner.NewScanner(afero.NewOsFs(), &testCfg.Matching)
 	fileMatcher, err := matcher.NewMatcher(&testCfg.Matching)
 	require.NoError(t, err)
 

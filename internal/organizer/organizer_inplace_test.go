@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/spf13/afero"
+
 	"github.com/javinizer/javinizer-go/internal/config"
 	"github.com/javinizer/javinizer-go/internal/matcher"
 	"github.com/javinizer/javinizer-go/internal/models"
@@ -24,7 +26,7 @@ func TestIsDedicatedFolder(t *testing.T) {
 	}
 
 	orgCfg := &config.OutputConfig{}
-	o := NewOrganizer(orgCfg)
+	o := NewOrganizer(afero.NewOsFs(), orgCfg)
 
 	tests := []struct {
 		name           string
@@ -156,7 +158,7 @@ func TestPlan_InPlaceDetection(t *testing.T) {
 				FolderFormat:        "<ID> [<STUDIO>] - <TITLE>",
 				FileFormat:          "<ID>",
 			}
-			o := NewOrganizer(orgCfg)
+			o := NewOrganizer(afero.NewOsFs(), orgCfg)
 			o.SetMatcher(m)
 
 			// Create source directory and file
@@ -239,7 +241,7 @@ func TestExecute_InPlaceRename(t *testing.T) {
 		FolderFormat:        "<ID> [<STUDIO>] - <TITLE>",
 		FileFormat:          "<ID>",
 	}
-	o := NewOrganizer(orgCfg)
+	o := NewOrganizer(afero.NewOsFs(), orgCfg)
 	o.SetMatcher(m)
 
 	// Create source directory and file
@@ -337,7 +339,7 @@ func TestExecute_InPlaceMultiPart(t *testing.T) {
 		FolderFormat:        "<ID>",
 		FileFormat:          "<ID>",
 	}
-	o := NewOrganizer(orgCfg)
+	o := NewOrganizer(afero.NewOsFs(), orgCfg)
 	o.SetMatcher(m)
 
 	// Create source directory with multi-part files
@@ -473,7 +475,7 @@ func TestExecute_InPlaceWithSubtitles(t *testing.T) {
 		MoveSubtitles:       true,
 		SubtitleExtensions:  []string{".srt", ".ass"},
 	}
-	o := NewOrganizer(orgCfg)
+	o := NewOrganizer(afero.NewOsFs(), orgCfg)
 	o.SetMatcher(m)
 
 	// Create source directory with video and subtitle files
@@ -580,7 +582,7 @@ func TestExecute_InPlaceDryRun(t *testing.T) {
 		FolderFormat:        "<ID>",
 		FileFormat:          "<ID>",
 	}
-	o := NewOrganizer(orgCfg)
+	o := NewOrganizer(afero.NewOsFs(), orgCfg)
 	o.SetMatcher(m)
 
 	// Create source directory and file

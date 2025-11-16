@@ -26,6 +26,7 @@ import (
 	"github.com/javinizer/javinizer-go/internal/scraper/r18dev"
 	"github.com/javinizer/javinizer-go/internal/tui"
 	"github.com/javinizer/javinizer-go/internal/worker"
+	"github.com/spf13/afero"
 	"github.com/spf13/cobra"
 )
 
@@ -132,7 +133,7 @@ func run(cmd *cobra.Command, args []string) error {
 
 	// Scan for files before starting TUI
 	logging.Info("Scanning for video files...")
-	fileScanner := scanner.NewScanner(&cfg.Matching)
+	fileScanner := scanner.NewScanner(afero.NewOsFs(), &cfg.Matching)
 
 	var scanResult *scanner.ScanResult
 
@@ -203,13 +204,13 @@ func run(cmd *cobra.Command, args []string) error {
 	agg := aggregator.NewWithDatabase(cfg, db)
 
 	// Initialize downloader
-	dl := downloader.NewDownloaderWithNFOConfig(&cfg.Output, cfg.Scrapers.UserAgent, cfg.Metadata.NFO.ActressLanguageJA, cfg.Metadata.NFO.FirstNameOrder)
+	dl := downloader.NewDownloaderWithNFOConfig(afero.NewOsFs(), &cfg.Output, cfg.Scrapers.UserAgent, cfg.Metadata.NFO.ActressLanguageJA, cfg.Metadata.NFO.FirstNameOrder)
 
 	// Initialize organizer
-	org := organizer.NewOrganizer(&cfg.Output)
+	org := organizer.NewOrganizer(afero.NewOsFs(), &cfg.Output)
 
 	// Initialize NFO generator
-	nfoGen := nfo.NewGenerator(nfo.ConfigFromAppConfig(&cfg.Metadata.NFO, &cfg.Output, &cfg.Metadata, db))
+	nfoGen := nfo.NewGenerator(afero.NewOsFs(), nfo.ConfigFromAppConfig(&cfg.Metadata.NFO, &cfg.Output, &cfg.Metadata, db))
 
 	// Create progress tracker and worker pool
 	progressChan := make(chan worker.ProgressUpdate, cfg.Performance.BufferSize)

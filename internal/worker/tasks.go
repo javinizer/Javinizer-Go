@@ -373,7 +373,7 @@ func (t *OrganizeTask) Execute(ctx context.Context) error {
 
 	// Validate plan
 	t.progressTracker.Update(t.id, 0.4, "Validating plan...", 0)
-	if issues := organizer.ValidatePlan(plan); len(issues) > 0 {
+	if issues := t.organizer.ValidatePlan(plan); len(issues) > 0 {
 		logging.Debugf("[%s] Validation failed with %d issues: %v", t.movie.ID, len(issues), issues)
 		return fmt.Errorf("validation failed: %v", issues)
 	}

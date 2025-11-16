@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -16,10 +15,12 @@ import (
 	"github.com/javinizer/javinizer-go/internal/logging"
 	"github.com/javinizer/javinizer-go/internal/models"
 	"github.com/javinizer/javinizer-go/internal/template"
+	"github.com/spf13/afero"
 )
 
 // Downloader handles media file downloads
 type Downloader struct {
+	fs                  afero.Fs
 	config              *config.OutputConfig
 	httpClient          *http.Client
 	userAgent           string
@@ -50,7 +51,7 @@ const (
 )
 
 // NewDownloader creates a new media downloader
-func NewDownloader(cfg *config.OutputConfig, userAgent string) *Downloader {
+func NewDownloader(fs afero.Fs, cfg *config.OutputConfig, userAgent string) *Downloader {
 	// Use configured timeout, default to 60 seconds if not set
 	timeout := cfg.DownloadTimeout
 	if timeout <= 0 {
@@ -84,6 +85,7 @@ func NewDownloader(cfg *config.OutputConfig, userAgent string) *Downloader {
 	}
 
 	return &Downloader{
+		fs:                  fs,
 		config:              cfg,
 		httpClient:          client,
 		userAgent:           userAgent,
@@ -93,8 +95,8 @@ func NewDownloader(cfg *config.OutputConfig, userAgent string) *Downloader {
 }
 
 // NewDownloaderWithNFOConfig creates a new media downloader with NFO config for actress name formatting
-func NewDownloaderWithNFOConfig(cfg *config.OutputConfig, userAgent string, actorJapaneseNames, actorFirstNameOrder bool) *Downloader {
-	d := NewDownloader(cfg, userAgent)
+func NewDownloaderWithNFOConfig(fs afero.Fs, cfg *config.OutputConfig, userAgent string, actorJapaneseNames, actorFirstNameOrder bool) *Downloader {
+	d := NewDownloader(fs, cfg, userAgent)
 	d.actorJapaneseNames = actorJapaneseNames
 	d.actorFirstNameOrder = actorFirstNameOrder
 	return d
@@ -166,9 +168,9 @@ func (d *Downloader) DownloadPoster(movie *models.Movie, destDir string) (*Downl
 	destPath := filepath.Join(destDir, filename)
 
 	// Check if poster already exists
-	if _, err := os.Stat(destPath); err == nil {
+	if _, err := d.fs.Stat(destPath); err == nil {
 		// Already exists
-		info, _ := os.Stat(destPath)
+		info, _ := d.fs.Stat(destPath)
 		return &DownloadResult{
 			Type:       MediaTypePoster,
 			LocalPath:  destPath,
@@ -188,23 +190,23 @@ func (d *Downloader) DownloadPoster(movie *models.Movie, destDir string) (*Downl
 	tempPath := destPath + ".full.tmp"
 	result, err := d.download(posterURL, tempPath, MediaTypePoster)
 	if err != nil || !result.Downloaded {
-		os.Remove(tempPath) // Clean up if exists
+		d.fs.Remove(tempPath) // Clean up if exists
 		return result, err
 	}
 
 	// Crop the poster from the downloaded image
 	if err := imageutil.CropPosterFromCover(tempPath, destPath); err != nil {
-		os.Remove(tempPath) // Clean up temp file
+		d.fs.Remove(tempPath) // Clean up temp file
 		result.Error = fmt.Errorf("failed to crop poster: %w", err)
 		result.Downloaded = false
 		return result, result.Error
 	}
 
 	// Clean up the temporary full image
-	os.Remove(tempPath)
+	d.fs.Remove(tempPath)
 
 	// Update result with final path and size
-	if info, err := os.Stat(destPath); err == nil {
+	if info, err := d.fs.Stat(destPath); err == nil {
 		result.LocalPath = destPath
 		result.Size = info.Size()
 	}
@@ -416,7 +418,7 @@ func (d *Downloader) download(url, destPath string, mediaType MediaType) (*Downl
 	}
 
 	// Check if file already exists
-	if info, err := os.Stat(destPath); err == nil {
+	if info, err := d.fs.Stat(destPath); err == nil {
 		result.Size = info.Size()
 		result.Downloaded = false // Already exists, not downloaded
 		result.Duration = time.Since(startTime)
@@ -425,7 +427,7 @@ func (d *Downloader) download(url, destPath string, mediaType MediaType) (*Downl
 
 	// Create destination directory
 	destDir := filepath.Dir(destPath)
-	if err := os.MkdirAll(destDir, 0777); err != nil {
+	if err := d.fs.MkdirAll(destDir, 0777); err != nil {
 		result.Error = fmt.Errorf("failed to create directory: %w", err)
 		result.Duration = time.Since(startTime)
 		return result, result.Error
@@ -462,7 +464,7 @@ func (d *Downloader) download(url, destPath string, mediaType MediaType) (*Downl
 
 	// Create temporary file
 	tempPath := destPath + ".tmp"
-	outFile, err := os.Create(tempPath)
+	outFile, err := d.fs.Create(tempPath)
 	if err != nil {
 		result.Error = fmt.Errorf("failed to create file: %w", err)
 		result.Duration = time.Since(startTime)
@@ -474,15 +476,15 @@ func (d *Downloader) download(url, destPath string, mediaType MediaType) (*Downl
 	outFile.Close()
 
 	if err != nil {
-		os.Remove(tempPath)
+		d.fs.Remove(tempPath)
 		result.Error = fmt.Errorf("failed to write file: %w", err)
 		result.Duration = time.Since(startTime)
 		return result, result.Error
 	}
 
 	// Rename temp file to final destination
-	if err := os.Rename(tempPath, destPath); err != nil {
-		os.Remove(tempPath)
+	if err := d.fs.Rename(tempPath, destPath); err != nil {
+		d.fs.Remove(tempPath)
 		result.Error = fmt.Errorf("failed to rename file: %w", err)
 		result.Duration = time.Since(startTime)
 		return result, result.Error
@@ -511,8 +513,8 @@ func GetImageExtension(url string) string {
 }
 
 // CleanupPartialDownloads removes .tmp files from a directory
-func CleanupPartialDownloads(dir string) error {
-	entries, err := os.ReadDir(dir)
+func CleanupPartialDownloads(fs afero.Fs, dir string) error {
+	entries, err := afero.ReadDir(fs, dir)
 	if err != nil {
 		return err
 	}
@@ -524,7 +526,7 @@ func CleanupPartialDownloads(dir string) error {
 
 		if strings.HasSuffix(entry.Name(), ".tmp") {
 			path := filepath.Join(dir, entry.Name())
-			os.Remove(path) // Ignore errors
+			fs.Remove(path) // Ignore errors
 		}
 	}
 

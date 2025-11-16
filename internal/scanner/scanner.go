@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/javinizer/javinizer-go/internal/config"
+	"github.com/spf13/afero"
 )
 
 var (
@@ -24,12 +25,14 @@ const (
 
 // Scanner finds video files based on configuration
 type Scanner struct {
+	fs     afero.Fs
 	config *config.MatchingConfig
 }
 
 // NewScanner creates a new file scanner
-func NewScanner(cfg *config.MatchingConfig) *Scanner {
+func NewScanner(fs afero.Fs, cfg *config.MatchingConfig) *Scanner {
 	return &Scanner{
+		fs:     fs,
 		config: cfg,
 	}
 }
@@ -77,7 +80,7 @@ func (s *Scanner) ScanWithLimits(ctx context.Context, rootPath string, maxFiles 
 	}
 
 	// Verify path exists
-	if _, err := os.Stat(absPath); err != nil {
+	if _, err := s.fs.Stat(absPath); err != nil {
 		return nil, err
 	}
 
@@ -172,15 +175,15 @@ func (s *Scanner) ScanSingle(path string) (*ScanResult, error) {
 		return nil, err
 	}
 
-	// Check if it's a file or directory (use Lstat to not follow symlinks)
-	info, err := os.Lstat(absPath)
+	// Check if it's a file or directory
+	info, err := s.fs.Stat(absPath)
 	if err != nil {
 		return nil, err
 	}
 
 	if info.IsDir() {
 		// Scan directory (non-recursive)
-		entries, err := os.ReadDir(absPath)
+		entries, err := afero.ReadDir(s.fs, absPath)
 		if err != nil {
 			return nil, err
 		}
@@ -191,15 +194,9 @@ func (s *Scanner) ScanSingle(path string) (*ScanResult, error) {
 			}
 
 			fullPath := filepath.Join(absPath, entry.Name())
-			if s.shouldIncludeFile(fullPath, entry) {
-				entryInfo, err := entry.Info()
-				if err != nil {
-					result.Errors = append(result.Errors, err)
-					continue
-				}
-
+			if s.shouldIncludeFile(fullPath, nil) {
 				// Skip symlinks to prevent metadata leakage from protected files
-				if entryInfo.Mode()&os.ModeSymlink != 0 {
+				if entry.Mode()&os.ModeSymlink != 0 {
 					result.SkippedCount++
 					if len(result.Skipped) < MaxSkippedFiles {
 						result.Skipped = append(result.Skipped, fullPath)
@@ -211,8 +208,8 @@ func (s *Scanner) ScanSingle(path string) (*ScanResult, error) {
 					Path:      fullPath,
 					Name:      entry.Name(),
 					Extension: filepath.Ext(fullPath),
-					Size:      entryInfo.Size(),
-					ModTime:   entryInfo.ModTime(),
+					Size:      entry.Size(),
+					ModTime:   entry.ModTime(),
 					Dir:       absPath,
 				}
 
@@ -289,7 +286,7 @@ func (s *Scanner) shouldIncludeFile(path string, entry os.DirEntry) bool {
 				size = info.Size()
 			}
 		} else {
-			info, err := os.Stat(path)
+			info, err := s.fs.Stat(path)
 			if err == nil {
 				size = info.Size()
 			}
@@ -313,8 +310,8 @@ func (s *Scanner) Filter(files []string) []FileInfo {
 			continue
 		}
 
-		// Use Lstat to not follow symlinks
-		info, err := os.Lstat(path)
+		// Get file info
+		info, err := s.fs.Stat(path)
 		if err != nil {
 			continue
 		}

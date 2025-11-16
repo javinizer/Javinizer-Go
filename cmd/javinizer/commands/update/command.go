@@ -17,6 +17,7 @@ import (
 	"github.com/javinizer/javinizer-go/internal/organizer"
 	"github.com/javinizer/javinizer-go/internal/scanner"
 	"github.com/javinizer/javinizer-go/internal/template"
+	"github.com/spf13/afero"
 	"github.com/spf13/cobra"
 )
 
@@ -111,14 +112,14 @@ func run(cmd *cobra.Command, args []string, configFile string) error {
 	movieRepo := database.NewMovieRepository(deps.DB)
 	registry := deps.ScraperRegistry
 	agg := aggregator.NewWithDatabase(deps.Config, deps.DB)
-	fileScanner := scanner.NewScanner(&deps.Config.Matching)
+	fileScanner := scanner.NewScanner(afero.NewOsFs(), &deps.Config.Matching)
 	fileMatcher, err := matcher.NewMatcher(&deps.Config.Matching)
 	if err != nil {
 		return fmt.Errorf("failed to create matcher: %w", err)
 	}
-	fileOrganizer := organizer.NewOrganizer(&deps.Config.Output)
-	nfoGenerator := nfo.NewGenerator(nfo.ConfigFromAppConfig(&deps.Config.Metadata.NFO, &deps.Config.Output, &deps.Config.Metadata, deps.DB))
-	mediaDownloader := downloader.NewDownloaderWithNFOConfig(&deps.Config.Output, deps.Config.Scrapers.UserAgent, deps.Config.Metadata.NFO.ActressLanguageJA, deps.Config.Metadata.NFO.FirstNameOrder)
+	fileOrganizer := organizer.NewOrganizer(afero.NewOsFs(), &deps.Config.Output)
+	nfoGenerator := nfo.NewGenerator(afero.NewOsFs(), nfo.ConfigFromAppConfig(&deps.Config.Metadata.NFO, &deps.Config.Output, &deps.Config.Metadata, deps.DB))
+	mediaDownloader := downloader.NewDownloaderWithNFOConfig(afero.NewOsFs(), &deps.Config.Output, deps.Config.Scrapers.UserAgent, deps.Config.Metadata.NFO.ActressLanguageJA, deps.Config.Metadata.NFO.FirstNameOrder)
 
 	// Print configuration
 	fmt.Println("=== Javinizer Update ===")
@@ -182,7 +183,7 @@ func run(cmd *cobra.Command, args []string, configFile string) error {
 			// Check if NFO exists
 			if _, err := os.Stat(nfoPath); err == nil {
 				// Parse existing NFO
-				parseResult, parseErr := nfo.ParseNFO(nfoPath)
+				parseResult, parseErr := nfo.ParseNFO(afero.NewOsFs(), nfoPath)
 				if parseErr != nil {
 					logging.Warnf("[%s] Failed to parse existing NFO: %v (using scraper data only)", id, parseErr)
 					continue

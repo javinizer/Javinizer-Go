@@ -3,7 +3,6 @@ package nfo
 import (
 	"encoding/xml"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -11,10 +10,12 @@ import (
 	"github.com/javinizer/javinizer-go/internal/mediainfo"
 	"github.com/javinizer/javinizer-go/internal/models"
 	"github.com/javinizer/javinizer-go/internal/template"
+	"github.com/spf13/afero"
 )
 
 // Generator creates NFO files from movie metadata
 type Generator struct {
+	fs             afero.Fs
 	templateEngine *template.Engine
 	config         *Config
 }
@@ -57,7 +58,7 @@ type Config struct {
 }
 
 // NewGenerator creates a new NFO generator
-func NewGenerator(cfg *Config) *Generator {
+func NewGenerator(fs afero.Fs, cfg *Config) *Generator {
 	if cfg == nil {
 		cfg = DefaultConfig()
 	}
@@ -71,6 +72,7 @@ func NewGenerator(cfg *Config) *Generator {
 	}
 
 	return &Generator{
+		fs:             fs,
 		templateEngine: template.NewEngine(),
 		config:         cfg,
 	}
@@ -380,12 +382,12 @@ func (g *Generator) formatActressNameFromInfo(firstName, lastName, japaneseName 
 func (g *Generator) WriteNFO(nfo *Movie, path string) error {
 	// Ensure output directory exists
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0777); err != nil {
+	if err := g.fs.MkdirAll(dir, 0777); err != nil {
 		return fmt.Errorf("failed to create output directory: %w", err)
 	}
 
 	// Create file
-	file, err := os.Create(path)
+	file, err := g.fs.Create(path)
 	if err != nil {
 		return fmt.Errorf("failed to create NFO file: %w", err)
 	}

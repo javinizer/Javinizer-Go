@@ -9,6 +9,7 @@ import (
 
 	"github.com/javinizer/javinizer-go/internal/models"
 	"github.com/javinizer/javinizer-go/internal/nfo"
+	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -152,7 +153,7 @@ func TestNFOTask_Integration(t *testing.T) {
 			tempDir := t.TempDir()
 
 			// Create real NFO generator
-			generator := nfo.NewGenerator(nil) // Use default config
+			generator := nfo.NewGenerator(afero.NewOsFs(), nil) // Use default config
 
 			progressChan := make(chan ProgressUpdate, 100)
 			progressTracker := NewProgressTracker(progressChan)
@@ -252,7 +253,7 @@ func TestNFOTask_Description(t *testing.T) {
 			task := NewNFOTask(
 				movie,
 				targetDir,
-				nfo.NewGenerator(nil), // Use default config
+				nfo.NewGenerator(afero.NewOsFs(), nil), // Use default config
 				progressTracker,
 				tt.dryRun,
 				tt.partSuffix,
@@ -283,7 +284,7 @@ func TestNFOTask_WithVideoFilePath(t *testing.T) {
 			Title: "Video Test Movie",
 		}
 
-		generator := nfo.NewGenerator(nil) // Use default config
+		generator := nfo.NewGenerator(afero.NewOsFs(), nil) // Use default config
 		progressChan := make(chan ProgressUpdate, 100)
 		progressTracker := NewProgressTracker(progressChan)
 
@@ -329,7 +330,7 @@ func TestNFOTask_ProgressUpdates(t *testing.T) {
 			Title: "Progress Test",
 		}
 
-		generator := nfo.NewGenerator(nil) // Use default config
+		generator := nfo.NewGenerator(afero.NewOsFs(), nil) // Use default config
 		progressChan := make(chan ProgressUpdate, 100)
 		progressTracker := NewProgressTracker(progressChan)
 
@@ -378,7 +379,7 @@ func TestNFOTask_ErrorHandling(t *testing.T) {
 			Title: "Error Test",
 		}
 
-		generator := nfo.NewGenerator(nil) // Use default config
+		generator := nfo.NewGenerator(afero.NewOsFs(), nil) // Use default config
 		progressChan := make(chan ProgressUpdate, 100)
 		progressTracker := NewProgressTracker(progressChan)
 

@@ -1,6 +1,7 @@
 package organizer
 
 import (
+	"github.com/spf13/afero"
 	"os"
 	"path/filepath"
 	"strings"
@@ -25,7 +26,7 @@ func TestOrganizer_Copy_ErrorPaths(t *testing.T) {
 		RenameFile:   true,
 	}
 
-	org := NewOrganizer(cfg)
+	org := NewOrganizer(afero.NewOsFs(), cfg)
 	movie := createTestMovie()
 
 	t.Run("Copy with conflicts", func(t *testing.T) {
@@ -143,7 +144,7 @@ func TestOrganizer_Execute_InPlaceErrors(t *testing.T) {
 		RenameFolderInPlace: true,
 	}
 
-	org := NewOrganizer(cfg)
+	org := NewOrganizer(afero.NewOsFs(), cfg)
 	m, err := matcher.NewMatcher(&config.MatchingConfig{
 		RegexEnabled: true,
 		RegexPattern: `(?P<id>[A-Z]+-\d+)`,
@@ -250,7 +251,7 @@ func TestOrganizer_Execute_PermissionErrors(t *testing.T) {
 		RenameFile:   true,
 	}
 
-	org := NewOrganizer(cfg)
+	org := NewOrganizer(afero.NewOsFs(), cfg)
 	movie := createTestMovie()
 
 	t.Run("Execute with read-only destination directory", func(t *testing.T) {
@@ -419,7 +420,7 @@ func TestOrganizer_Revert_Errors(t *testing.T) {
 		RenameFile:   true,
 	}
 
-	org := NewOrganizer(cfg)
+	org := NewOrganizer(afero.NewOsFs(), cfg)
 
 	t.Run("Revert when not moved", func(t *testing.T) {
 		result := &OrganizeResult{
@@ -458,7 +459,7 @@ func TestOrganizer_Plan_EdgeCases(t *testing.T) {
 			SubfolderFormat: []string{"<STUDIO>"}, // Single subfolder for simplicity
 		}
 
-		org := NewOrganizer(cfg)
+		org := NewOrganizer(afero.NewOsFs(), cfg)
 		movie := createTestMovie()
 
 		match := matcher.MatchResult{
@@ -486,7 +487,7 @@ func TestOrganizer_Plan_EdgeCases(t *testing.T) {
 			MaxPathLength: 50, // Very short to trigger validation error
 		}
 
-		org := NewOrganizer(cfg)
+		org := NewOrganizer(afero.NewOsFs(), cfg)
 		movie := createTestMovie()
 
 		match := matcher.MatchResult{
@@ -513,7 +514,7 @@ func TestOrganizer_Plan_EdgeCases(t *testing.T) {
 			MaxTitleLength: 10, // Long enough to keep ID but truncate title
 		}
 
-		org := NewOrganizer(cfg)
+		org := NewOrganizer(afero.NewOsFs(), cfg)
 		movie := createTestMovie()
 
 		match := matcher.MatchResult{
@@ -543,7 +544,7 @@ func TestOrganizer_Plan_EdgeCases(t *testing.T) {
 			RenameFile:   true,
 		}
 
-		org := NewOrganizer(cfg)
+		org := NewOrganizer(afero.NewOsFs(), cfg)
 		movie := createTestMovie()
 
 		match := matcher.MatchResult{
@@ -573,7 +574,7 @@ func TestOrganizer_Plan_EdgeCases(t *testing.T) {
 			RenameFile:      true,
 		}
 
-		org := NewOrganizer(cfg)
+		org := NewOrganizer(afero.NewOsFs(), cfg)
 		movie := createTestMovie()
 
 		match := matcher.MatchResult{
@@ -600,7 +601,7 @@ func TestOrganizer_Plan_EdgeCases(t *testing.T) {
 			RenameFile:   false, // Keep original filename
 		}
 
-		org := NewOrganizer(cfg)
+		org := NewOrganizer(afero.NewOsFs(), cfg)
 		movie := createTestMovie()
 
 		originalFilename := "my-original-name.mp4"
@@ -627,7 +628,7 @@ func TestOrganizer_Plan_EdgeCases(t *testing.T) {
 			RenameFile:   true,
 		}
 
-		org := NewOrganizer(cfg)
+		org := NewOrganizer(afero.NewOsFs(), cfg)
 		movie := createTestMovie()
 
 		sourceFile := filepath.Join(tmpDir, "force-update.mp4")
@@ -672,7 +673,7 @@ func TestOrganizer_OrganizeBatch_EdgeCases(t *testing.T) {
 		RenameFile:   true,
 	}
 
-	org := NewOrganizer(cfg)
+	org := NewOrganizer(afero.NewOsFs(), cfg)
 
 	t.Run("Batch with missing movie data", func(t *testing.T) {
 		sourceFile := filepath.Join(tmpDir, "missing-movie.mp4")
@@ -786,6 +787,8 @@ func TestOrganizer_OrganizeBatch_EdgeCases(t *testing.T) {
 // TestValidatePlan_EdgeCases tests additional ValidatePlan edge cases
 func TestValidatePlan_EdgeCases(t *testing.T) {
 	tmpDir := t.TempDir()
+	cfg := &config.OutputConfig{}
+	org := NewOrganizer(afero.NewOsFs(), cfg)
 
 	t.Run("Empty target directory", func(t *testing.T) {
 		plan := &OrganizePlan{
@@ -795,7 +798,7 @@ func TestValidatePlan_EdgeCases(t *testing.T) {
 			TargetPath: "/test.mp4",
 		}
 
-		issues := ValidatePlan(plan)
+		issues := org.ValidatePlan(plan)
 		assert.NotEmpty(t, issues)
 		assert.True(t, containsIssue(issues, "target directory or filename is empty"))
 	})
@@ -808,7 +811,7 @@ func TestValidatePlan_EdgeCases(t *testing.T) {
 			TargetPath: filepath.Join(tmpDir, ""),
 		}
 
-		issues := ValidatePlan(plan)
+		issues := org.ValidatePlan(plan)
 		assert.NotEmpty(t, issues)
 		assert.True(t, containsIssue(issues, "target directory or filename is empty"))
 	})
@@ -821,7 +824,7 @@ func TestValidatePlan_EdgeCases(t *testing.T) {
 			TargetPath: tmpDir + "//test.mp4",
 		}
 
-		issues := ValidatePlan(plan)
+		issues := org.ValidatePlan(plan)
 		assert.NotEmpty(t, issues)
 		assert.True(t, containsIssue(issues, "target path contains double slashes"))
 	})
@@ -830,6 +833,8 @@ func TestValidatePlan_EdgeCases(t *testing.T) {
 // TestCleanEmptyDirectories_EdgeCases tests edge cases in directory cleanup
 func TestCleanEmptyDirectories_EdgeCases(t *testing.T) {
 	tmpDir := t.TempDir()
+	cfg := &config.OutputConfig{}
+	org := NewOrganizer(afero.NewOsFs(), cfg)
 
 	t.Run("Stop at non-empty directory", func(t *testing.T) {
 		// Create nested directories with a file in middle level
@@ -846,7 +851,7 @@ func TestCleanEmptyDirectories_EdgeCases(t *testing.T) {
 		require.NoError(t, os.Remove(filePath))
 
 		// Clean from deep directory
-		err := CleanEmptyDirectories(filePath, tmpDir)
+		err := org.CleanEmptyDirectories(filePath, tmpDir)
 		require.NoError(t, err)
 
 		// Deep directory should be removed
@@ -869,7 +874,7 @@ func TestCleanEmptyDirectories_EdgeCases(t *testing.T) {
 		filePath := filepath.Join(deepDir, "file.mp4")
 
 		// Clean from deep directory
-		err := CleanEmptyDirectories(filePath, baseDir)
+		err := org.CleanEmptyDirectories(filePath, baseDir)
 		require.NoError(t, err)
 
 		// The base directory should still exist
@@ -882,7 +887,7 @@ func TestCleanEmptyDirectories_EdgeCases(t *testing.T) {
 		filePath := filepath.Join(tmpDir, "cleanup3", "file.mp4")
 		baseDir := "/nonexistent/base"
 
-		err := CleanEmptyDirectories(filePath, baseDir)
+		err := org.CleanEmptyDirectories(filePath, baseDir)
 		// Should return error from filepath.Abs
 		assert.Error(t, err)
 	})
@@ -904,7 +909,7 @@ func TestOrganizer_Organize_Integration(t *testing.T) {
 		RenameFile:   true,
 	}
 
-	org := NewOrganizer(cfg)
+	org := NewOrganizer(afero.NewOsFs(), cfg)
 	movie := createTestMovie()
 
 	t.Run("Organize with max path length error", func(t *testing.T) {
@@ -915,7 +920,7 @@ func TestOrganizer_Organize_Integration(t *testing.T) {
 			RenameFile:    true,
 			MaxPathLength: 10, // Too short
 		}
-		badOrg := NewOrganizer(badCfg)
+		badOrg := NewOrganizer(afero.NewOsFs(), badCfg)
 
 		match := matcher.MatchResult{
 			File: scanner.FileInfo{

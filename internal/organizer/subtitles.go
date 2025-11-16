@@ -2,12 +2,12 @@ package organizer
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/javinizer/javinizer-go/internal/config"
 	"github.com/javinizer/javinizer-go/internal/scanner"
+	"github.com/spf13/afero"
 )
 
 // Language code mappings (ISO 639)
@@ -53,12 +53,14 @@ var (
 
 // SubtitleHandler manages subtitle file operations
 type SubtitleHandler struct {
+	fs         afero.Fs
 	extensions []string
 }
 
 // NewSubtitleHandler creates a new subtitle handler
-func NewSubtitleHandler(cfg *config.OutputConfig) *SubtitleHandler {
+func NewSubtitleHandler(fs afero.Fs, cfg *config.OutputConfig) *SubtitleHandler {
 	return &SubtitleHandler{
+		fs:         fs,
 		extensions: cfg.SubtitleExtensions,
 	}
 }
@@ -84,7 +86,7 @@ func (sh *SubtitleHandler) FindSubtitles(videoFile scanner.FileInfo) []SubtitleM
 	matches := make([]SubtitleMatch, 0)
 
 	// Search for subtitle files in the same directory
-	files, err := os.ReadDir(videoDir)
+	files, err := afero.ReadDir(sh.fs, videoDir)
 	if err != nil {
 		return matches
 	}
@@ -140,7 +142,7 @@ func (sh *SubtitleHandler) MoveSubtitles(subtitles []SubtitleMatch, targetDir, v
 
 	// Create target directory if it doesn't exist
 	if !dryRun {
-		if err := os.MkdirAll(targetDir, 0777); err != nil {
+		if err := sh.fs.MkdirAll(targetDir, 0777); err != nil {
 			return fmt.Errorf("failed to create target directory: %w", err)
 		}
 	}
@@ -158,14 +160,14 @@ func (sh *SubtitleHandler) MoveSubtitles(subtitles []SubtitleMatch, targetDir, v
 		}
 
 		// Check if target file already exists
-		if _, err := os.Stat(newPath); err == nil {
+		if _, err := sh.fs.Stat(newPath); err == nil {
 			// File exists, skip or overwrite? For now, skip
 			fmt.Printf("Subtitle already exists, skipping: %s\n", newPath)
 			continue
 		}
 
 		// Move the subtitle file
-		if err := os.Rename(subtitle.OriginalPath, newPath); err != nil {
+		if err := sh.fs.Rename(subtitle.OriginalPath, newPath); err != nil {
 			return fmt.Errorf("failed to move subtitle %s to %s: %w", subtitle.OriginalPath, newPath, err)
 		}
 
