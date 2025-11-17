@@ -1435,3 +1435,245 @@ func TestAggregateDisplayNameTemplate(t *testing.T) {
 		assert.Empty(t, movie.DisplayName)
 	})
 }
+
+// TestActressDMMIDDeduplicationSameIDDifferentNames tests that actresses with the same DMMID
+// but different names from multiple scrapers are deduplicated into a single actress.
+// This is the core scenario mentioned in Story 2.4 AC-2.4.2:
+// "r18dev and dmm may return same actress with different names but same DMMID"
+func TestActressDMMIDDeduplicationSameIDDifferentNames(t *testing.T) {
+	cfg := &config.Config{
+		Scrapers: config.ScrapersConfig{
+			Priority: []string{"r18dev", "dmm"},
+		},
+		Metadata: config.MetadataConfig{
+			ActressDatabase: config.ActressDatabaseConfig{
+				ConvertAlias: false,
+			},
+		},
+	}
+
+	agg := New(cfg)
+
+	results := map[string]*models.ScraperResult{
+		"r18dev": {
+			Source: "r18dev",
+			Actresses: []models.ActressInfo{
+				{
+					DMMID:        12345,
+					FirstName:    "Yui",
+					LastName:     "Hatano",
+					JapaneseName: "波多野結衣",
+					ThumbURL:     "https://r18dev.example.com/thumb.jpg",
+				},
+			},
+		},
+		"dmm": {
+			Source: "dmm",
+			Actresses: []models.ActressInfo{
+				{
+					DMMID:        12345,
+					FirstName:    "Yuui", // Different romanization
+					LastName:     "Hatano",
+					JapaneseName: "波多野ゆい", // Different Japanese name
+					ThumbURL:     "https://dmm.example.com/thumb.jpg",
+				},
+			},
+		},
+	}
+
+	actresses := agg.getActressesByPriority(results, []string{"r18dev", "dmm"})
+
+	// Should have exactly 1 actress (deduplicated by DMMID)
+	require.Len(t, actresses, 1, "Should deduplicate actresses with same DMMID")
+
+	// Should use data from r18dev (higher priority)
+	assert.Equal(t, 12345, actresses[0].DMMID)
+	assert.Equal(t, "Yui", actresses[0].FirstName, "Should use r18dev FirstName (higher priority)")
+	assert.Equal(t, "Hatano", actresses[0].LastName, "Should use r18dev LastName (higher priority)")
+	assert.Equal(t, "波多野結衣", actresses[0].JapaneseName, "Should use r18dev JapaneseName (higher priority)")
+	assert.Equal(t, "https://r18dev.example.com/thumb.jpg", actresses[0].ThumbURL, "Should use r18dev ThumbURL (higher priority)")
+}
+
+// TestActressDMMIDUpgradeScenario tests the DMMID upgrade scenario where:
+// 1. First scraper provides actress without DMMID (only name)
+// 2. Second scraper provides same actress with DMMID
+// 3. The actress should be upgraded with the DMMID and merged
+func TestActressDMMIDUpgradeScenario(t *testing.T) {
+	cfg := &config.Config{
+		Scrapers: config.ScrapersConfig{
+			Priority: []string{"r18dev", "dmm"},
+		},
+		Metadata: config.MetadataConfig{
+			ActressDatabase: config.ActressDatabaseConfig{
+				ConvertAlias: false,
+			},
+		},
+	}
+
+	agg := New(cfg)
+
+	results := map[string]*models.ScraperResult{
+		"r18dev": {
+			Source: "r18dev",
+			Actresses: []models.ActressInfo{
+				{
+					DMMID:        0, // No DMMID from r18dev
+					FirstName:    "Yui",
+					LastName:     "Hatano",
+					JapaneseName: "波多野結衣",
+					ThumbURL:     "https://r18dev.example.com/thumb.jpg",
+				},
+			},
+		},
+		"dmm": {
+			Source: "dmm",
+			Actresses: []models.ActressInfo{
+				{
+					DMMID:        12345, // DMM provides DMMID
+					FirstName:    "",    // Partial data - no first name
+					LastName:     "",    // Partial data - no last name
+					JapaneseName: "波多野結衣",
+					ThumbURL:     "",
+				},
+			},
+		},
+	}
+
+	actresses := agg.getActressesByPriority(results, []string{"r18dev", "dmm"})
+
+	// Should have exactly 1 actress (merged by name, then upgraded with DMMID)
+	require.Len(t, actresses, 1, "Should merge actress and upgrade with DMMID")
+
+	// Should have DMMID from dmm
+	assert.Equal(t, 12345, actresses[0].DMMID, "Should upgrade actress with DMMID from dmm")
+
+	// Should keep data from r18dev (higher priority)
+	assert.Equal(t, "Yui", actresses[0].FirstName, "Should keep r18dev FirstName")
+	assert.Equal(t, "Hatano", actresses[0].LastName, "Should keep r18dev LastName")
+	assert.Equal(t, "波多野結衣", actresses[0].JapaneseName, "Should keep JapaneseName")
+	assert.Equal(t, "https://r18dev.example.com/thumb.jpg", actresses[0].ThumbURL, "Should keep r18dev ThumbURL")
+}
+
+// TestActressDMMIDPartialDataMerging tests that when multiple scrapers provide
+// the same actress (by DMMID) with partial data, all fields are merged according to priority
+func TestActressDMMIDPartialDataMerging(t *testing.T) {
+	cfg := &config.Config{
+		Scrapers: config.ScrapersConfig{
+			Priority: []string{"r18dev", "dmm", "javlibrary"},
+		},
+		Metadata: config.MetadataConfig{
+			ActressDatabase: config.ActressDatabaseConfig{
+				ConvertAlias: false,
+			},
+		},
+	}
+
+	agg := New(cfg)
+
+	results := map[string]*models.ScraperResult{
+		"r18dev": {
+			Source: "r18dev",
+			Actresses: []models.ActressInfo{
+				{
+					DMMID:        12345,
+					FirstName:    "Yui",
+					LastName:     "", // Missing last name
+					JapaneseName: "波多野結衣",
+					ThumbURL:     "", // Missing thumb URL
+				},
+			},
+		},
+		"dmm": {
+			Source: "dmm",
+			Actresses: []models.ActressInfo{
+				{
+					DMMID:        12345,
+					FirstName:    "Yuui", // Different but lower priority
+					LastName:     "Hatano",
+					JapaneseName: "波多野ゆい", // Different but lower priority
+					ThumbURL:     "https://dmm.example.com/thumb.jpg",
+				},
+			},
+		},
+		"javlibrary": {
+			Source: "javlibrary",
+			Actresses: []models.ActressInfo{
+				{
+					DMMID:        12345,
+					FirstName:    "Yui H.", // Even lower priority
+					LastName:     "Hatano",
+					JapaneseName: "波多野結衣",
+					ThumbURL:     "https://javlib.example.com/thumb.jpg",
+				},
+			},
+		},
+	}
+
+	actresses := agg.getActressesByPriority(results, []string{"r18dev", "dmm", "javlibrary"})
+
+	// Should have exactly 1 actress (deduplicated by DMMID)
+	require.Len(t, actresses, 1, "Should deduplicate actresses with same DMMID")
+
+	// Should merge data respecting priority order
+	assert.Equal(t, 12345, actresses[0].DMMID)
+	assert.Equal(t, "Yui", actresses[0].FirstName, "Should use r18dev FirstName (highest priority)")
+	assert.Equal(t, "Hatano", actresses[0].LastName, "Should use dmm LastName (r18dev had empty)")
+	assert.Equal(t, "波多野結衣", actresses[0].JapaneseName, "Should use r18dev JapaneseName (highest priority)")
+	assert.Equal(t, "https://dmm.example.com/thumb.jpg", actresses[0].ThumbURL, "Should use dmm ThumbURL (r18dev had empty)")
+}
+
+// TestActressDMMIDZeroNotDeduplicated tests that actresses with DMMID=0 are NOT deduplicated
+// This validates the business rule: "Zero DMMID allowed: Some actresses may not have DMM ID (cannot deduplicate)"
+func TestActressDMMIDZeroNotDeduplicated(t *testing.T) {
+	cfg := &config.Config{
+		Scrapers: config.ScrapersConfig{
+			Priority: []string{"r18dev", "javlibrary"},
+		},
+		Metadata: config.MetadataConfig{
+			ActressDatabase: config.ActressDatabaseConfig{
+				ConvertAlias: false,
+			},
+		},
+	}
+
+	agg := New(cfg)
+
+	results := map[string]*models.ScraperResult{
+		"r18dev": {
+			Source: "r18dev",
+			Actresses: []models.ActressInfo{
+				{
+					DMMID:        0, // No DMMID
+					FirstName:    "Unknown",
+					LastName:     "Actress",
+					JapaneseName: "未知の女優",
+					ThumbURL:     "https://r18dev.example.com/thumb1.jpg",
+				},
+			},
+		},
+		"javlibrary": {
+			Source: "javlibrary",
+			Actresses: []models.ActressInfo{
+				{
+					DMMID:        0, // Also no DMMID
+					FirstName:    "Unknown",
+					LastName:     "Actress",
+					JapaneseName: "未知の女優",
+					ThumbURL:     "https://javlib.example.com/thumb2.jpg",
+				},
+			},
+		},
+	}
+
+	actresses := agg.getActressesByPriority(results, []string{"r18dev", "javlibrary"})
+
+	// Should have exactly 1 actress (merged by name since both have same name)
+	require.Len(t, actresses, 1, "Should merge actresses with same name even without DMMID")
+
+	// Should use data from r18dev (higher priority)
+	assert.Equal(t, 0, actresses[0].DMMID)
+	assert.Equal(t, "Unknown", actresses[0].FirstName)
+	assert.Equal(t, "Actress", actresses[0].LastName)
+	assert.Equal(t, "未知の女優", actresses[0].JapaneseName)
+	assert.Equal(t, "https://r18dev.example.com/thumb1.jpg", actresses[0].ThumbURL)
+}
