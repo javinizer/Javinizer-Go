@@ -120,6 +120,7 @@ func TestCORS_OriginValidation(t *testing.T) {
 			deps.SetConfig(cfg)
 
 			router := NewServer(deps)
+			defer cleanupServerHub(t, deps)
 
 			req := httptest.NewRequest("GET", "/health", nil)
 			if tt.requestOrigin != "" {
@@ -206,6 +207,7 @@ func TestCORS_PreflightRequest(t *testing.T) {
 			deps.SetConfig(cfg)
 
 			router := NewServer(deps)
+			defer cleanupServerHub(t, deps)
 
 			req := httptest.NewRequest("OPTIONS", "/api/v1/scrape", nil)
 			req.Header.Set("Origin", tt.requestOrigin)
@@ -397,6 +399,7 @@ func TestSecurity_InputValidation(t *testing.T) {
 	deps.SetConfig(cfg)
 
 	router := NewServer(deps)
+	defer cleanupServerHub(t, deps)
 
 	tests := []struct {
 		name           string
@@ -612,6 +615,7 @@ func TestSecurity_ErrorMessageLeakage(t *testing.T) {
 	deps.SetConfig(cfg)
 
 	router := NewServer(deps)
+	defer cleanupServerHub(t, deps)
 
 	// Test scrape endpoint with error
 	req := httptest.NewRequest("POST", "/api/v1/scrape", bytes.NewBufferString(`{"id":"IPX-001"}`))
@@ -678,6 +682,7 @@ func TestSecurity_RateLimitingHeaders(t *testing.T) {
 	deps.SetConfig(cfg)
 
 	router := NewServer(deps)
+	defer cleanupServerHub(t, deps)
 
 	req := httptest.NewRequest("GET", "/health", nil)
 	w := httptest.NewRecorder()
@@ -762,6 +767,7 @@ func TestSecurity_WebSocketOriginValidation(t *testing.T) {
 			deps.SetConfig(cfg)
 
 			router := NewServer(deps)
+			defer cleanupServerHub(t, deps)
 
 			// Create WebSocket upgrade request
 			req := httptest.NewRequest("GET", "/ws/progress", nil)

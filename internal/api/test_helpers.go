@@ -16,6 +16,16 @@ var (
 	wsTestMu   sync.Mutex
 )
 
+// cleanupServerHub cleans up the global hub created by NewServer
+func cleanupServerHub(t *testing.T, deps *ServerDependencies) {
+	t.Helper()
+	if deps.wsCancel != nil {
+		deps.wsCancel()
+		// Wait for hub to shut down gracefully (max 500ms)
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
 // initTestWebSocket initializes the package-level wsHub and wsUpgrader for testing.
 // This prevents nil pointer panics in processBatchJob and similar functions.
 // Note: wsHub is initialized once and reused across tests to avoid race conditions
@@ -41,13 +51,24 @@ func initTestWebSocket(t *testing.T) {
 	if wsHub == nil {
 		wsHub = ws.NewHub()
 		ctx, cancel := context.WithCancel(context.Background())
-		go wsHub.Run(ctx)
+
+		// Create channel to signal when Run completes
+		done := make(chan struct{})
+		go func() {
+			wsHub.Run(ctx)
+			close(done)
+		}()
 
 		// Clean up on test completion - ensure hub stops gracefully
 		t.Cleanup(func() {
 			cancel()
-			// Give hub time to stop gracefully
-			time.Sleep(10 * time.Millisecond)
+			// Wait for hub goroutine to fully exit (max 500ms)
+			select {
+			case <-done:
+				// Hub shut down successfully
+			case <-time.After(500 * time.Millisecond):
+				// Timeout waiting for shutdown (shouldn't happen in tests)
+			}
 		})
 	}
 }

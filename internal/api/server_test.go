@@ -48,6 +48,7 @@ func TestNewServer(t *testing.T) {
 	deps.SetConfig(cfg)
 
 	router := NewServer(deps)
+	defer cleanupServerHub(t, deps)
 	require.NotNil(t, router)
 
 	// Test that routes are registered
@@ -115,6 +116,7 @@ func TestNewServer_CORSHeaders(t *testing.T) {
 	deps.SetConfig(cfg)
 
 	router := NewServer(deps)
+	defer cleanupServerHub(t, deps)
 
 	// Test OPTIONS request (CORS preflight)
 	req := httptest.NewRequest("OPTIONS", "/api/v1/movies", nil)
@@ -156,6 +158,7 @@ func TestNewServer_StaticFiles(t *testing.T) {
 	deps.SetConfig(cfg)
 
 	router := NewServer(deps)
+	defer cleanupServerHub(t, deps)
 
 	// Test that docs endpoint is registered
 	req := httptest.NewRequest("GET", "/docs", nil)
@@ -195,6 +198,7 @@ func TestServeScalarDocs(t *testing.T) {
 	deps.SetConfig(cfg)
 
 	router := NewServer(deps)
+	defer cleanupServerHub(t, deps)
 
 	req := httptest.NewRequest("GET", "/docs", nil)
 	w := httptest.NewRecorder()
@@ -272,6 +276,7 @@ func TestNewServer_GinMode(t *testing.T) {
 			deps.SetConfig(cfg)
 
 			router := NewServer(deps)
+			defer cleanupServerHub(t, deps)
 			require.NotNil(t, router)
 
 			// Router should be created without panic
@@ -326,6 +331,7 @@ func TestNewServer_AllEndpointsAccessible(t *testing.T) {
 	deps.SetConfig(cfg)
 
 	router := NewServer(deps)
+	defer cleanupServerHub(t, deps)
 
 	// Test GET endpoints
 	getEndpoints := []string{
@@ -383,6 +389,7 @@ func TestNewServer_SecurityHeaders(t *testing.T) {
 	deps.SetConfig(cfg)
 
 	router := NewServer(deps)
+	defer cleanupServerHub(t, deps)
 
 	t.Run("CORS allows all origins", func(t *testing.T) {
 		req := httptest.NewRequest("GET", "/health", nil)
@@ -436,6 +443,7 @@ func TestNewServer_InvalidRoutes(t *testing.T) {
 	deps.SetConfig(cfg)
 
 	router := NewServer(deps)
+	defer cleanupServerHub(t, deps)
 
 	invalidRoutes := []string{
 		"/nonexistent",
