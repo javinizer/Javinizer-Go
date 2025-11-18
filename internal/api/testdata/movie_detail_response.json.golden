@@ -1,0 +1,40 @@
+{
+  "movie": {
+    "id": "IPX-123",
+    "content_id": "ipx00123",
+    "title": "Test Movie Title",
+    "title_romaji": "",
+    "title_ja": "",
+    "original_title": "",
+    "actresses": [
+      {
+        "first_name": "Test",
+        "last_name": "Actress",
+        "name_romaji": "",
+        "name_ja": "",
+        "birthdate": "0001-01-01T00:00:00Z",
+        "height_cm": 0,
+        "bust_cm": 0,
+        "waist_cm": 0,
+        "hip_cm": 0
+      }
+    ],
+    "genres": [
+      {
+        "name": "Drama"
+      }
+    ],
+    "director": "",
+    "maker": "",
+    "label": "",
+    "series": "",
+    "runtime_minutes": 120,
+    "release_date": "2023-01-15T00:00:00Z",
+    "description": "This is a test movie description.",
+    "cover_url": "https://example.com/cover.jpg",
+    "thumbnail_url": "https://example.com/thumb.jpg",
+    "trailer_url": "",
+    "screenshots": [],
+    "original_file_name": "IPX-123.mp4"
+  }
+}

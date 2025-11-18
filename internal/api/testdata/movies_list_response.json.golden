@@ -1,0 +1,17 @@
+{
+  "movies": [
+    {
+      "id": "IPX-123",
+      "title": "First Movie",
+      "release_date": "2023-01-15T00:00:00Z"
+    },
+    {
+      "id": "IPX-456",
+      "title": "Second Movie",
+      "release_date": "2023-02-20T00:00:00Z"
+    }
+  ],
+  "total": 2,
+  "page": 1,
+  "limit": 20
+}
