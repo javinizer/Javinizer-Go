@@ -502,6 +502,226 @@ func (d *Downloader) download(url, destPath string, mediaType MediaType) (*Downl
 	return result, nil
 }
 
+// DownloadWithRetry downloads a file with exponential backoff retry logic for transient errors
+// It retries on HTTP 503, 500, 429 and network errors, but fails immediately on 404, 403, 401, 400
+// Exponential backoff formula: delay = min(100ms * 2^(retryAttempt-1), 10s) where retryAttempt starts at 1
+// Context cancellation is respected during backoff delays and HTTP requests
+func (d *Downloader) DownloadWithRetry(ctx context.Context, url, destPath string, maxRetries int) error {
+	const (
+		initialDelay = 100 * time.Millisecond
+		maxDelay     = 10 * time.Second
+	)
+
+	// Treat negative maxRetries as 0 (only initial attempt, no retries)
+	if maxRetries < 0 {
+		maxRetries = 0
+	}
+
+	var lastErr error
+	totalAttempts := maxRetries + 1 // Initial attempt + retries
+
+	for attempt := 0; attempt < totalAttempts; attempt++ {
+		// Check context cancellation before each attempt
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		// Attempt download
+		err := d.downloadSimple(ctx, url, destPath)
+		if err == nil {
+			return nil // Success
+		}
+
+		lastErr = err
+
+		// Check if error is retryable
+		if !isRetryableError(err) {
+			// Non-retryable error (404, 403, 401, 400) - fail immediately
+			return fmt.Errorf("download failed after %d attempt(s): %s returned %w", attempt+1, url, err)
+		}
+
+		// If this was the last attempt, don't sleep - just return error
+		if attempt == totalAttempts-1 {
+			break
+		}
+
+		// Calculate exponential backoff delay: 100ms * 2^(retryAttempt-1)
+		// Attempt 0 = initial (no delay before it)
+		// Attempt 1 = first retry: 100ms * 2^0 = 100ms
+		// Attempt 2 = second retry: 100ms * 2^1 = 200ms
+		// Attempt 3 = third retry: 100ms * 2^2 = 400ms
+		retryAttempt := attempt + 1 // Convert to 1-indexed for formula
+		delay := initialDelay * time.Duration(1<<uint(retryAttempt-1))
+		if delay > maxDelay {
+			delay = maxDelay
+		}
+
+		// Sleep with context cancellation support
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+			// Continue to next retry
+		}
+	}
+
+	// All retries exhausted
+	return fmt.Errorf("download failed after %d attempt(s): %s returned %w", totalAttempts, url, lastErr)
+}
+
+// downloadSimple is a simplified download helper that returns just an error (not *DownloadResult)
+// This is used by DownloadWithRetry for cleaner retry logic
+func (d *Downloader) downloadSimple(ctx context.Context, url, destPath string) error {
+	// Validate URL scheme (only http/https allowed)
+	if err := validateURLScheme(url); err != nil {
+		return err
+	}
+
+	// Check if file already exists
+	if _, err := d.fs.Stat(destPath); err == nil {
+		return nil // File exists, skip download
+	}
+
+	// Create destination directory
+	destDir := filepath.Dir(destPath)
+	if err := d.fs.MkdirAll(destDir, 0777); err != nil {
+		return fmt.Errorf("failed to create directory: %w", err)
+	}
+
+	// Create HTTP request with context
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// Set user agent
+	if d.userAgent != "" {
+		req.Header.Set("User-Agent", d.userAgent)
+	}
+
+	// Execute request
+	resp, err := d.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to download: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Check status code and return status error
+	if resp.StatusCode != http.StatusOK {
+		return &statusError{statusCode: resp.StatusCode}
+	}
+
+	// Create temporary file
+	tempPath := destPath + ".tmp"
+	outFile, err := d.fs.Create(tempPath)
+	if err != nil {
+		return fmt.Errorf("failed to create file: %w", err)
+	}
+
+	// Download to temp file
+	_, err = io.Copy(outFile, resp.Body)
+	outFile.Close()
+
+	if err != nil {
+		d.fs.Remove(tempPath)
+		return fmt.Errorf("failed to write file: %w", err)
+	}
+
+	// Rename temp file to final destination
+	if err := d.fs.Rename(tempPath, destPath); err != nil {
+		d.fs.Remove(tempPath)
+		return fmt.Errorf("failed to rename file: %w", err)
+	}
+
+	return nil
+}
+
+// statusError represents an HTTP status code error
+type statusError struct {
+	statusCode int
+}
+
+func (e *statusError) Error() string {
+	return fmt.Sprintf("HTTP %d", e.statusCode)
+}
+
+// isRetryableError determines if an error is retryable (503, 500, 429, network errors)
+// Returns false for non-retryable errors (404, 403, 401, 400)
+func isRetryableError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	// Check if it's a statusError
+	var sErr *statusError
+	if statusErr, ok := err.(*statusError); ok {
+		sErr = statusErr
+	} else {
+		// Try to find statusError in wrapped errors
+		for e := err; e != nil; {
+			if se, ok := e.(*statusError); ok {
+				sErr = se
+				break
+			}
+			// Try to unwrap
+			if unwrapper, ok := e.(interface{ Unwrap() error }); ok {
+				e = unwrapper.Unwrap()
+			} else {
+				break
+			}
+		}
+	}
+
+	if sErr != nil {
+		switch sErr.statusCode {
+		case http.StatusServiceUnavailable, // 503
+			http.StatusInternalServerError, // 500
+			http.StatusTooManyRequests:     // 429
+			return true // Retryable
+		case http.StatusNotFound, // 404
+			http.StatusForbidden,    // 403
+			http.StatusUnauthorized, // 401
+			http.StatusBadRequest:   // 400
+			return false // Non-retryable
+		default:
+			// Other status codes: treat as non-retryable by default
+			return false
+		}
+	}
+
+	// Network errors (connection refused, DNS failures, etc.) are retryable
+	// Check for common network error strings
+	errStr := err.Error()
+	if strings.Contains(errStr, "connection refused") ||
+		strings.Contains(errStr, "connection reset") ||
+		strings.Contains(errStr, "no such host") ||
+		strings.Contains(errStr, "i/o timeout") {
+		return true
+	}
+
+	// Default: non-retryable
+	return false
+}
+
+// validateURLScheme checks if the URL uses http or https scheme
+func validateURLScheme(urlStr string) error {
+	parsedURL, err := http.NewRequest("GET", urlStr, nil)
+	if err != nil {
+		return fmt.Errorf("invalid URL: %w", err)
+	}
+
+	scheme := strings.ToLower(parsedURL.URL.Scheme)
+	if scheme != "http" && scheme != "https" {
+		return fmt.Errorf("unsupported URL scheme '%s': only http and https are allowed", scheme)
+	}
+
+	return nil
+}
+
 // GetImageExtension determines the image extension from a URL
 func GetImageExtension(url string) string {
 	url = strings.ToLower(url)
