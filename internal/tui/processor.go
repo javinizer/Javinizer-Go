@@ -17,12 +17,12 @@ import (
 
 // ProcessingCoordinator coordinates task execution for the TUI
 type ProcessingCoordinator struct {
-	pool                  *worker.Pool
-	progressTracker       *worker.ProgressTracker
+	pool                  PoolInterface
+	progressTracker       ProgressTrackerInterface
 	movieRepo             *database.MovieRepository
 	registry              *models.ScraperRegistry
 	aggregator            *aggregator.Aggregator
-	downloader            *downloader.Downloader
+	downloader            DownloaderInterface
 	organizer             *organizer.Organizer
 	nfoGenerator          *nfo.Generator
 	destPath              string
@@ -38,13 +38,20 @@ type ProcessingCoordinator struct {
 }
 
 // NewProcessingCoordinator creates a new processing coordinator
+//
+// IMPORTANT: This constructor requires concrete types that implement the interfaces:
+//   - pool must be *worker.Pool (type assertion in ProcessFiles)
+//   - progressTracker must be *worker.ProgressTracker (type assertion in ProcessFiles)
+//   - dl must be *downloader.Downloader (type assertion in ProcessFiles)
+//
+// Passing incorrect types will cause a runtime panic when ProcessFiles is called.
 func NewProcessingCoordinator(
-	pool *worker.Pool,
-	progressTracker *worker.ProgressTracker,
+	pool PoolInterface,
+	progressTracker ProgressTrackerInterface,
 	movieRepo *database.MovieRepository,
 	registry *models.ScraperRegistry,
 	agg *aggregator.Aggregator,
-	dl *downloader.Downloader,
+	dl DownloaderInterface,
 	org *organizer.Organizer,
 	nfoGen *nfo.Generator,
 	destPath string,
@@ -153,9 +160,30 @@ func (pc *ProcessingCoordinator) ProcessFiles(
 	files []FileItem,
 	matches map[string]matcher.MatchResult,
 ) error {
+	// Validate critical dependencies to prevent deep panics in worker package
+	if pc.pool == nil {
+		return fmt.Errorf("worker pool is nil")
+	}
+	if pc.registry == nil {
+		return fmt.Errorf("scraper registry is nil")
+	}
+	if pc.progressTracker == nil {
+		return fmt.Errorf("progress tracker is nil")
+	}
+	if pc.downloader == nil {
+		return fmt.Errorf("downloader is nil")
+	}
+
 	logging.Debugf("ProcessFiles called with %d files", len(files))
 
 	for _, file := range files {
+		// Check for context cancellation
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
 		logging.Debugf("Processing file: %s, IsDir: %v, Matched: %v", file.Path, file.IsDir, file.Matched)
 
 		// Skip directories
@@ -186,19 +214,21 @@ func (pc *ProcessingCoordinator) ProcessFiles(
 		}
 
 		// Submit a composite task that handles all operations sequentially
+		// Type assertions needed for pool.Submit and progressTracker to pass to worker.NewProcessFileTask
+		// (worker package expects concrete types)
 		processTask := worker.NewProcessFileTask(
 			match,
 			pc.registry,
 			pc.aggregator,
 			pc.movieRepo,
-			pc.downloader,
+			pc.downloader.(*downloader.Downloader),
 			pc.organizer,
 			pc.nfoGenerator,
 			pc.destPath,
 			pc.moveFiles,
 			pc.forceUpdate,
 			pc.forceRefresh,
-			pc.progressTracker,
+			pc.progressTracker.(*worker.ProgressTracker),
 			pc.dryRun,
 			pc.scrapeEnabled,
 			pc.downloadEnabled,

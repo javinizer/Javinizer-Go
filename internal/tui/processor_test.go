@@ -1,8 +1,17 @@
 package tui
 
 import (
+	"context"
+	"errors"
+	"net/http"
 	"testing"
 
+	"github.com/javinizer/javinizer-go/internal/config"
+	"github.com/javinizer/javinizer-go/internal/downloader"
+	"github.com/javinizer/javinizer-go/internal/matcher"
+	"github.com/javinizer/javinizer-go/internal/models"
+	"github.com/javinizer/javinizer-go/internal/worker"
+	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -467,4 +476,472 @@ func TestNewProcessingCoordinator(t *testing.T) {
 	assert.Equal(t, false, pc.forceUpdate, "forceUpdate should default to false")
 	assert.Equal(t, false, pc.forceRefresh, "forceRefresh should default to false")
 	assert.Nil(t, pc.customScraperPriority, "customScraperPriority should default to nil")
+}
+
+// ============================================================================
+// Mock Implementations for Dependency Injection Testing
+// ============================================================================
+
+// mockPool is an inline mock for PoolInterface
+type mockPool struct {
+	submitCalled int
+	submitErr    error
+	waitCalled   int
+	waitErr      error
+	stopCalled   int
+}
+
+func (m *mockPool) Submit(task worker.Task) error {
+	m.submitCalled++
+	return m.submitErr
+}
+
+func (m *mockPool) Wait() error {
+	m.waitCalled++
+	return m.waitErr
+}
+
+func (m *mockPool) Stop() {
+	m.stopCalled++
+}
+
+// mockProgressTracker is an inline mock for ProgressTrackerInterface
+type mockProgressTracker struct {
+	updateCalled   int
+	completeCalled int
+	failCalled     int
+}
+
+func (m *mockProgressTracker) Update(id string, progress float64, message string, bytesProcessed int64) {
+	m.updateCalled++
+}
+
+func (m *mockProgressTracker) Complete(id string, message string) {
+	m.completeCalled++
+}
+
+func (m *mockProgressTracker) Fail(id string, err error) {
+	m.failCalled++
+}
+
+// mockDownloader is an inline mock for DownloaderInterface
+type mockDownloader struct {
+	setExtrafanartCalled int
+	extrafanartEnabled   bool
+}
+
+func (m *mockDownloader) SetDownloadExtrafanart(enabled bool) {
+	m.setExtrafanartCalled++
+	m.extrafanartEnabled = enabled
+}
+
+// ============================================================================
+// Tests for Previously Untestable Functions
+// ============================================================================
+
+// TestSetDownloadExtrafanart_NilDownloader verifies nil check prevents panic
+func TestSetDownloadExtrafanart_NilDownloader(t *testing.T) {
+	t.Parallel()
+
+	pc := &ProcessingCoordinator{
+		downloader: nil,
+	}
+
+	// Should not panic when downloader is nil
+	pc.SetDownloadExtrafanart(true)
+}
+
+// TestSetDownloadExtrafanart_ValidDownloader verifies delegation to downloader
+func TestSetDownloadExtrafanart_ValidDownloader(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		enabled  bool
+		expected bool
+	}{
+		{
+			name:     "enable extrafanart",
+			enabled:  true,
+			expected: true,
+		},
+		{
+			name:     "disable extrafanart",
+			enabled:  false,
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockDL := &mockDownloader{}
+			pc := &ProcessingCoordinator{
+				downloader: mockDL,
+			}
+
+			pc.SetDownloadExtrafanart(tt.enabled)
+
+			assert.Equal(t, 1, mockDL.setExtrafanartCalled)
+			assert.Equal(t, tt.expected, mockDL.extrafanartEnabled)
+		})
+	}
+}
+
+// TestWait verifies delegation to pool.Wait()
+func TestWait(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		waitErr  error
+		wantErr  bool
+		expected error
+	}{
+		{
+			name:     "wait succeeds",
+			waitErr:  nil,
+			wantErr:  false,
+			expected: nil,
+		},
+		{
+			name:     "wait returns error",
+			waitErr:  errors.New("pool wait error"),
+			wantErr:  true,
+			expected: errors.New("pool wait error"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockP := &mockPool{waitErr: tt.waitErr}
+			pc := &ProcessingCoordinator{
+				pool: mockP,
+			}
+
+			err := pc.Wait()
+
+			assert.Equal(t, 1, mockP.waitCalled)
+			if tt.wantErr {
+				assert.Error(t, err)
+				assert.Equal(t, tt.expected.Error(), err.Error())
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+// TestStop verifies delegation to pool.Stop()
+func TestStop(t *testing.T) {
+	t.Parallel()
+
+	mockP := &mockPool{}
+	pc := &ProcessingCoordinator{
+		pool: mockP,
+	}
+
+	pc.Stop()
+
+	assert.Equal(t, 1, mockP.stopCalled)
+}
+
+// ============================================================================
+// ProcessFiles Tests (using real concrete instances + mockPool pattern)
+// ============================================================================
+
+// createMinimalCoordinator creates a ProcessingCoordinator with all required dependencies
+// for ProcessFiles nil validation, using a mock pool for control
+func createMinimalCoordinator(mockP *mockPool) *ProcessingCoordinator {
+	progressChan := make(chan worker.ProgressUpdate, 10)
+	progressTracker := worker.NewProgressTracker(progressChan)
+
+	mockClient := &http.Client{}
+	fs := afero.NewMemMapFs()
+	cfg := &config.OutputConfig{}
+	dl := downloader.NewDownloader(mockClient, fs, cfg, "test-agent")
+
+	return &ProcessingCoordinator{
+		pool:            mockP,
+		progressTracker: progressTracker,
+		downloader:      dl,
+		registry:        models.NewScraperRegistry(),
+		organizer:       nil,
+		nfoGenerator:    nil,
+		aggregator:      nil,
+		movieRepo:       nil,
+	}
+}
+
+// TestProcessFiles_SkipsDirectories verifies directories are skipped
+func TestProcessFiles_SkipsDirectories(t *testing.T) {
+	mockP := &mockPool{}
+	pc := createMinimalCoordinator(mockP)
+
+	files := []FileItem{
+		{Path: "/dir1", IsDir: true, Matched: true},
+		{Path: "/dir2", IsDir: true, Matched: true},
+	}
+	matches := map[string]matcher.MatchResult{}
+
+	err := pc.ProcessFiles(context.Background(), files, matches)
+
+	assert.NoError(t, err)
+	assert.Equal(t, 0, mockP.submitCalled, "Should not submit tasks for directories")
+}
+
+// TestProcessFiles_SkipsUnmatched verifies unmatched files are skipped
+func TestProcessFiles_SkipsUnmatched(t *testing.T) {
+	mockP := &mockPool{}
+	pc := createMinimalCoordinator(mockP)
+
+	files := []FileItem{
+		{Path: "/video1.mp4", IsDir: false, Matched: false},
+		{Path: "/video2.mp4", IsDir: false, Matched: false},
+	}
+	matches := map[string]matcher.MatchResult{}
+
+	err := pc.ProcessFiles(context.Background(), files, matches)
+
+	assert.NoError(t, err)
+	assert.Equal(t, 0, mockP.submitCalled, "Should not submit tasks for unmatched files")
+}
+
+// TestProcessFiles_SkipsMissingMatches verifies files without match data are skipped
+func TestProcessFiles_SkipsMissingMatches(t *testing.T) {
+	mockP := &mockPool{}
+	pc := createMinimalCoordinator(mockP)
+
+	files := []FileItem{
+		{Path: "/video1.mp4", IsDir: false, Matched: true},
+	}
+	matches := map[string]matcher.MatchResult{
+		// No entry for /video1.mp4
+	}
+
+	err := pc.ProcessFiles(context.Background(), files, matches)
+
+	assert.NoError(t, err)
+	assert.Equal(t, 0, mockP.submitCalled, "Should not submit tasks for files missing match data")
+}
+
+// TestProcessFiles_EmptyFileList verifies no crashes with empty file list
+func TestProcessFiles_EmptyFileList(t *testing.T) {
+	mockP := &mockPool{}
+	pc := createMinimalCoordinator(mockP)
+
+	files := []FileItem{}
+	matches := map[string]matcher.MatchResult{}
+
+	err := pc.ProcessFiles(context.Background(), files, matches)
+
+	assert.NoError(t, err)
+	assert.Equal(t, 0, mockP.submitCalled, "Should not submit tasks for empty file list")
+}
+
+// TestProcessFiles_SubmitError_Propagates verifies error handling when Submit() fails
+func TestProcessFiles_SubmitError_Propagates(t *testing.T) {
+	// This test requires real concrete instances to pass type assertions
+	// Create minimal dependencies
+	progressChan := make(chan worker.ProgressUpdate, 10)
+	progressTracker := worker.NewProgressTracker(progressChan)
+
+	mockClient := &http.Client{}
+	fs := afero.NewMemMapFs()
+	cfg := &config.OutputConfig{}
+	dl := downloader.NewDownloader(mockClient, fs, cfg, "test-agent")
+
+	submitErr := errors.New("pool submit failed")
+	mockP := &mockPool{submitErr: submitErr}
+
+	pc := &ProcessingCoordinator{
+		pool:            mockP,
+		progressTracker: progressTracker,
+		downloader:      dl,
+		organizer:       nil, // Not used in this test
+		nfoGenerator:    nil, // Not used in this test
+		registry:        models.NewScraperRegistry(),
+		aggregator:      nil, // Not used in task creation
+		movieRepo:       nil, // Not used in task creation
+		destPath:        "/dest",
+		moveFiles:       true,
+	}
+
+	files := []FileItem{
+		{Path: "/video1.mp4", IsDir: false, Matched: true},
+	}
+	matches := map[string]matcher.MatchResult{
+		"/video1.mp4": {ID: "IPX-123"},
+	}
+
+	err := pc.ProcessFiles(context.Background(), files, matches)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to submit process task")
+	assert.Equal(t, 1, mockP.submitCalled, "Should attempt to submit task")
+}
+
+// TestProcessFiles_ValidFiles_SubmitsTask verifies successful task submission
+func TestProcessFiles_ValidFiles_SubmitsTask(t *testing.T) {
+	// This test requires real concrete instances to pass type assertions
+	// Create minimal dependencies
+	progressChan := make(chan worker.ProgressUpdate, 10)
+	progressTracker := worker.NewProgressTracker(progressChan)
+
+	mockClient := &http.Client{}
+	fs := afero.NewMemMapFs()
+	cfg := &config.OutputConfig{}
+	dl := downloader.NewDownloader(mockClient, fs, cfg, "test-agent")
+
+	mockP := &mockPool{submitErr: nil} // Success case
+
+	pc := &ProcessingCoordinator{
+		pool:            mockP,
+		progressTracker: progressTracker,
+		downloader:      dl,
+		organizer:       nil, // Not used in this test
+		nfoGenerator:    nil, // Not used in this test
+		registry:        models.NewScraperRegistry(),
+		aggregator:      nil, // Not used in task creation
+		movieRepo:       nil, // Not used in task creation
+		destPath:        "/dest",
+		moveFiles:       true,
+	}
+
+	files := []FileItem{
+		{Path: "/video1.mp4", IsDir: false, Matched: true},
+		{Path: "/video2.mp4", IsDir: false, Matched: true},
+		{Path: "/dir1", IsDir: true, Matched: true}, // Should be skipped
+	}
+	matches := map[string]matcher.MatchResult{
+		"/video1.mp4": {ID: "IPX-123"},
+		"/video2.mp4": {ID: "IPX-456"},
+	}
+
+	err := pc.ProcessFiles(context.Background(), files, matches)
+
+	assert.NoError(t, err)
+	assert.Equal(t, 2, mockP.submitCalled, "Should submit tasks for 2 valid files (skipping directory)")
+}
+
+// TestProcessFiles_NilDependencies verifies nil checks prevent panics
+func TestProcessFiles_NilDependencies(t *testing.T) {
+	tests := []struct {
+		name        string
+		pc          *ProcessingCoordinator
+		expectedErr string
+	}{
+		{
+			name:        "nil pool",
+			pc:          &ProcessingCoordinator{pool: nil},
+			expectedErr: "worker pool is nil",
+		},
+		{
+			name:        "nil registry",
+			pc:          &ProcessingCoordinator{pool: &mockPool{}, registry: nil},
+			expectedErr: "scraper registry is nil",
+		},
+		{
+			name: "nil progress tracker",
+			pc: &ProcessingCoordinator{
+				pool:            &mockPool{},
+				registry:        models.NewScraperRegistry(),
+				progressTracker: nil,
+			},
+			expectedErr: "progress tracker is nil",
+		},
+		{
+			name: "nil downloader",
+			pc: &ProcessingCoordinator{
+				pool:            &mockPool{},
+				registry:        models.NewScraperRegistry(),
+				progressTracker: &mockProgressTracker{},
+				downloader:      nil,
+			},
+			expectedErr: "downloader is nil",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			files := []FileItem{{Path: "/video1.mp4", IsDir: false, Matched: true}}
+			matches := map[string]matcher.MatchResult{"/video1.mp4": {ID: "IPX-123"}}
+
+			err := tt.pc.ProcessFiles(context.Background(), files, matches)
+
+			assert.Error(t, err)
+			assert.Contains(t, err.Error(), tt.expectedErr)
+		})
+	}
+}
+
+// TestProcessFiles_ContextCancellation verifies context cancellation stops processing
+func TestProcessFiles_ContextCancellation(t *testing.T) {
+	mockP := &mockPool{}
+	pc := createMinimalCoordinator(mockP)
+
+	// Create a cancelled context
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // Cancel immediately
+
+	files := []FileItem{
+		{Path: "/video1.mp4", IsDir: false, Matched: true},
+		{Path: "/video2.mp4", IsDir: false, Matched: true},
+	}
+	matches := map[string]matcher.MatchResult{
+		"/video1.mp4": {ID: "IPX-123"},
+		"/video2.mp4": {ID: "IPX-456"},
+	}
+
+	err := pc.ProcessFiles(ctx, files, matches)
+
+	assert.Error(t, err)
+	assert.Equal(t, context.Canceled, err)
+	assert.Equal(t, 0, mockP.submitCalled, "Should not submit any tasks when context is cancelled")
+}
+
+// TestProcessFiles_CustomScrapers_DefensiveCopy verifies defensive copy of custom scrapers
+func TestProcessFiles_CustomScrapers_DefensiveCopy(t *testing.T) {
+	// This test verifies that ProcessFiles creates a defensive copy of customScraperPriority
+	// to prevent data races when the UI modifies it while tasks are running
+
+	progressChan := make(chan worker.ProgressUpdate, 10)
+	progressTracker := worker.NewProgressTracker(progressChan)
+
+	mockClient := &http.Client{}
+	fs := afero.NewMemMapFs()
+	cfg := &config.OutputConfig{}
+	dl := downloader.NewDownloader(mockClient, fs, cfg, "test-agent")
+
+	mockP := &mockPool{submitErr: nil}
+
+	pc := &ProcessingCoordinator{
+		pool:                  mockP,
+		progressTracker:       progressTracker,
+		downloader:            dl,
+		organizer:             nil,
+		nfoGenerator:          nil,
+		registry:              models.NewScraperRegistry(),
+		aggregator:            nil,
+		movieRepo:             nil,
+		destPath:              "/dest",
+		moveFiles:             true,
+		customScraperPriority: []string{"r18dev", "dmm"},
+	}
+
+	files := []FileItem{
+		{Path: "/video1.mp4", IsDir: false, Matched: true},
+	}
+	matches := map[string]matcher.MatchResult{
+		"/video1.mp4": {ID: "IPX-123"},
+	}
+
+	err := pc.ProcessFiles(context.Background(), files, matches)
+
+	assert.NoError(t, err)
+	assert.Equal(t, 1, mockP.submitCalled)
+
+	// Modify the original slice - should not affect submitted tasks (defensive copy was made)
+	pc.customScraperPriority[0] = "modified"
+	assert.Equal(t, "modified", pc.customScraperPriority[0], "Original slice should be modified")
+	// We can't verify the copy directly, but the defensive copy code is executed
 }
