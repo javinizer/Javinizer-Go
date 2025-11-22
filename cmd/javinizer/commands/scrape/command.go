@@ -119,24 +119,44 @@ func ApplyFlagOverrides(cmd *cobra.Command, cfg *config.Config) {
 	}
 }
 
-func runScrape(cmd *cobra.Command, args []string, configFile string) error {
+// Run executes the scrape command business logic and returns the scraped movie and results.
+// Exported for testing purposes - allows testing business logic without console output.
+// Following Epic 7 pattern from Story 7.1 (API command refactoring).
+//
+// Parameters:
+//   - cmd: Cobra command for flag access
+//   - args: Command arguments (JAV ID at args[0])
+//   - configFile: Path to configuration file
+//   - deps: Optional injected dependencies (for testing, pass nil for production use)
+//
+// Returns:
+//   - *models.Movie: Scraped and aggregated movie metadata
+//   - []*models.ScraperResult: Raw results from each scraper source
+//   - error: Any error encountered during scraping process
+func Run(cmd *cobra.Command, args []string, configFile string, deps *commandutil.Dependencies) (*models.Movie, []*models.ScraperResult, error) {
 	id := args[0]
 
 	// Load configuration
 	cfg, err := config.LoadOrCreate(configFile)
 	if err != nil {
-		return fmt.Errorf("failed to load config: %w", err)
+		return nil, nil, fmt.Errorf("failed to load config: %w", err)
 	}
 
 	// Apply CLI flag overrides to config
 	ApplyFlagOverrides(cmd, cfg)
 
-	// Initialize dependencies
-	deps, err := commandutil.NewDependencies(cfg)
-	if err != nil {
-		return fmt.Errorf("failed to initialize dependencies: %w", err)
+	// Initialize or use injected dependencies
+	var ownDeps bool
+	if deps == nil {
+		deps, err = commandutil.NewDependencies(cfg)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to initialize dependencies: %w", err)
+		}
+		ownDeps = true
 	}
-	defer deps.Close()
+	if ownDeps {
+		defer deps.Close()
+	}
 
 	// Get force flag and scrapers override
 	forceRefresh, _ := cmd.Flags().GetBool("force")
@@ -174,8 +194,7 @@ func runScrape(cmd *cobra.Command, args []string, configFile string) error {
 	if !usingCustomScrapers && !forceRefresh {
 		if movie, err := movieRepo.FindByID(id); err == nil {
 			logging.Info("✅ Found in cache!")
-			printMovie(movie, nil)
-			return nil
+			return movie, nil, nil
 		}
 	}
 
@@ -228,7 +247,7 @@ func runScrape(cmd *cobra.Command, args []string, configFile string) error {
 
 	if len(results) == 0 {
 		logging.Error("❌ No results found from any scraper")
-		return fmt.Errorf("no results found from any scraper")
+		return nil, nil, fmt.Errorf("no results found from any scraper")
 	}
 
 	logging.Infof("✅ Found %d source(s)", len(results))
@@ -236,7 +255,7 @@ func runScrape(cmd *cobra.Command, args []string, configFile string) error {
 	// Aggregate results
 	movie, err := agg.Aggregate(results)
 	if err != nil {
-		return fmt.Errorf("failed to aggregate: %w", err)
+		return nil, nil, fmt.Errorf("failed to aggregate: %w", err)
 	}
 
 	movie.OriginalFileName = id
@@ -246,6 +265,17 @@ func runScrape(cmd *cobra.Command, args []string, configFile string) error {
 		logging.Warnf("Failed to save to database: %v", err)
 	} else {
 		fmt.Println("💾 Saved to database")
+	}
+
+	return movie, results, nil
+}
+
+// runScrape is the private Cobra handler that calls Run() and handles console output.
+// This isolates the testable business logic (Run) from the non-testable console formatting.
+func runScrape(cmd *cobra.Command, args []string, configFile string) error {
+	movie, results, err := Run(cmd, args, configFile, nil)
+	if err != nil {
+		return err
 	}
 
 	printMovie(movie, results)

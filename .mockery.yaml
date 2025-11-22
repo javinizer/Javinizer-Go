@@ -33,3 +33,11 @@ packages:
       filename: "{{.InterfaceName}}.go"
     interfaces:
       Scraper:
+
+  # Aggregator interface from internal/aggregator
+  github.com/javinizer/javinizer-go/internal/aggregator:
+    config:
+      dir: "internal/mocks"
+      filename: "{{.InterfaceName}}.go"
+    interfaces:
+      AggregatorInterface:

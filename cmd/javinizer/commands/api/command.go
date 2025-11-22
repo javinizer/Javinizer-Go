@@ -60,11 +60,14 @@ func NewCommand() *cobra.Command {
 	return cmd
 }
 
-func run(cmd *cobra.Command, configFile string, hostFlag string, portFlag int) error {
+// Run executes the API command initialization without starting the server.
+// Exported for testing purposes (Epic 7 Story 7.1).
+// Returns initialized ServerDependencies for the API server.
+func Run(cmd *cobra.Command, configFile string, hostFlag string, portFlag int) (*api.ServerDependencies, error) {
 	// Load configuration
 	cfg, err := config.LoadOrCreate(configFile)
 	if err != nil {
-		log.Fatalf("Failed to load config: %v", err)
+		return nil, fmt.Errorf("failed to load config: %w", err)
 	}
 
 	// Override config with flags if provided
@@ -80,7 +83,7 @@ func run(cmd *cobra.Command, configFile string, hostFlag string, portFlag int) e
 	// Ensure data directory exists
 	dataDir := filepath.Dir(cfg.Database.DSN)
 	if err := os.MkdirAll(dataDir, 0777); err != nil {
-		log.Fatalf("Failed to create data directory: %v", err)
+		return nil, fmt.Errorf("failed to create data directory: %w", err)
 	}
 
 	// Cleanup temp posters from previous sessions
@@ -96,13 +99,13 @@ func run(cmd *cobra.Command, configFile string, hostFlag string, portFlag int) e
 	// Initialize database
 	db, err := database.New(cfg)
 	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
+		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}
-	defer db.Close()
 
 	// Run migrations
 	if err := db.AutoMigrate(); err != nil {
-		log.Fatalf("Failed to run migrations: %v", err)
+		db.Close()
+		return nil, fmt.Errorf("failed to run migrations: %w", err)
 	}
 
 	logging.Info("Database initialized and migrated")
@@ -125,7 +128,8 @@ func run(cmd *cobra.Command, configFile string, hostFlag string, portFlag int) e
 	// Initialize matcher
 	mat, err := matcher.NewMatcher(&cfg.Matching)
 	if err != nil {
-		log.Fatalf("Failed to initialize matcher: %v", err)
+		db.Close()
+		return nil, fmt.Errorf("failed to initialize matcher: %w", err)
 	}
 
 	// Initialize job queue
@@ -145,13 +149,24 @@ func run(cmd *cobra.Command, configFile string, hostFlag string, portFlag int) e
 	// Initialize atomic config pointer
 	apiDeps.SetConfig(cfg)
 
+	return apiDeps, nil
+}
+
+func run(cmd *cobra.Command, configFile string, hostFlag string, portFlag int) error {
+	// Initialize all dependencies using exported Run function
+	apiDeps, err := Run(cmd, configFile, hostFlag, portFlag)
+	if err != nil {
+		log.Fatalf("Failed to initialize API dependencies: %v", err)
+	}
+	defer apiDeps.DB.Close()
+
 	// Create and configure the server
 	router := api.NewServer(apiDeps)
 
 	// Log server info
 	api.LogServerInfo(apiDeps.GetConfig())
 
-	// Start server
+	// Start server (blocking operation)
 	currentCfg := apiDeps.GetConfig()
 	addr := fmt.Sprintf("%s:%d", currentCfg.Server.Host, currentCfg.Server.Port)
 	if err := router.Run(addr); err != nil {
