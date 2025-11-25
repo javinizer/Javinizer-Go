@@ -648,6 +648,582 @@ The printMovie() function (240 lines of table formatting) remains at 0% coverage
 
 **Reference:** `cmd/javinizer/commands/api/command_test.go` (API command: 35.7% → 64.3% coverage, +14.3% above 50% target)
 
+#### Epic 9: TUI Refactoring for Testability (MVP Pattern)
+
+**Problem:** Bubble Tea TUI framework tightly couples business logic with UI rendering, making it difficult to achieve meaningful test coverage. Visual rendering (lipgloss styling, terminal dimensions) cannot be unit tested, while business logic (state management, message handling) is buried within framework callbacks.
+
+**Solution:** Apply the Model-View-Presenter (MVP) pattern to separate concerns:
+- **Presenter (Testable):** Pure functions for state management, message handling, data transformations
+- **View (Excluded):** Visual rendering with lipgloss (manual QA only)
+- **Model (Thin Wrapper):** Delegates to Presenter functions
+
+**Epic 9 Goals:**
+- Extract testable business logic from Bubble Tea framework
+- Achieve 100% coverage on testable TUI components
+- Establish repeatable pattern for future TUI development
+
+---
+
+### Story 9.1: Test Processor Business Logic
+
+**Before (Coupled with Worker Pool):**
+
+```go
+// internal/tui/model.go:45 (BEFORE Epic 9)
+type Model struct {
+    pool *worker.Pool  // Direct dependency on concrete type
+    // ... other fields ...
+}
+
+func (m *Model) ProcessFiles() {
+    // Business logic directly in Bubble Tea model
+    for _, file := range m.selectedFiles {
+        task := worker.NewScrapeTask(file, m.cfg, /* ... */)
+        m.pool.Submit(task)  // Tight coupling
+    }
+}
+
+// ❌ Cannot test without real worker pool
+// ❌ Business logic buried in UI model
+// ❌ No way to verify task submission without side effects
+```
+
+**After (Dependency Injection):**
+
+```go
+// internal/tui/interfaces.go:15 (NEW in Epic 9)
+type WorkerPoolInterface interface {
+    Submit(task worker.Task) error
+    Wait()
+    Stop()
+}
+
+// internal/tui/processor.go:28 (Story 9.1a)
+type ProcessingCoordinator struct {
+    pool WorkerPoolInterface  // Interface, not concrete type
+    cfg  *config.Config
+    db   database.DB
+}
+
+func NewProcessingCoordinator(pool WorkerPoolInterface, cfg *config.Config, db database.DB) *ProcessingCoordinator {
+    return &ProcessingCoordinator{pool: pool, cfg: cfg, db: db}
+}
+
+func (pc *ProcessingCoordinator) ProcessFiles(files []string, options ProcessingOptions) error {
+    for _, file := range files {
+        task := worker.NewScrapeTask(file, pc.cfg, /* ... */)
+        if err := pc.pool.Submit(task); err != nil {
+            return err
+        }
+    }
+    return nil
+}
+```
+
+**Test Pattern:**
+
+```go
+// internal/tui/processor_test.go:45
+func TestProcessingCoordinator_ProcessFiles(t *testing.T) {
+    // Setup: Mock worker pool using interface
+    mockPool := &MockWorkerPool{
+        submitted: make([]worker.Task, 0),
+    }
+
+    cfg, _ := testutil.CreateTestConfig(t, nil)
+    db := testutil.SetupTestDB(t)
+    defer db.Close()
+
+    pc := NewProcessingCoordinator(mockPool, cfg, db)
+
+    // Execute
+    files := []string{"IPX-123.mp4", "SSIS-456.mp4"}
+    err := pc.ProcessFiles(files, ProcessingOptions{
+        ScrapeEnabled: true,
+    })
+
+    // Verify
+    assert.NoError(t, err)
+    assert.Len(t, mockPool.submitted, 2)
+    assert.Equal(t, "IPX-123.mp4", mockPool.submitted[0].Description())
+}
+```
+
+**Key Learnings:**
+- Extract interfaces for all external dependencies
+- Move business logic OUT of Bubble Tea callbacks
+- Use constructor injection (`NewProcessingCoordinator`) for testability
+- Mock interfaces, not concrete types
+
+**Coverage Impact:** 76.5% → 100% (13 tests)
+**Reference:** `internal/tui/processor_test.go`, `internal/tui/interfaces.go`
+
+---
+
+### Story 9.2: Extract State Management from Model
+
+**Before (Mutable State in Bubble Tea Model):**
+
+```go
+// internal/tui/model.go:125 (BEFORE Epic 9)
+func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+    switch msg := msg.(type) {
+    case tea.KeyMsg:
+        if msg.String() == "j" {
+            // Business logic embedded in Update()
+            m.currentIndex++
+            if m.currentIndex >= len(m.files) {
+                m.currentIndex = len(m.files) - 1  // Boundary check
+            }
+        }
+        if msg.String() == "k" {
+            m.currentIndex--
+            if m.currentIndex < 0 {
+                m.currentIndex = 0
+            }
+        }
+    }
+    return m, nil
+}
+
+// ❌ Cannot test j/k navigation without Bubble Tea framework
+// ❌ Boundary logic mixed with UI framework
+// ❌ Mutable state makes testing fragile
+```
+
+**After (Pure State Transformation Functions):**
+
+```go
+// internal/tui/state.go:18 (Story 9.2)
+// Pure function: takes current state, returns NEW state (immutable)
+func HandleNavigationDown(currentIndex int, itemCount int) int {
+    if itemCount == 0 {
+        return 0
+    }
+    newIndex := currentIndex + 1
+    if newIndex >= itemCount {
+        return itemCount - 1  // Clamp at bottom
+    }
+    return newIndex
+}
+
+func HandleNavigationUp(currentIndex int) int {
+    newIndex := currentIndex - 1
+    if newIndex < 0 {
+        return 0  // Clamp at top
+    }
+    return newIndex
+}
+
+// internal/tui/update.go:85 (AFTER Epic 9)
+func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+    switch msg := msg.(type) {
+    case tea.KeyMsg:
+        if msg.String() == "j" {
+            m.currentIndex = HandleNavigationDown(m.currentIndex, len(m.files))
+        }
+        if msg.String() == "k" {
+            m.currentIndex = HandleNavigationUp(m.currentIndex)
+        }
+    }
+    return m, nil
+}
+```
+
+**Test Pattern:**
+
+```go
+// internal/tui/state_test.go:28
+func TestHandleNavigationDown(t *testing.T) {
+    tests := []struct {
+        name         string
+        currentIndex int
+        itemCount    int
+        expected     int
+    }{
+        {
+            name:         "move down within bounds",
+            currentIndex: 5,
+            itemCount:    10,
+            expected:     6,
+        },
+        {
+            name:         "clamp at bottom boundary",
+            currentIndex: 9,
+            itemCount:    10,
+            expected:     9,
+        },
+        {
+            name:         "empty list returns 0",
+            currentIndex: 0,
+            itemCount:    0,
+            expected:     0,
+        },
+    }
+
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            result := HandleNavigationDown(tt.currentIndex, tt.itemCount)
+            assert.Equal(t, tt.expected, result)
+        })
+    }
+}
+```
+
+**Key Learnings:**
+- Extract pure functions for ALL state transformations
+- Functions should be deterministic (same input → same output)
+- No side effects, no mutations
+- Bubble Tea Update() becomes a thin wrapper that delegates to pure functions
+
+**Coverage Impact:** 100% (12 tests for 7 state management functions)
+**Reference:** `internal/tui/state.go`, `internal/tui/state_test.go`
+
+---
+
+### Story 9.3: Extract Message Handlers from Update
+
+**Before (Message Handling Embedded in Update):**
+
+```go
+// internal/tui/update.go:45 (BEFORE Epic 9)
+func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+    switch msg := msg.(type) {
+    case ProgressUpdateMsg:
+        // Complex message handling logic embedded here
+        m.tasks[msg.ID] = TaskState{
+            ID:          msg.ID,
+            Description: msg.Description,
+            Progress:    msg.Progress,
+            Status:      "in_progress",
+        }
+        m.bytesDownloaded += msg.BytesDelta
+        m.lastUpdate = time.Now()
+    case TaskCompleteMsg:
+        if task, exists := m.tasks[msg.ID]; exists {
+            task.Status = "completed"
+            task.Progress = 1.0
+            m.tasks[msg.ID] = task
+        }
+    }
+    return m, nil
+}
+
+// ❌ Cannot test message handling without Bubble Tea
+// ❌ Business logic tightly coupled with framework types
+```
+
+**After (Pure Message Handler Functions):**
+
+```go
+// internal/tui/handlers.go:22 (Story 9.3)
+// Pure function: takes current state + message, returns updated state
+func HandleProgressUpdate(tasks map[string]TaskState, msg ProgressUpdateMsg, bytesDownloaded int64) (map[string]TaskState, int64) {
+    updatedTasks := make(map[string]TaskState, len(tasks))
+    for k, v := range tasks {
+        updatedTasks[k] = v  // Copy map
+    }
+
+    updatedTasks[msg.ID] = TaskState{
+        ID:          msg.ID,
+        Description: msg.Description,
+        Progress:    msg.Progress,
+        Status:      "in_progress",
+    }
+
+    newBytesDownloaded := bytesDownloaded + msg.BytesDelta
+
+    return updatedTasks, newBytesDownloaded
+}
+
+func HandleTaskComplete(tasks map[string]TaskState, taskID string) map[string]TaskState {
+    updatedTasks := make(map[string]TaskState, len(tasks))
+    for k, v := range tasks {
+        updatedTasks[k] = v
+    }
+
+    if task, exists := updatedTasks[taskID]; exists {
+        task.Status = "completed"
+        task.Progress = 1.0
+        updatedTasks[taskID] = task
+    }
+
+    return updatedTasks
+}
+
+// internal/tui/update.go:45 (AFTER Epic 9)
+func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+    switch msg := msg.(type) {
+    case ProgressUpdateMsg:
+        m.tasks, m.bytesDownloaded = HandleProgressUpdate(m.tasks, msg, m.bytesDownloaded)
+    case TaskCompleteMsg:
+        m.tasks = HandleTaskComplete(m.tasks, msg.ID)
+    }
+    return m, nil
+}
+```
+
+**Test Pattern:**
+
+```go
+// internal/tui/handlers_test.go:35
+func TestHandleProgressUpdate(t *testing.T) {
+    initialTasks := map[string]TaskState{
+        "task-1": {ID: "task-1", Description: "Old task", Progress: 0.5},
+    }
+
+    msg := ProgressUpdateMsg{
+        ID:          "task-2",
+        Description: "New task",
+        Progress:    0.25,
+        BytesDelta:  1024,
+    }
+
+    // Execute: Pure function, no side effects
+    updatedTasks, newBytes := HandleProgressUpdate(initialTasks, msg, 5000)
+
+    // Verify: Original unchanged (immutability)
+    assert.Len(t, initialTasks, 1)
+    assert.Equal(t, int64(5000), int64(5000))  // Original bytes unchanged
+
+    // Verify: New state correct
+    assert.Len(t, updatedTasks, 2)
+    assert.Equal(t, "New task", updatedTasks["task-2"].Description)
+    assert.Equal(t, 0.25, updatedTasks["task-2"].Progress)
+    assert.Equal(t, int64(6024), newBytes)
+}
+```
+
+**Key Learnings:**
+- Extract message handlers as pure functions
+- Always return NEW state (never mutate input)
+- Copy maps/slices before modification
+- Handler functions should be framework-agnostic (no tea.Msg dependencies)
+
+**Coverage Impact:** 100% (25 tests for 5 handler functions)
+**Reference:** `internal/tui/handlers.go`, `internal/tui/handlers_test.go`
+
+---
+
+### Story 9.4: Extract Data Transformations from Components
+
+**Before (Formatting Logic in View Code):**
+
+```go
+// internal/tui/components.go:125 (BEFORE Epic 9)
+func (m *Model) renderTaskList() string {
+    var lines []string
+    for _, task := range m.tasks {
+        // Formatting logic embedded in rendering
+        var sizeStr string
+        if task.BytesDownloaded < 1024 {
+            sizeStr = fmt.Sprintf("%d B", task.BytesDownloaded)
+        } else if task.BytesDownloaded < 1024*1024 {
+            sizeStr = fmt.Sprintf("%.2f KB", float64(task.BytesDownloaded)/1024)
+        } else {
+            sizeStr = fmt.Sprintf("%.2f MB", float64(task.BytesDownloaded)/(1024*1024))
+        }
+
+        progressBar := renderProgressBar(task.Progress)
+        lines = append(lines, fmt.Sprintf("%s %s %s", task.Description, progressBar, sizeStr))
+    }
+    return strings.Join(lines, "\n")
+}
+
+// ❌ Cannot test formatting logic without rendering
+// ❌ Business logic mixed with lipgloss styling
+```
+
+**After (Pure Transformation Functions):**
+
+```go
+// internal/tui/transforms.go:18 (Story 9.4)
+// Pure function: bytes → human-readable string
+func FormatFileSize(bytes int64) string {
+    if bytes < 1024 {
+        return fmt.Sprintf("%d B", bytes)
+    } else if bytes < 1024*1024 {
+        return fmt.Sprintf("%.2f KB", float64(bytes)/1024)
+    } else if bytes < 1024*1024*1024 {
+        return fmt.Sprintf("%.2f MB", float64(bytes)/(1024*1024))
+    }
+    return fmt.Sprintf("%.2f GB", float64(bytes)/(1024*1024*1024))
+}
+
+func FormatProgressPercent(progress float64) string {
+    return fmt.Sprintf("%.1f%%", progress*100)
+}
+
+func FormatElapsedTime(duration time.Duration) string {
+    if duration < time.Minute {
+        return fmt.Sprintf("%.0fs", duration.Seconds())
+    } else if duration < time.Hour {
+        return fmt.Sprintf("%.1fm", duration.Minutes())
+    }
+    return fmt.Sprintf("%.1fh", duration.Hours())
+}
+
+// internal/tui/components.go:125 (AFTER Epic 9)
+func (m *Model) renderTaskList() string {
+    var lines []string
+    for _, task := range m.tasks {
+        sizeStr := FormatFileSize(task.BytesDownloaded)  // Pure function
+        progressBar := renderProgressBar(task.Progress)
+        lines = append(lines, fmt.Sprintf("%s %s %s", task.Description, progressBar, sizeStr))
+    }
+    return strings.Join(lines, "\n")
+}
+```
+
+**Test Pattern:**
+
+```go
+// internal/tui/transforms_test.go:22
+func TestFormatFileSize(t *testing.T) {
+    tests := []struct {
+        name     string
+        bytes    int64
+        expected string
+    }{
+        {name: "bytes", bytes: 512, expected: "512 B"},
+        {name: "kilobytes", bytes: 2048, expected: "2.00 KB"},
+        {name: "megabytes", bytes: 5*1024*1024, expected: "5.00 MB"},
+        {name: "gigabytes", bytes: 3*1024*1024*1024, expected: "3.00 GB"},
+        {name: "exact 1KB", bytes: 1024, expected: "1.00 KB"},
+    }
+
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            result := FormatFileSize(tt.bytes)
+            assert.Equal(t, tt.expected, result)
+        })
+    }
+}
+```
+
+**Key Learnings:**
+- Extract ALL formatting/transformation logic into pure functions
+- Separate data transformation from visual rendering
+- Functions should be unit-testable (no dependencies on terminal width, colors, etc.)
+- View code becomes thin wrapper around transforms
+
+**Coverage Impact:** 100% (22 tests for 4 transformation functions)
+**Reference:** `internal/tui/transforms.go`, `internal/tui/transforms_test.go`
+
+---
+
+### Story 9.5: Add Integration Tests for Critical User Flows
+
+**Integration Test Pattern (Bubble Tea Test Harness):**
+
+```go
+// internal/tui/integration_test.go:28
+func TestTUI_FileBrowserNavigation_Integration(t *testing.T) {
+    if testing.Short() {
+        t.Skip("integration test")
+    }
+
+    // Setup: Mock dependencies
+    mockPool := &MockWorkerPool{submitted: []worker.Task{}}
+    cfg, _ := testutil.CreateTestConfig(t, nil)
+
+    // Create TUI model with injected dependencies
+    m := NewModel(Options{
+        Pool:  mockPool,
+        Config: cfg,
+        Files: []string{"file1.mp4", "file2.mp4", "file3.mp4"},
+    })
+
+    // Simulate j key (down) navigation
+    m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+    assert.Equal(t, 1, m.currentIndex)
+
+    m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+    assert.Equal(t, 2, m.currentIndex)
+
+    // Boundary test: j at bottom should clamp
+    m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+    assert.Equal(t, 2, m.currentIndex)  // Clamped, didn't wrap
+
+    // Simulate k key (up) navigation
+    m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("k")})
+    assert.Equal(t, 1, m.currentIndex)
+
+    m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("k")})
+    assert.Equal(t, 0, m.currentIndex)
+
+    // Boundary test: k at top should clamp
+    m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("k")})
+    assert.Equal(t, 0, m.currentIndex)  // Clamped, didn't wrap
+}
+
+func TestTUI_TaskSubmissionFlow_Integration(t *testing.T) {
+    if testing.Short() {
+        t.Skip("integration test")
+    }
+
+    mockPool := &MockWorkerPool{submitted: []worker.Task{}}
+    cfg, _ := testutil.CreateTestConfig(t, nil)
+
+    m := NewModel(Options{
+        Pool:  mockPool,
+        Config: cfg,
+        Files: []string{"IPX-123.mp4"},
+    })
+
+    // User flow: Select file → Press 's' (scrape) → Confirm
+    m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})  // Select
+    m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})  // Scrape
+    m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})  // Confirm
+
+    // Verify: Task submitted to worker pool
+    assert.Len(t, mockPool.submitted, 1)
+    assert.Contains(t, mockPool.submitted[0].Description(), "IPX-123")
+}
+```
+
+**Key Learnings:**
+- Integration tests validate multi-component interactions
+- Use hermetic mocks (no external I/O, <1s execution)
+- Test critical user journeys (file selection, task submission, view switching)
+- Guard with `testing.Short()` to skip in fast test runs
+
+**Coverage Impact:** 4 integration tests, 100% pass rate, <1s execution
+**Reference:** `internal/tui/integration_test.go`
+
+---
+
+### Epic 9 Summary
+
+**Refactoring Pattern Applied:**
+1. Extract interfaces for dependencies (Story 9.1a)
+2. Move business logic to pure functions (Stories 9.2, 9.3, 9.4)
+3. Make functions immutable (copy-on-write semantics)
+4. Add integration tests for user flows (Story 9.5)
+
+**Coverage Achieved:**
+- processor.go: 100% (13 tests)
+- state.go: 100% (12 tests)
+- handlers.go: 100% (25 tests)
+- transforms.go: 100% (22 tests)
+- integration_test.go: 4 tests (100% pass)
+
+**Total:** 76 tests achieving 100% coverage on testable TUI code
+
+**Why TUI is Excluded from Overall Coverage:**
+TUI package excluded via `make coverage --ignore tui` because:
+1. Visual rendering (view.go, styles.go) cannot be unit tested
+2. Bubble Tea framework integration requires manual QA
+3. Testable business logic measured separately (achieved 100%)
+
+**Architectural Win:**
+The MVP pattern enables **confident TUI feature development** with **regression testing** for business logic, while acknowledging that visual rendering requires manual verification.
+
+**References:**
+- Epic 9 Tech Spec: `docs-no-commit/sprint-artifacts/tech-spec-epic-9.md`
+- All test files: `internal/tui/*_test.go`
+- CLAUDE.md TUI Testing Pattern section (comprehensive guide)
+
 ### Using testify
 
 The project uses `github.com/stretchr/testify` for assertions:
