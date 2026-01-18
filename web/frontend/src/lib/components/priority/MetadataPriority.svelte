@@ -22,37 +22,37 @@
 	// Track which fields have been explicitly modified by the user
 	let touchedFields = $state<Set<string>>(new Set());
 
-	// Metadata field definitions with descriptions
+	// Metadata field definitions with descriptions (using snake_case keys to match API)
 	const metadataFields = [
-		{ key: 'ID', label: 'Movie ID', category: 'Primary', description: 'Primary movie identifier (e.g., IPX-123)' },
-		{ key: 'Title', label: 'Title', category: 'Primary', description: 'Movie title in English or romanized form' },
-		{ key: 'OriginalTitle', label: 'Original Title', category: 'Primary', description: 'Original Japanese title' },
-		{ key: 'Description', label: 'Description', category: 'Primary', description: 'Movie plot summary' },
-		{ key: 'ReleaseDate', label: 'Release Date', category: 'Primary', description: 'Official release date' },
-		{ key: 'Runtime', label: 'Runtime', category: 'Primary', description: 'Movie duration in minutes' },
-		{ key: 'ContentID', label: 'Content ID', category: 'Primary', description: 'Alternative content identifier' },
-		{ key: 'Actress', label: 'Actresses', category: 'Metadata', description: 'Cast members and performers' },
-		{ key: 'Genre', label: 'Genres', category: 'Metadata', description: 'Movie categories and tags' },
-		{ key: 'Director', label: 'Director', category: 'Metadata', description: 'Movie director' },
-		{ key: 'Maker', label: 'Studio/Maker', category: 'Metadata', description: 'Production studio' },
-		{ key: 'Label', label: 'Label', category: 'Metadata', description: 'Distribution label' },
-		{ key: 'Series', label: 'Series', category: 'Metadata', description: 'Series or collection name' },
-		{ key: 'Rating', label: 'Rating', category: 'Metadata', description: 'User rating or score' },
-		{ key: 'CoverURL', label: 'Cover Image', category: 'Media', description: 'Front cover artwork URL' },
-		{ key: 'PosterURL', label: 'Poster Image', category: 'Media', description: 'Poster or fanart URL' },
-		{ key: 'ScreenshotURL', label: 'Screenshots', category: 'Media', description: 'Scene screenshot URLs' },
-		{ key: 'TrailerURL', label: 'Trailer', category: 'Media', description: 'Preview video URL' }
+		{ key: 'id', label: 'Movie ID', category: 'Primary', description: 'Primary movie identifier (e.g., IPX-123)' },
+		{ key: 'title', label: 'Title', category: 'Primary', description: 'Movie title in English or romanized form' },
+		{ key: 'original_title', label: 'Original Title', category: 'Primary', description: 'Original Japanese title' },
+		{ key: 'description', label: 'Description', category: 'Primary', description: 'Movie plot summary' },
+		{ key: 'release_date', label: 'Release Date', category: 'Primary', description: 'Official release date' },
+		{ key: 'runtime', label: 'Runtime', category: 'Primary', description: 'Movie duration in minutes' },
+		{ key: 'content_id', label: 'Content ID', category: 'Primary', description: 'Alternative content identifier' },
+		{ key: 'actress', label: 'Actresses', category: 'Metadata', description: 'Cast members and performers' },
+		{ key: 'genre', label: 'Genres', category: 'Metadata', description: 'Movie categories and tags' },
+		{ key: 'director', label: 'Director', category: 'Metadata', description: 'Movie director' },
+		{ key: 'maker', label: 'Studio/Maker', category: 'Metadata', description: 'Production studio' },
+		{ key: 'label', label: 'Label', category: 'Metadata', description: 'Distribution label' },
+		{ key: 'series', label: 'Series', category: 'Metadata', description: 'Series or collection name' },
+		{ key: 'rating', label: 'Rating', category: 'Metadata', description: 'User rating or score' },
+		{ key: 'cover_url', label: 'Cover Image', category: 'Media', description: 'Front cover artwork URL' },
+		{ key: 'poster_url', label: 'Poster Image', category: 'Media', description: 'Poster or fanart URL' },
+		{ key: 'screenshot_url', label: 'Screenshots', category: 'Media', description: 'Scene screenshot URLs' },
+		{ key: 'trailer_url', label: 'Trailer', category: 'Media', description: 'Preview video URL' }
 	];
 
 	// Helper to get global priority from config
 	function getGlobalPriority(): string[] {
-		return config?.Scrapers?.Priority || [];
+		return config?.scrapers?.priority || [];
 	}
 
 	// Helper to get field priority (either custom or global)
 	// Empty arrays mean "use global", same as undefined
 	function getFieldPriority(fieldKey: string): string[] {
-		const fieldConfig = config?.Metadata?.Priority?.[fieldKey];
+		const fieldConfig = config?.metadata?.priority?.[fieldKey];
 		// If field config is undefined, null, or empty array, use global priority
 		if (!fieldConfig || fieldConfig.length === 0) {
 			return getGlobalPriority();
@@ -63,7 +63,7 @@
 	// Check if field has custom override (either touched by user or already in config)
 	// Empty arrays are treated the same as undefined (not overridden)
 	function isFieldOverridden(fieldKey: string): boolean {
-		const fieldConfig = config?.Metadata?.Priority?.[fieldKey];
+		const fieldConfig = config?.metadata?.priority?.[fieldKey];
 		const globalPriority = getGlobalPriority();
 
 		// Empty or undefined means "use global" (not overridden)
@@ -77,7 +77,7 @@
 
 	// Count override count
 	function getOverrideCount(): number {
-		if (!config?.Metadata?.Priority) return 0;
+		if (!config?.metadata?.priority) return 0;
 		return metadataFields.filter((field) => isFieldOverridden(field.key)).length;
 	}
 
@@ -107,23 +107,21 @@
 	function getEnabledScrapers(): string[] {
 		const allScrapers = getGlobalPriority();
 		return allScrapers.filter((scraperName) => {
-			const configKey = scraperName === 'dmm' ? 'DMM' : scraperName.charAt(0).toUpperCase() + scraperName.slice(1).replace('dev', 'Dev');
-			return config?.Scrapers?.[configKey]?.Enabled !== false;
+			return config?.scrapers?.[scraperName]?.enabled !== false;
 		});
 	}
 
 	// Filter priority list to only include enabled scrapers
 	function filterEnabledScrapers(priority: string[]): string[] {
 		return priority.filter((scraperName) => {
-			const configKey = scraperName === 'dmm' ? 'DMM' : scraperName.charAt(0).toUpperCase() + scraperName.slice(1).replace('dev', 'Dev');
-			return config?.Scrapers?.[configKey]?.Enabled !== false;
+			return config?.scrapers?.[scraperName]?.enabled !== false;
 		});
 	}
 
 	// Update global priority
 	function updateGlobalPriority(newPriority: string[]) {
-		if (!config.Scrapers) config.Scrapers = {};
-		config.Scrapers.Priority = newPriority;
+		if (!config.scrapers) config.scrapers = {};
+		config.scrapers.priority = newPriority;
 		// Create a deep clone to trigger reactivity
 		onUpdate(JSON.parse(JSON.stringify(config)));
 	}
@@ -138,8 +136,8 @@
 	function saveFieldPriority() {
 		if (!editingField) return;
 
-		if (!config.Metadata) config.Metadata = {};
-		if (!config.Metadata.Priority) config.Metadata.Priority = {};
+		if (!config.metadata) config.metadata = {};
+		if (!config.metadata.priority) config.metadata.priority = {};
 
 		// Mark this field as touched
 		touchedFields.add(editingField);
@@ -149,10 +147,10 @@
 
 		if (isSameAsGlobal) {
 			// If it matches global, set to empty array (signals "use global")
-			config.Metadata.Priority[editingField] = [];
+			config.metadata.priority[editingField] = [];
 		} else {
 			// Otherwise save the custom priority
-			config.Metadata.Priority[editingField] = editingPriority;
+			config.metadata.priority[editingField] = editingPriority;
 		}
 
 		// Create a deep clone to trigger reactivity
@@ -162,13 +160,13 @@
 
 	// Reset field to global
 	function resetFieldToGlobal(fieldKey: string) {
-		if (!config.Metadata?.Priority) return;
+		if (!config.metadata?.priority) return;
 
 		// Mark as touched (user explicitly reset it)
 		touchedFields.add(fieldKey);
 
 		// Set to empty array (signals "use global")
-		config.Metadata.Priority[fieldKey] = [];
+		config.metadata.priority[fieldKey] = [];
 
 		// Create a deep clone to trigger reactivity
 		onUpdate(JSON.parse(JSON.stringify(config)));
