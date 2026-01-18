@@ -8,8 +8,8 @@
 	import Card from '$lib/components/ui/Card.svelte';
 	import { apiClient } from '$lib/api/client';
 	import { toastStore } from '$lib/stores/toast';
-	import { Play, FolderInput, Scan, FolderOutput, FolderOpen, RotateCcw, Loader2, RefreshCw } from 'lucide-svelte';
-	import type { Scraper } from '$lib/api/types';
+	import { Play, FolderOutput, FolderOpen, RotateCcw, Loader2, RefreshCw, Settings, ChevronUp, ChevronDown, X } from 'lucide-svelte';
+	import type { Scraper, FileInfo } from '$lib/api/types';
 
 	type OperationMode = 'scrape' | 'update';
 
@@ -19,15 +19,11 @@
 	let scraping = $state(false);
 	let forceRefresh = $state(false);
 	let operationMode: OperationMode = $state('scrape');
-	let customPath = $state('');
 	let scanning = $state(false);
-	let scanError = $state<string | null>(null);
 	let initialPath = $state('');
 	let destinationPath = $state('');
 	let showDestinationBrowser = $state(false);
 	let tempDestinationPath = $state('');
-	let showInputBrowser = $state(false);
-	let tempInputPath = $state('');
 	let currentBrowserPath = $state('');
 	let availableScrapers: Scraper[] = $state([]);
 	let selectedScrapers: string[] = $state([]);
@@ -35,6 +31,7 @@
 	let selectedPreset: string | undefined = $state(undefined);  // Merge strategy preset: conservative, gap-fill, aggressive
 	let scalarStrategy: string = $state('prefer-nfo');  // For scalar fields: prefer-nfo, prefer-scraper, preserve-existing, fill-missing-only
 	let arrayStrategy: string = $state('merge');        // For array fields: merge, replace
+	let showOptionsPanel = $state(false);  // Expandable options panel in sticky bar
 
 	// localStorage keys
 	const STORAGE_KEY_INPUT = 'javinizer_input_path';
@@ -44,11 +41,9 @@
 	onMount(async () => {
 		try {
 			const response = await apiClient.getCurrentWorkingDirectory();
-			initialPath = response.path;
-
 			// Load input path from localStorage, or fall back to working directory
 			const savedInputPath = localStorage.getItem(STORAGE_KEY_INPUT);
-			customPath = savedInputPath || response.path;
+			initialPath = savedInputPath || response.path;
 		} catch (error) {
 			console.error('Failed to get current working directory:', error);
 		}
@@ -75,49 +70,60 @@
 
 	function handleBrowserPathChange(path: string) {
 		currentBrowserPath = path;
+		// Save to localStorage for persistence
+		localStorage.setItem(STORAGE_KEY_INPUT, path);
 	}
 
-	async function scanPath(path: string, updateBrowser: boolean = false) {
+	// Unified scan handler - handles both recursive and non-recursive scans
+	async function handleScan(path: string, recursive: boolean, visibleFiles: FileInfo[]) {
 		if (!path.trim()) return;
 
 		scanning = true;
-		scanError = null;
 		try {
 			const response = await apiClient.scan({
 				path: path,
-				recursive: true
+				recursive: recursive
 			});
 
-			// Add all matched files to selection
-			const matchedFiles = response.files
-				.filter((f) => f.matched && !f.is_dir)
-				.map((f) => f.path);
+			let matchedFiles: string[];
+
+			if (recursive) {
+				// For recursive scan, include all matched files
+				matchedFiles = response.files
+					.filter((f) => f.matched && !f.is_dir)
+					.map((f) => f.path);
+			} else {
+				// For non-recursive scan, filter to only visible files (respects filter)
+				const visibleFilePaths = new Set(visibleFiles.map((f) => f.path));
+				matchedFiles = response.files
+					.filter((f) => f.matched && !f.is_dir && visibleFilePaths.has(f.path))
+					.map((f) => f.path);
+			}
 
 			if (matchedFiles.length > 0) {
 				// Merge with existing selections
 				selectedFiles = [...new Set([...selectedFiles, ...matchedFiles])];
-
-				// Update the file browser if requested
-				if (updateBrowser) {
-					initialPath = path;
-					currentBrowserPath = path;
-				}
+				const scanType = recursive ? 'recursive' : 'current folder';
+				toastStore.success(
+					`Added ${matchedFiles.length} JAV file${matchedFiles.length !== 1 ? 's' : ''} (${scanType})`,
+					3000
+				);
 			} else {
-				scanError = `No JAV files found in ${path}`;
+				if (!recursive) {
+					// Check if there are matches outside the filter
+					const totalMatched = response.files.filter((f) => f.matched && !f.is_dir).length;
+					if (totalMatched > 0) {
+						toastStore.warning(`No JAV files match current filter (${totalMatched} found in folder)`, 5000);
+						return;
+					}
+				}
+				toastStore.warning(`No JAV files found${recursive ? ' in any subfolder' : ''}`, 5000);
 			}
 		} catch (error) {
-			scanError = error instanceof Error ? error.message : 'Failed to scan directory';
+			toastStore.error(error instanceof Error ? error.message : 'Failed to scan directory', 5000);
 		} finally {
 			scanning = false;
 		}
-	}
-
-	async function scanCurrentBrowserPath() {
-		await scanPath(currentBrowserPath, false);
-	}
-
-	async function scanCustomPath() {
-		await scanPath(customPath, true);
 	}
 
 	// Apply preset to scalar and array strategies
@@ -213,42 +219,22 @@
 		showDestinationBrowser = false;
 	}
 
-	function openInputBrowser() {
-		tempInputPath = customPath || initialPath;
-		showInputBrowser = true;
-	}
-
-	function handleInputSelect(files: string[]) {
-		// Ignore file selections, just track path changes
-	}
-
-	function handleInputPathChange(path: string) {
-		tempInputPath = path;
-	}
-
-	function confirmInputPath() {
-		customPath = tempInputPath;
-		initialPath = tempInputPath;
-		// Save to localStorage for persistence
-		localStorage.setItem(STORAGE_KEY_INPUT, tempInputPath);
-		showInputBrowser = false;
-	}
-
-	function cancelInputBrowser() {
-		showInputBrowser = false;
-	}
-
-	function resetDirectories() {
+	async function resetDirectories() {
 		// Clear localStorage
 		localStorage.removeItem(STORAGE_KEY_INPUT);
 		localStorage.removeItem(STORAGE_KEY_OUTPUT);
-		// Reset to initial/default paths
-		customPath = initialPath;
-		destinationPath = initialPath;
+		// Reset to working directory
+		try {
+			const response = await apiClient.getCurrentWorkingDirectory();
+			initialPath = response.path;
+			destinationPath = response.path;
+		} catch (error) {
+			console.error('Failed to get current working directory:', error);
+		}
 	}
 </script>
 
-<div class="container mx-auto px-4 py-8">
+<div class="container mx-auto px-4 py-8 pb-32">
 	<div class="max-w-7xl mx-auto space-y-6">
 		<!-- Header -->
 		<div class="flex items-center justify-between">
@@ -267,52 +253,6 @@
 				</Button>
 			</div>
 		</div>
-
-		<!-- Input Directory -->
-		<Card class="p-4">
-			<div class="space-y-3">
-				<div class="flex items-center gap-2">
-					<FolderInput class="h-5 w-5 text-primary" />
-					<h3 class="font-semibold">Input Directory</h3>
-				</div>
-				<div class="flex gap-2">
-					<input
-						type="text"
-						bind:value={customPath}
-						oninput={() => {
-							initialPath = customPath;
-							// Save to localStorage for persistence
-							localStorage.setItem(STORAGE_KEY_INPUT, customPath);
-						}}
-						onkeydown={(e) => {
-							if (e.key === 'Enter') scanCustomPath();
-						}}
-						placeholder="Enter full path (e.g., /path/to/videos)"
-						class="flex-1 px-3 py-2 border rounded-md focus:ring-2 focus:ring-primary focus:border-primary transition-all font-mono text-sm"
-					/>
-					<Button onclick={openInputBrowser}>
-						{#snippet children()}
-							<FolderOpen class="h-4 w-4 mr-2" />
-							Browse
-						{/snippet}
-					</Button>
-					<Button onclick={scanCustomPath} disabled={!customPath.trim() || scanning}>
-						{#snippet children()}
-							<Scan class="h-4 w-4 mr-2" />
-							{scanning ? 'Scanning...' : 'Scan'}
-						{/snippet}
-					</Button>
-				</div>
-				<p class="text-xs text-muted-foreground">
-					Directory path to scan for JAV video files
-				</p>
-				{#if scanError}
-					<div class="text-sm text-destructive bg-destructive/10 px-3 py-2 rounded-md border border-destructive/20">
-						{scanError}
-					</div>
-				{/if}
-			</div>
-		</Card>
 
 		<!-- Operation Mode Selection -->
 		<Card class="p-4">
@@ -487,92 +427,6 @@
 			</Card>
 		{/if}
 
-		<!-- Controls -->
-		<Card class="p-6">
-			<div class="space-y-6">
-				<!-- Options Section -->
-				<div class="space-y-3">
-					<h3 class="text-sm font-semibold text-foreground mb-3">Options</h3>
-					<div class="grid gap-3">
-						<label
-							class="flex items-start gap-3 p-3 rounded-lg border border-border hover:bg-accent/50 cursor-pointer transition-colors"
-						>
-							<input
-								type="checkbox"
-								bind:checked={forceRefresh}
-								class="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary focus:ring-2 focus:ring-primary"
-							/>
-							<div class="flex-1">
-								<span class="text-sm font-medium">Force Refresh</span>
-								<p class="text-xs text-muted-foreground mt-0.5">
-									Clear cache and fetch fresh metadata from scrapers
-								</p>
-							</div>
-						</label>
-
-						<label
-							class="flex items-start gap-3 p-3 rounded-lg border border-border hover:bg-accent/50 cursor-pointer transition-colors"
-						>
-							<input
-								type="checkbox"
-								bind:checked={showScraperSelector}
-								class="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary focus:ring-2 focus:ring-primary"
-							/>
-							<div class="flex-1">
-								<span class="text-sm font-medium">Manual Scraper Selection</span>
-								<p class="text-xs text-muted-foreground mt-0.5">
-									Choose specific scrapers instead of using default priority
-								</p>
-							</div>
-						</label>
-					</div>
-				</div>
-
-				<!-- Scraper Selector (if enabled) -->
-				{#if showScraperSelector}
-					<div class="pt-2 border-t">
-						<ScraperSelector scrapers={availableScrapers} bind:selected={selectedScrapers} />
-					</div>
-				{/if}
-
-				<!-- Action Buttons -->
-				<div class="flex items-center justify-end gap-3 pt-2 border-t">
-					<Button
-						onclick={scanCurrentBrowserPath}
-						disabled={!currentBrowserPath.trim() || scanning}
-						variant="outline"
-					>
-						{#snippet children()}
-							{#if scanning}
-								<Loader2 class="h-4 w-4 mr-2 animate-spin" />
-							{:else}
-								<Scan class="h-4 w-4 mr-2" />
-							{/if}
-							{scanning ? 'Scanning...' : 'Scan Current'}
-						{/snippet}
-					</Button>
-					<Button onclick={startBatchScrape} disabled={selectedFiles.length === 0 || scraping}>
-						{#snippet children()}
-							{#if scraping}
-								<Loader2 class="h-4 w-4 mr-2 animate-spin" />
-							{:else if operationMode === 'update'}
-								<RefreshCw class="h-4 w-4 mr-2" />
-							{:else}
-								<Play class="h-4 w-4 mr-2" />
-							{/if}
-							{#if scraping}
-								Starting...
-							{:else if operationMode === 'update'}
-								Update {selectedFiles.length} File{selectedFiles.length !== 1 ? 's' : ''}
-							{:else}
-								Scrape {selectedFiles.length} File{selectedFiles.length !== 1 ? 's' : ''}
-							{/if}
-						{/snippet}
-					</Button>
-				</div>
-			</div>
-		</Card>
-
 		<!-- Selected Files List -->
 		{#if selectedFiles.length > 0}
 			<Card class="p-4">
@@ -632,9 +486,12 @@
 		<!-- File Browser -->
 		<FileBrowser
 			{initialPath}
+			bind:selectedFiles={selectedFiles}
 			onFileSelect={handleFileSelect}
 			onPathChange={handleBrowserPathChange}
 			multiSelect={true}
+			onScan={handleScan}
+			scanLoading={scanning}
 		/>
 
 		<!-- Help Text -->
@@ -642,13 +499,148 @@
 			<h3 class="font-semibold mb-2">How to use:</h3>
 			<ul class="text-sm text-muted-foreground space-y-1">
 				<li>1. Select operation mode: <strong>Scrape & Organize</strong> (moves files) or <strong>Update Metadata</strong> (files stay in place)</li>
-				<li>2. Navigate to your video files directory using the file browser</li>
-				<li>3. Select one or more video files (files with matched JAV IDs are highlighted in green)</li>
-				<li>4. Configure options (force refresh, scraper selection) as needed</li>
+				<li>2. Navigate to your video files using the file browser (type a path or click folders)</li>
+				<li>3. Click <strong>Scan</strong> to find JAV files (enable <strong>Recursive</strong> to include subfolders)</li>
+				<li>4. Configure options (force refresh, scraper selection) in the bottom bar as needed</li>
 				<li>5. Click the action button to start the operation</li>
-				<li>6. Monitor progress in the modal dialog (you can close it and the job will continue)</li>
 			</ul>
+			<p class="text-xs text-muted-foreground mt-3 pt-3 border-t border-border/50">
+				<strong>Tip:</strong> Use the filter box to narrow down files, then scan to select only matching results.
+			</p>
 		</Card>
+	</div>
+</div>
+
+<!-- Sticky Bottom Action Bar -->
+<div class="fixed bottom-0 left-0 right-0 bg-background border-t shadow-lg z-40">
+	<!-- Expandable Options Panel -->
+	{#if showOptionsPanel}
+		<div class="border-b bg-accent/20">
+			<div class="container mx-auto px-4 py-4 max-w-7xl">
+				<div class="flex items-center justify-between mb-3">
+					<h3 class="text-sm font-semibold">Options</h3>
+					<button
+						onclick={() => showOptionsPanel = false}
+						class="text-muted-foreground hover:text-foreground transition-colors"
+					>
+						<X class="h-4 w-4" />
+					</button>
+				</div>
+				<div class="grid gap-3 md:grid-cols-2">
+					<label
+						class="flex items-center gap-3 p-3 rounded-lg border border-border bg-background hover:bg-accent/50 cursor-pointer transition-colors"
+					>
+						<input
+							type="checkbox"
+							bind:checked={forceRefresh}
+							class="h-4 w-4 rounded border-gray-300 text-primary focus:ring-2 focus:ring-primary"
+						/>
+						<div class="flex-1">
+							<span class="text-sm font-medium">Force Refresh</span>
+							<p class="text-xs text-muted-foreground">Clear cache and fetch fresh metadata</p>
+						</div>
+					</label>
+
+					<label
+						class="flex items-center gap-3 p-3 rounded-lg border border-border bg-background hover:bg-accent/50 cursor-pointer transition-colors"
+					>
+						<input
+							type="checkbox"
+							bind:checked={showScraperSelector}
+							class="h-4 w-4 rounded border-gray-300 text-primary focus:ring-2 focus:ring-primary"
+						/>
+						<div class="flex-1">
+							<span class="text-sm font-medium">Manual Scraper Selection</span>
+							<p class="text-xs text-muted-foreground">Choose specific scrapers</p>
+						</div>
+					</label>
+				</div>
+
+				<!-- Scraper Selector (if enabled) -->
+				{#if showScraperSelector}
+					<div class="mt-4 pt-4 border-t">
+						<ScraperSelector scrapers={availableScrapers} bind:selected={selectedScrapers} />
+					</div>
+				{/if}
+			</div>
+		</div>
+	{/if}
+
+	<!-- Main Action Bar -->
+	<div class="container mx-auto px-4 py-3 max-w-7xl">
+		<div class="flex items-center justify-between gap-4">
+			<!-- Left: Selection info and options toggle -->
+			<div class="flex items-center gap-3">
+				{#if selectedFiles.length > 0}
+					<div class="flex items-center gap-2">
+						<div class="w-2 h-2 rounded-full bg-primary animate-pulse"></div>
+						<span class="text-sm font-medium">
+							{selectedFiles.length} file{selectedFiles.length !== 1 ? 's' : ''} selected
+						</span>
+						<button
+							onclick={() => selectedFiles = []}
+							class="text-xs text-muted-foreground hover:text-destructive transition-colors"
+						>
+							(clear)
+						</button>
+					</div>
+				{:else}
+					<span class="text-sm text-muted-foreground">No files selected</span>
+				{/if}
+			</div>
+
+			<!-- Right: Options toggle and action button -->
+			<div class="flex items-center gap-3">
+				<!-- Options toggle -->
+				<Button
+					variant="outline"
+					size="sm"
+					onclick={() => showOptionsPanel = !showOptionsPanel}
+				>
+					{#snippet children()}
+						<Settings class="h-4 w-4 mr-2" />
+						Options
+						{#if showOptionsPanel}
+							<ChevronDown class="h-4 w-4 ml-1" />
+						{:else}
+							<ChevronUp class="h-4 w-4 ml-1" />
+						{/if}
+					{/snippet}
+				</Button>
+
+				<!-- Active options indicators -->
+				{#if forceRefresh || showScraperSelector}
+					<div class="hidden sm:flex items-center gap-1 text-xs">
+						{#if forceRefresh}
+							<span class="px-2 py-0.5 bg-primary/10 text-primary rounded">Force</span>
+						{/if}
+						{#if showScraperSelector}
+							<span class="px-2 py-0.5 bg-primary/10 text-primary rounded">{selectedScrapers.length} scrapers</span>
+						{/if}
+					</div>
+				{/if}
+
+				<!-- Action button -->
+				<Button onclick={startBatchScrape} disabled={selectedFiles.length === 0 || scraping}>
+					{#snippet children()}
+						{#if scraping}
+							<Loader2 class="h-4 w-4 mr-2 animate-spin" />
+						{:else if operationMode === 'update'}
+							<RefreshCw class="h-4 w-4 mr-2" />
+						{:else}
+							<Play class="h-4 w-4 mr-2" />
+						{/if}
+						{#if scraping}
+							Starting...
+						{:else if operationMode === 'update'}
+							Update {selectedFiles.length} File{selectedFiles.length !== 1 ? 's' : ''}
+						{:else}
+							Scrape {selectedFiles.length} File{selectedFiles.length !== 1 ? 's' : ''}
+						{/if}
+					{/snippet}
+				</Button>
+			</div>
+		</div>
 	</div>
 </div>
 
@@ -660,64 +652,6 @@
 		updateMode={operationMode === 'update'}
 		onClose={closeProgress}
 	/>
-{/if}
-
-<!-- Input Browser Modal -->
-{#if showInputBrowser}
-	<div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-		<div class="bg-background rounded-lg shadow-xl max-w-4xl w-full max-h-[80vh] flex flex-col">
-			<!-- Modal Header -->
-			<div class="p-6 border-b flex items-center justify-between">
-				<div>
-					<h2 class="text-xl font-bold">Select Input Folder</h2>
-					<p class="text-sm text-muted-foreground mt-1">
-						Navigate to and select the folder containing JAV video files
-					</p>
-				</div>
-				<button
-					onclick={cancelInputBrowser}
-					class="text-muted-foreground hover:text-foreground transition-colors"
-				>
-					✕
-				</button>
-			</div>
-
-			<!-- Modal Body -->
-			<div class="flex-1 overflow-auto p-6">
-				<FileBrowser
-					initialPath={tempInputPath || initialPath}
-					onFileSelect={handleInputSelect}
-					onPathChange={handleInputPathChange}
-					multiSelect={false}
-					folderOnly={true}
-				/>
-			</div>
-
-			<!-- Modal Footer -->
-			<div class="p-6 border-t space-y-3">
-				<div class="flex items-center gap-2">
-					<span class="text-sm font-medium text-muted-foreground">Selected Path:</span>
-					<code
-						class="flex-1 px-3 py-1.5 bg-accent rounded text-sm font-mono text-foreground overflow-x-auto"
-					>
-						{tempInputPath || initialPath}
-					</code>
-				</div>
-				<div class="flex items-center justify-end gap-2">
-					<Button variant="outline" onclick={cancelInputBrowser}>
-						{#snippet children()}
-							Cancel
-						{/snippet}
-					</Button>
-					<Button onclick={confirmInputPath}>
-						{#snippet children()}
-							Use This Folder
-						{/snippet}
-					</Button>
-				</div>
-			</div>
-		</div>
-	</div>
 {/if}
 
 <!-- Destination Browser Modal -->
