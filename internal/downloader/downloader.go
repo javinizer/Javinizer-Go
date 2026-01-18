@@ -388,40 +388,44 @@ func (d *Downloader) DownloadActressImages(movie *models.Movie, destDir string) 
 
 // DownloadAll downloads all enabled media types for a movie
 // multipart: nil for single files, or MultipartInfo for multi-part files
-// For multi-part files, only downloads shared media (cover/poster/trailer/actresses) for first part
+// Each download method checks if the file already exists (file-exists deduplication).
+// Templates without multipart placeholders produce the same filename for all parts,
+// so subsequent parts will skip re-downloading (Downloaded=false).
+// Templates with <IF:MULTIPART> or <PART> produce different filenames, so each part
+// gets its own file. Actress images are only downloaded for single files or first part.
 func (d *Downloader) DownloadAll(movie *models.Movie, destDir string, multipart *MultipartInfo) ([]DownloadResult, error) {
 	results := make([]DownloadResult, 0)
 
-	// Determine if we should download shared media
-	// For single files (multipart == nil) or first part (PartNumber <= 1), download shared media
+	// Download cover (fanart)
+	// Note: Each download method has a file-exists check, so if templates produce
+	// the same filename for different parts, the file won't be re-downloaded.
+	// If templates use <IF:MULTIPART> or <PART>, each part gets its own file.
+	if coverResult, err := d.DownloadCover(movie, destDir, multipart); err == nil && coverResult != nil {
+		results = append(results, *coverResult)
+	}
+
+	// Download poster
+	if posterResult, err := d.DownloadPoster(movie, destDir, multipart); err == nil && posterResult != nil {
+		results = append(results, *posterResult)
+	}
+
+	// Download extrafanart (screenshots)
+	if extrafanart, err := d.DownloadExtrafanart(movie, destDir, multipart); err == nil {
+		results = append(results, extrafanart...)
+	}
+
+	// Download trailer
+	if trailerResult, err := d.DownloadTrailer(movie, destDir, multipart); err == nil && trailerResult != nil {
+		results = append(results, *trailerResult)
+	}
+
+	// Download actress images (doesn't use multipart - shared across all parts)
+	// Only download for single files or first part to avoid duplicate downloads
 	partNumber := 0
 	if multipart != nil {
 		partNumber = multipart.PartNumber
 	}
-	shouldDownloadShared := partNumber == 0 || partNumber == 1
-
-	if shouldDownloadShared {
-		// Download cover
-		if coverResult, err := d.DownloadCover(movie, destDir, multipart); err == nil && coverResult != nil {
-			results = append(results, *coverResult)
-		}
-
-		// Download poster
-		if posterResult, err := d.DownloadPoster(movie, destDir, multipart); err == nil && posterResult != nil {
-			results = append(results, *posterResult)
-		}
-
-		// Download extrafanart (screenshots)
-		if extrafanart, err := d.DownloadExtrafanart(movie, destDir, multipart); err == nil {
-			results = append(results, extrafanart...)
-		}
-
-		// Download trailer
-		if trailerResult, err := d.DownloadTrailer(movie, destDir, multipart); err == nil && trailerResult != nil {
-			results = append(results, *trailerResult)
-		}
-
-		// Download actress images (doesn't use multipart - shared across all parts)
+	if partNumber == 0 || partNumber == 1 {
 		if actresses, err := d.DownloadActressImages(movie, destDir); err == nil {
 			results = append(results, actresses...)
 		}

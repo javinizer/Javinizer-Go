@@ -504,6 +504,56 @@ func TestPreviewOrganize(t *testing.T) {
 				assert.Contains(t, resp.FullPath, "ABP-071DOD")
 			},
 		},
+		{
+			name: "multipart files sorted by part number for preview",
+			setupJob: func(jq *worker.JobQueue) (string, string) {
+				// Create job with multipart files - add pt2 before pt1 to test sorting
+				job := jq.CreateJob([]string{"/path/to/STSK-074-pt2.mp4", "/path/to/STSK-074-pt1.mp4"})
+
+				movie := &models.Movie{
+					ID:    "STSK-074",
+					Title: "Multipart Test Movie",
+				}
+
+				// Add pt2 first (simulates random map iteration order)
+				result2 := &worker.FileResult{
+					FilePath:    "/path/to/STSK-074-pt2.mp4",
+					MovieID:     "STSK-074",
+					Status:      worker.JobStatusCompleted,
+					Data:        movie,
+					IsMultiPart: true,
+					PartNumber:  2,
+					PartSuffix:  "-pt2",
+					StartedAt:   time.Now(),
+				}
+				job.UpdateFileResult("/path/to/STSK-074-pt2.mp4", result2)
+
+				// Add pt1 second
+				result1 := &worker.FileResult{
+					FilePath:    "/path/to/STSK-074-pt1.mp4",
+					MovieID:     "STSK-074",
+					Status:      worker.JobStatusCompleted,
+					Data:        movie,
+					IsMultiPart: true,
+					PartNumber:  1,
+					PartSuffix:  "-pt1",
+					StartedAt:   time.Now(),
+				}
+				job.UpdateFileResult("/path/to/STSK-074-pt1.mp4", result1)
+
+				return job.ID, "STSK-074"
+			},
+			requestBody: OrganizePreviewRequest{
+				Destination: "/output",
+				CopyOnly:    false,
+			},
+			expectedStatus: 200,
+			validateFn: func(t *testing.T, resp *OrganizePreviewResponse) {
+				// Poster should use pt1's multipart context (the first part after sorting)
+				assert.Contains(t, resp.PosterPath, "-pt1-poster", "poster should use pt1 suffix from first part")
+				assert.Contains(t, resp.FanartPath, "-pt1-fanart", "fanart should use pt1 suffix from first part")
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -515,6 +565,9 @@ func TestPreviewOrganize(t *testing.T) {
 				Output: config.OutputConfig{
 					FolderFormat: "<ID>",
 					FileFormat:   "<ID>",
+					// Use multipart conditional templates for testing
+					PosterFormat: "<ID><IF:MULTIPART>-pt<PART></IF>-poster.jpg",
+					FanartFormat: "<ID><IF:MULTIPART>-pt<PART></IF>-fanart.jpg",
 				},
 				API: config.APIConfig{
 					Security: config.SecurityConfig{

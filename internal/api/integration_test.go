@@ -469,8 +469,8 @@ func TestIntegrationConfigEndpoints(t *testing.T) {
 		router.ServeHTTP(w, req)
 
 		assert.Equal(t, 200, w.Code)
-		assert.Contains(t, w.Body.String(), "Server")
-		assert.Contains(t, w.Body.String(), "Scrapers")
+		assert.Contains(t, w.Body.String(), "server")
+		assert.Contains(t, w.Body.String(), "scrapers")
 	})
 
 	// Test GET /api/v1/scrapers

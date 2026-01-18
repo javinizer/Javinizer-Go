@@ -209,7 +209,8 @@ func cleanupJobTempPosters(jobID string) {
 
 // copyTempCroppedPoster copies the temp cropped poster to the destination directory
 // Returns true if copy was successful, false otherwise
-func copyTempCroppedPoster(job *worker.BatchJob, movie *models.Movie, destDir string, cfg *config.Config, mode string) bool {
+// multipart can be nil for single-file operations
+func copyTempCroppedPoster(job *worker.BatchJob, movie *models.Movie, destDir string, cfg *config.Config, mode string, multipart *downloader.MultipartInfo) bool {
 	tempPosterPath := filepath.Join("data", "temp", "posters", job.ID, movie.ID+".jpg")
 	if _, err := os.Stat(tempPosterPath); err != nil {
 		// Temp poster doesn't exist - not an error, just skip
@@ -219,6 +220,12 @@ func copyTempCroppedPoster(job *worker.BatchJob, movie *models.Movie, destDir st
 	// Generate filename using template engine (matching downloader behavior)
 	ctx := template.NewContextFromMovie(movie)
 	ctx.GroupActress = cfg.Output.GroupActress
+	// Set multipart context for template conditionals like <IF:MULTIPART>
+	if multipart != nil {
+		ctx.IsMultiPart = multipart.IsMultiPart
+		ctx.PartNumber = multipart.PartNumber
+		ctx.PartSuffix = multipart.PartSuffix
+	}
 	engine := template.NewEngine()
 	posterFilename, err := engine.Execute(cfg.Output.PosterFormat, ctx)
 	if err != nil {
@@ -286,10 +293,10 @@ func downloadMediaFiles(dl *downloader.Downloader, movie *models.Movie, destDir 
 }
 
 // downloadMediaFilesWithHistory downloads all configured media files and logs to history
-func downloadMediaFilesWithHistory(dl *downloader.Downloader, movie *models.Movie, destDir string, cfg *config.Config, historyLogger *history.Logger) {
+// multipart can be nil for single-file operations
+func downloadMediaFilesWithHistory(dl *downloader.Downloader, movie *models.Movie, destDir string, cfg *config.Config, historyLogger *history.Logger, multipart *downloader.MultipartInfo) {
 	// Use DownloadAll to get results for history logging
-	// Pass nil for multipart since this is called for single file operations
-	results, err := dl.DownloadAll(movie, destDir, nil)
+	results, err := dl.DownloadAll(movie, destDir, multipart)
 	if err != nil {
 		logging.Errorf("Failed to download media for %s: %v", movie.ID, err)
 		return
@@ -513,8 +520,18 @@ func processUpdateMode(job *worker.BatchJob, cfg *config.Config, db *database.DB
 			logging.Debugf("No existing NFO found, creating new one at %s", nfoPath)
 		}
 
+		// Create multipart info for template conditionals
+		var multipart *downloader.MultipartInfo
+		if tmplCtx.IsMultiPart {
+			multipart = &downloader.MultipartInfo{
+				IsMultiPart: tmplCtx.IsMultiPart,
+				PartNumber:  tmplCtx.PartNumber,
+				PartSuffix:  tmplCtx.PartSuffix,
+			}
+		}
+
 		// Copy temp cropped poster BEFORE downloads (so downloader skips it)
-		copyTempCroppedPoster(job, movieToWrite, sourceDir, cfg, "Update")
+		copyTempCroppedPoster(job, movieToWrite, sourceDir, cfg, "Update", multipart)
 
 		// Note: partSuffix already computed above for NFO template lookup
 
@@ -540,15 +557,7 @@ func processUpdateMode(job *worker.BatchJob, cfg *config.Config, db *database.DB
 
 		// Download all media files to source directory
 		// Use movieToWrite (merged) to include NFO data in downloads
-		// Build multipart info for template rendering (from earlier part detection)
-		var multipart *downloader.MultipartInfo
-		if tmplCtx.IsMultiPart {
-			multipart = &downloader.MultipartInfo{
-				IsMultiPart: true,
-				PartNumber:  tmplCtx.PartNumber,
-				PartSuffix:  tmplCtx.PartSuffix,
-			}
-		}
+		// Reuse multipart info created earlier for template rendering
 		results, err := dl.DownloadAll(movieToWrite, sourceDir, multipart)
 		if err != nil {
 			logging.Warnf("Failed to download media for %s: %v", movie.ID, err)
@@ -702,11 +711,21 @@ func processOrganizeJob(job *worker.BatchJob, mat *matcher.Matcher, destination 
 
 		// Copy temp cropped poster and download all media files
 		if result.Moved {
+			// Create multipart info from match for template conditionals
+			var multipart *downloader.MultipartInfo
+			if match.IsMultiPart {
+				multipart = &downloader.MultipartInfo{
+					IsMultiPart: match.IsMultiPart,
+					PartNumber:  match.PartNumber,
+					PartSuffix:  match.PartSuffix,
+				}
+			}
+
 			// Copy temp cropped poster BEFORE downloads (so downloader skips it)
-			copyTempCroppedPoster(job, movie, result.FolderPath, cfg, "Organize")
+			copyTempCroppedPoster(job, movie, result.FolderPath, cfg, "Organize", multipart)
 
 			// Download all media files and log to history
-			downloadMediaFilesWithHistory(dl, movie, result.FolderPath, cfg, historyLogger)
+			downloadMediaFilesWithHistory(dl, movie, result.FolderPath, cfg, historyLogger, multipart)
 		}
 
 		// Generate NFO file
@@ -941,7 +960,14 @@ func generatePreview(movie *models.Movie, fileResults []*worker.FileResult, dest
 	}
 
 	// Generate poster path using template engine
-	posterFileName, err := templateEngine.Execute(cfg.Output.PosterFormat, ctx)
+	// Use first file's multipart context so templates with <IF:MULTIPART> work correctly
+	posterCtx := ctx.Clone()
+	if len(fileResults) > 0 && fileResults[0] != nil {
+		posterCtx.PartNumber = fileResults[0].PartNumber
+		posterCtx.PartSuffix = fileResults[0].PartSuffix
+		posterCtx.IsMultiPart = fileResults[0].IsMultiPart
+	}
+	posterFileName, err := templateEngine.Execute(cfg.Output.PosterFormat, posterCtx)
 	if err != nil || posterFileName == "" {
 		// Fallback to hardcoded format
 		posterFileName = fmt.Sprintf("%s-poster.jpg", movie.ID)
@@ -954,7 +980,14 @@ func generatePreview(movie *models.Movie, fileResults []*worker.FileResult, dest
 	posterPath := filepath.Join(folderPath, posterFileName)
 
 	// Generate fanart path using template engine
-	fanartFileName, err := templateEngine.Execute(cfg.Output.FanartFormat, ctx)
+	// Use first file's multipart context so templates with <IF:MULTIPART> work correctly
+	fanartCtx := ctx.Clone()
+	if len(fileResults) > 0 && fileResults[0] != nil {
+		fanartCtx.PartNumber = fileResults[0].PartNumber
+		fanartCtx.PartSuffix = fileResults[0].PartSuffix
+		fanartCtx.IsMultiPart = fileResults[0].IsMultiPart
+	}
+	fanartFileName, err := templateEngine.Execute(cfg.Output.FanartFormat, fanartCtx)
 	if err != nil || fanartFileName == "" {
 		// Fallback to hardcoded format
 		fanartFileName = fmt.Sprintf("%s-fanart.jpg", movie.ID)

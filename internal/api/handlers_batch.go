@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -706,8 +707,25 @@ func previewOrganize(deps *ServerDependencies) gin.HandlerFunc {
 			return
 		}
 
+		// Sort fileResults by PartNumber to ensure deterministic order
+		// (map iteration order is random in Go, so fileResults[0] might not be part 1)
+		sort.Slice(fileResults, func(i, j int) bool {
+			return fileResults[i].PartNumber < fileResults[j].PartNumber
+		})
+
+		// Debug: Log fileResults multipart info
+		logging.Debugf("[Preview] Movie %s has %d file results", movieID, len(fileResults))
+		for i, fr := range fileResults {
+			logging.Debugf("[Preview] fileResults[%d]: FilePath=%s, IsMultiPart=%v, PartNumber=%d, PartSuffix=%q",
+				i, fr.FilePath, fr.IsMultiPart, fr.PartNumber, fr.PartSuffix)
+		}
+
 		// Use the helper function from processors.go - pass all file results for multi-part support
 		preview := generatePreview(movie, fileResults, req.Destination, deps.GetConfig())
+
+		// Debug: Log generated preview paths
+		logging.Debugf("[Preview] Generated PosterPath=%s, FanartPath=%s", preview.PosterPath, preview.FanartPath)
+
 		c.JSON(200, preview)
 	}
 }

@@ -320,6 +320,64 @@ func TestDownloader_Download_BadStatusCode(t *testing.T) {
 	}
 }
 
+func TestDownloader_DownloadAll_MultiPartFilenames(t *testing.T) {
+	// Test that multipart templates produce correct filenames
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("fake image data"))
+	}))
+	defer server.Close()
+
+	// Use multipart conditional templates
+	cfg := &config.OutputConfig{
+		DownloadCover:       true,
+		DownloadPoster:      false, // Skip poster to simplify test
+		DownloadExtrafanart: false,
+		DownloadTrailer:     false,
+		DownloadActress:     false,
+		FanartFormat:        "<ID><IF:MULTIPART>-pt<PART></IF>-fanart.jpg",
+	}
+
+	movie := &models.Movie{
+		ID:       "IPX-535",
+		Title:    "Test Movie",
+		CoverURL: server.URL + "/cover.jpg",
+	}
+
+	dl := NewDownloader(http.DefaultClient, afero.NewOsFs(), cfg, "test-agent")
+
+	// Test single file (no multipart)
+	tmpDir1 := t.TempDir()
+	results1, err := dl.DownloadAll(movie, tmpDir1, nil)
+	if err != nil {
+		t.Fatalf("DownloadAll (single) failed: %v", err)
+	}
+	if len(results1) == 0 {
+		t.Fatal("Expected at least one download")
+	}
+	// Should be IPX-535-fanart.jpg (no -pt suffix)
+	expectedSingle := filepath.Join(tmpDir1, "IPX-535-fanart.jpg")
+	if results1[0].LocalPath != expectedSingle {
+		t.Errorf("Single file: expected %s, got %s", expectedSingle, results1[0].LocalPath)
+	}
+
+	// Test multipart file
+	tmpDir2 := t.TempDir()
+	multipart := &MultipartInfo{IsMultiPart: true, PartNumber: 1, PartSuffix: "-pt1"}
+	results2, err := dl.DownloadAll(movie, tmpDir2, multipart)
+	if err != nil {
+		t.Fatalf("DownloadAll (multipart) failed: %v", err)
+	}
+	if len(results2) == 0 {
+		t.Fatal("Expected at least one download")
+	}
+	// Should be IPX-535-pt1-fanart.jpg (with -pt1 suffix)
+	expectedMulti := filepath.Join(tmpDir2, "IPX-535-pt1-fanart.jpg")
+	if results2[0].LocalPath != expectedMulti {
+		t.Errorf("Multipart file: expected %s, got %s", expectedMulti, results2[0].LocalPath)
+	}
+}
+
 func TestDownloader_DownloadAll_MultiPartDeduplication(t *testing.T) {
 	// Set up mock HTTP server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -330,6 +388,8 @@ func TestDownloader_DownloadAll_MultiPartDeduplication(t *testing.T) {
 
 	tmpDir := t.TempDir()
 
+	// Test with templates WITHOUT multipart placeholders (shared filenames)
+	// This tests that file-exists deduplication works correctly
 	cfg := &config.OutputConfig{
 		DownloadCover:       true,
 		DownloadPoster:      true,
@@ -369,15 +429,33 @@ func TestDownloader_DownloadAll_MultiPartDeduplication(t *testing.T) {
 		t.Error("Expected downloads for part 1, got 0")
 	}
 
-	// Part 2 should NOT download anything (deduplication)
+	// Count how many were actually downloaded
+	downloadedPart1 := 0
+	for _, r := range resultsPart1 {
+		if r.Downloaded {
+			downloadedPart1++
+		}
+	}
+
+	// Part 2 returns results but with Downloaded=false (files already exist with same names)
+	// Note: Actress images are not included for part 2+ (only first part downloads them)
 	multipartPart2 := &MultipartInfo{IsMultiPart: true, PartNumber: 2, PartSuffix: "-pt2"}
 	resultsPart2, err := downloader.DownloadAll(movie, tmpDir, multipartPart2)
 	if err != nil {
 		t.Fatalf("DownloadAll part 2 failed: %v", err)
 	}
 
-	if len(resultsPart2) != 0 {
-		t.Errorf("Expected 0 downloads for part 2 (deduplication), got %d", len(resultsPart2))
+	// Part 2 should return results (cover, poster, screenshots, trailer - no actresses)
+	// but none should be newly downloaded (files already exist with same names)
+	downloadedPart2 := 0
+	for _, r := range resultsPart2 {
+		if r.Downloaded {
+			downloadedPart2++
+		}
+	}
+
+	if downloadedPart2 != 0 {
+		t.Errorf("Expected 0 new downloads for part 2 (files already exist), got %d", downloadedPart2)
 	}
 
 	// nil (single file) should download everything
