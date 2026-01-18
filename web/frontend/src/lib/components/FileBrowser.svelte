@@ -11,7 +11,9 @@
 		CheckSquare,
 		Square,
 		CheckCheck,
-		Check
+		Check,
+		Search,
+		X
 	} from 'lucide-svelte';
 	import Button from './ui/Button.svelte';
 	import Card from './ui/Card.svelte';
@@ -30,7 +32,15 @@
 	let selectedFiles = $state<Set<string>>(new Set());
 	let loading = $state(false);
 	let error = $state<string | null>(null);
+	let filterText = $state('');
 	let pathParts = $derived(currentPath.split('/').filter((p) => p));
+
+	// Filter items based on filter text (case-insensitive)
+	const filteredItems = $derived(() => {
+		if (!filterText.trim()) return items;
+		const search = filterText.toLowerCase();
+		return items.filter((item) => item.name.toLowerCase().includes(search));
+	});
 
 	// Watch for changes to initialPath and browse when it's set
 	$effect(() => {
@@ -42,6 +52,7 @@
 	async function browse(path: string) {
 		loading = true;
 		error = null;
+		filterText = ''; // Clear filter when navigating
 		try {
 			const response: BrowseResponse = await apiClient.browse({ path: path || '/' });
 			currentPath = response.current_path;
@@ -97,7 +108,8 @@
 	}
 
 	function selectAll() {
-		const allFiles = items.filter((item) => !item.is_dir).map((item) => item.path);
+		// Select all visible (filtered) files
+		const allFiles = filteredItems().filter((item) => !item.is_dir).map((item) => item.path);
 		selectedFiles = new Set(allFiles);
 		onFileSelect?.(Array.from(selectedFiles));
 	}
@@ -108,16 +120,23 @@
 	}
 
 	function selectMatched() {
-		const matchedFiles = items
+		// Select all visible (filtered) matched files
+		const matchedFiles = filteredItems()
 			.filter((item) => !item.is_dir && item.matched)
 			.map((item) => item.path);
 		selectedFiles = new Set(matchedFiles);
 		onFileSelect?.(Array.from(selectedFiles));
 	}
 
-	// Derived state for file counts
-	const fileCount = $derived(items.filter((item) => !item.is_dir).length);
-	const matchedCount = $derived(items.filter((item) => !item.is_dir && item.matched).length);
+	// Derived state for file counts (based on filtered items)
+	const fileCount = $derived(filteredItems().filter((item) => !item.is_dir).length);
+	const matchedCount = $derived(filteredItems().filter((item) => !item.is_dir && item.matched).length);
+	const folderCount = $derived(filteredItems().filter((item) => item.is_dir).length);
+
+	// Clear filter when navigating to a new directory
+	function clearFilter() {
+		filterText = '';
+	}
 </script>
 
 <Card class="p-4">
@@ -159,6 +178,35 @@
 			{/each}
 		</div>
 	</div>
+
+	<!-- Filter Input -->
+	{#if items.length > 0}
+		<div class="mb-4 pb-4 border-b">
+			<div class="relative">
+				<Search class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+				<input
+					type="text"
+					bind:value={filterText}
+					placeholder="Filter files and folders..."
+					class="w-full pl-10 pr-10 py-2 border rounded-md text-sm focus:ring-2 focus:ring-primary focus:border-primary transition-all"
+				/>
+				{#if filterText}
+					<button
+						onclick={clearFilter}
+						class="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+						title="Clear filter"
+					>
+						<X class="h-4 w-4" />
+					</button>
+				{/if}
+			</div>
+			{#if filterText}
+				<div class="mt-2 text-xs text-muted-foreground">
+					Showing {folderCount} folder{folderCount !== 1 ? 's' : ''} and {fileCount} file{fileCount !== 1 ? 's' : ''} matching "{filterText}"
+				</div>
+			{/if}
+		</div>
+	{/if}
 
 	<!-- Selection Controls -->
 	{#if items.length > 0 && fileCount > 0}
@@ -219,8 +267,15 @@
 			<div class="text-center py-8 text-muted-foreground">
 				<p>Empty directory</p>
 			</div>
+		{:else if filteredItems().length === 0}
+			<div class="text-center py-8 text-muted-foreground">
+				<p>No files or folders match "{filterText}"</p>
+				<button onclick={clearFilter} class="text-primary hover:underline text-sm mt-2">
+					Clear filter
+				</button>
+			</div>
 		{:else}
-			{#each items as item}
+			{#each filteredItems() as item}
 				<button
 					onclick={() => handleItemClick(item)}
 					class="w-full flex items-center gap-3 p-3 rounded-lg transition-all duration-200 cursor-pointer
