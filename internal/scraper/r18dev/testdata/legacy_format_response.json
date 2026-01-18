@@ -1,10 +1,10 @@
 {
   "dvd_id": "ABW-001",
   "content_id": "118abw00001",
-  "title": "レガシー形式テスト",
+  "title_ja": "レガシー形式テスト",
   "description": "古いAPIレスポンス形式",
   "release_date": "2019-01-15",
-  "runtime": 150,
+  "runtime_mins": 150,
   "director": "古田新太",
   "maker": {
     "name": "Prestige"

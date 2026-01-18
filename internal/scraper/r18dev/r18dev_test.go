@@ -632,7 +632,7 @@ func TestActressThumbURLGeneration(t *testing.T) {
 			data := &R18Response{
 				DVDID:     "TEST-001",
 				ContentID: "test00001",
-				Title:     "Test",
+				TitleJA:   "Test",
 				Actresses: []struct {
 					ID         int    `json:"id"`
 					ImageURL   string `json:"image_url"`
@@ -665,7 +665,7 @@ func TestInvalidDateParsing(t *testing.T) {
 	data := &R18Response{
 		DVDID:       "TEST-001",
 		ContentID:   "test00001",
-		Title:       "Test",
+		TitleJA:     "Test",
 		ReleaseDate: "invalid-date-format",
 	}
 
@@ -692,7 +692,7 @@ func TestFallbackBehavior(t *testing.T) {
 			data: &R18Response{
 				DVDID:     "TEST-001",
 				ContentID: "test00001",
-				Title:     "Test",
+				TitleJA:   "Test",
 				Director:  "山田太郎",
 			},
 			checkField:  "director",
@@ -704,7 +704,7 @@ func TestFallbackBehavior(t *testing.T) {
 			data: &R18Response{
 				DVDID:     "TEST-001",
 				ContentID: "test00001",
-				Title:     "Test",
+				TitleJA:   "Test",
 				Maker: struct {
 					Name string `json:"name"`
 				}{Name: "Japanese Maker"},
@@ -718,7 +718,7 @@ func TestFallbackBehavior(t *testing.T) {
 			data: &R18Response{
 				DVDID:     "TEST-001",
 				ContentID: "test00001",
-				Title:     "Test",
+				TitleJA:   "Test",
 				Label: struct {
 					Name string `json:"name"`
 				}{Name: "Japanese Label"},
@@ -732,7 +732,7 @@ func TestFallbackBehavior(t *testing.T) {
 			data: &R18Response{
 				DVDID:      "TEST-001",
 				ContentID:  "test00001",
-				Title:      "Test",
+				TitleJA:    "Test",
 				SeriesName: "Fallback Series",
 			},
 			checkField:  "series",
@@ -775,7 +775,7 @@ func TestImageURLFallbacks(t *testing.T) {
 			data: &R18Response{
 				DVDID:          "TEST-001",
 				ContentID:      "test00001",
-				Title:          "Test",
+				TitleJA:        "Test",
 				JacketFullURL:  "https://example.com/jacket_full.jpg",
 				JacketThumbURL: "https://example.com/jacket_thumb.jpg",
 			},
@@ -787,7 +787,7 @@ func TestImageURLFallbacks(t *testing.T) {
 			data: &R18Response{
 				DVDID:     "TEST-001",
 				ContentID: "test00001",
-				Title:     "Test",
+				TitleJA:   "Test",
 				Images: struct {
 					JacketImage struct {
 						Large  string `json:"large"`
@@ -811,7 +811,7 @@ func TestImageURLFallbacks(t *testing.T) {
 			data: &R18Response{
 				DVDID:     "TEST-001",
 				ContentID: "test00001",
-				Title:     "Test",
+				TitleJA:   "Test",
 				Images: struct {
 					JacketImage struct {
 						Large  string `json:"large"`
@@ -835,7 +835,7 @@ func TestImageURLFallbacks(t *testing.T) {
 			data: &R18Response{
 				DVDID:     "TEST-001",
 				ContentID: "test00001",
-				Title:     "Test",
+				TitleJA:   "Test",
 			},
 			expectCover: false,
 			description: "Should handle missing images gracefully",
@@ -874,7 +874,7 @@ func TestScreenshotURLFallbacks(t *testing.T) {
 			data: &R18Response{
 				DVDID:     "TEST-001",
 				ContentID: "test00001",
-				Title:     "Test",
+				TitleJA:   "Test",
 				Gallery: []struct {
 					ImageFull  string `json:"image_full"`
 					ImageThumb string `json:"image_thumb"`
@@ -891,7 +891,7 @@ func TestScreenshotURLFallbacks(t *testing.T) {
 			data: &R18Response{
 				DVDID:     "TEST-001",
 				ContentID: "test00001",
-				Title:     "Test",
+				TitleJA:   "Test",
 				Images: struct {
 					JacketImage struct {
 						Large  string `json:"large"`
@@ -914,7 +914,7 @@ func TestScreenshotURLFallbacks(t *testing.T) {
 			data: &R18Response{
 				DVDID:     "TEST-001",
 				ContentID: "test00001",
-				Title:     "Test",
+				TitleJA:   "Test",
 			},
 			expectedCount: 0,
 			description:   "Should handle missing screenshots gracefully",
@@ -945,7 +945,7 @@ func TestTrailerURLFallbacks(t *testing.T) {
 			data: &R18Response{
 				DVDID:     "TEST-001",
 				ContentID: "test00001",
-				Title:     "Test",
+				TitleJA:   "Test",
 				SampleURL: "https://example.com/sample.mp4",
 			},
 			expectURL:   true,
@@ -956,7 +956,7 @@ func TestTrailerURLFallbacks(t *testing.T) {
 			data: &R18Response{
 				DVDID:     "TEST-001",
 				ContentID: "test00001",
-				Title:     "Test",
+				TitleJA:   "Test",
 				Sample: struct {
 					High string `json:"high"`
 					Low  string `json:"low"`
@@ -973,7 +973,7 @@ func TestTrailerURLFallbacks(t *testing.T) {
 			data: &R18Response{
 				DVDID:     "TEST-001",
 				ContentID: "test00001",
-				Title:     "Test",
+				TitleJA:   "Test",
 				Sample: struct {
 					High string `json:"high"`
 					Low  string `json:"low"`
@@ -989,7 +989,7 @@ func TestTrailerURLFallbacks(t *testing.T) {
 			data: &R18Response{
 				DVDID:     "TEST-001",
 				ContentID: "test00001",
-				Title:     "Test",
+				TitleJA:   "Test",
 			},
 			expectURL:   false,
 			description: "Should handle missing trailer gracefully",
@@ -1024,7 +1024,7 @@ func TestSeriesFallbackPriority(t *testing.T) {
 			data: &R18Response{
 				DVDID:        "TEST-001",
 				ContentID:    "test00001",
-				Title:        "Test",
+				TitleJA:      "Test",
 				SeriesNameEn: "English Series Name",
 				Series: struct {
 					Name string `json:"name"`
@@ -1038,7 +1038,7 @@ func TestSeriesFallbackPriority(t *testing.T) {
 			data: &R18Response{
 				DVDID:     "TEST-001",
 				ContentID: "test00001",
-				Title:     "Test",
+				TitleJA:   "Test",
 				Series: struct {
 					Name string `json:"name"`
 				}{Name: "Japanese Series Name"},
@@ -1051,7 +1051,7 @@ func TestSeriesFallbackPriority(t *testing.T) {
 			data: &R18Response{
 				DVDID:      "TEST-001",
 				ContentID:  "test00001",
-				Title:      "Test",
+				TitleJA:    "Test",
 				SeriesName: "Fallback Series Name",
 			},
 			expected: "Fallback Series Name",
@@ -1144,7 +1144,7 @@ func TestActressNameParsing(t *testing.T) {
 			data := &R18Response{
 				DVDID:     "TEST-001",
 				ContentID: "test00001",
-				Title:     "Test",
+				TitleJA:   "Test",
 				Actresses: []struct {
 					ID         int    `json:"id"`
 					ImageURL   string `json:"image_url"`
@@ -1184,7 +1184,7 @@ func TestIDResolution(t *testing.T) {
 			data: &R18Response{
 				DVDID:     "IPX-535",
 				ContentID: "1ipx00535",
-				Title:     "Test",
+				TitleJA:   "Test",
 			},
 			expectedID:  "IPX-535",
 			description: "Should prefer DVDID when available",
@@ -1194,7 +1194,7 @@ func TestIDResolution(t *testing.T) {
 			data: &R18Response{
 				DVDID:     "",
 				ContentID: "1ipx00535",
-				Title:     "Test",
+				TitleJA:   "Test",
 			},
 			expectedID:  "IPX-535",
 			description: "Should convert ContentID when DVDID missing",
@@ -1204,7 +1204,7 @@ func TestIDResolution(t *testing.T) {
 			data: &R18Response{
 				DVDID:     "",
 				ContentID: "",
-				Title:     "Test",
+				TitleJA:   "Test",
 			},
 			expectedID:  "",
 			description: "Should handle both empty gracefully",
@@ -1228,7 +1228,7 @@ func TestParseResponse_LanguageHandling(t *testing.T) {
 	data := &R18Response{
 		DVDID:     "TEST-001",
 		ContentID: "test00001",
-		Title:     "Test Movie",
+		TitleJA:   "Test Movie",
 	}
 
 	result, err := scraper.parseResponse(data, "https://r18.dev/test")
@@ -1280,7 +1280,7 @@ func TestParseResponse_TitleFallback(t *testing.T) {
 				DVDID:     "TEST-001",
 				ContentID: "test00001",
 				TitleEn:   tt.titleEn,
-				Title:     tt.title,
+				TitleJA:   tt.title,
 			}
 
 			result, err := scraper.parseResponse(data, "https://r18.dev/test")
@@ -1328,7 +1328,7 @@ func TestParseResponse_DescriptionFallback(t *testing.T) {
 			data := &R18Response{
 				DVDID:         "TEST-001",
 				ContentID:     "test00001",
-				Title:         "Test",
+				TitleJA:       "Test",
 				DescriptionEn: tt.descEn,
 				Description:   tt.desc,
 			}
@@ -1380,7 +1380,7 @@ func TestParseResponse_ReleaseDateVariants(t *testing.T) {
 			data := &R18Response{
 				DVDID:       "TEST-001",
 				ContentID:   "test00001",
-				Title:       "Test",
+				TitleJA:     "Test",
 				ReleaseDate: tt.releaseDate,
 			}
 
@@ -1434,7 +1434,7 @@ func TestParseResponse_RuntimeVariants(t *testing.T) {
 			data := &R18Response{
 				DVDID:     "TEST-001",
 				ContentID: "test00001",
-				Title:     "Test",
+				TitleJA:   "Test",
 				Runtime:   tt.runtime,
 			}
 
@@ -1454,7 +1454,7 @@ func TestParseResponse_EmptyFields(t *testing.T) {
 	data := &R18Response{
 		DVDID:     "TEST-001",
 		ContentID: "test00001",
-		Title:     "Minimal Test",
+		TitleJA:   "Minimal Test",
 		Runtime:   90,
 		// All optional fields left empty
 	}
@@ -1536,7 +1536,7 @@ func TestActressThumbURLFallback(t *testing.T) {
 			data := &R18Response{
 				DVDID:     "TEST-001",
 				ContentID: "test00001",
-				Title:     "Test",
+				TitleJA:   "Test",
 				Actresses: []struct {
 					ID         int    `json:"id"`
 					ImageURL   string `json:"image_url"`
@@ -1628,7 +1628,7 @@ func TestCategoryParsing(t *testing.T) {
 			data := &R18Response{
 				DVDID:      "TEST-001",
 				ContentID:  "test00001",
-				Title:      "Test",
+				TitleJA:    "Test",
 				Categories: tt.categories,
 			}
 

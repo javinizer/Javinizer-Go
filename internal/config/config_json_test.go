@@ -20,10 +20,10 @@ func TestDatabaseConfigJSONSerialization(t *testing.T) {
 		t.Fatalf("Failed to marshal DatabaseConfig: %v", err)
 	}
 
-	// Verify JSON contains LogLevel field (PascalCase for web UI compatibility)
+	// Verify JSON contains log_level field (snake_case for web UI compatibility)
 	jsonStr := string(jsonData)
-	if !strings.Contains(jsonStr, "LogLevel") {
-		t.Errorf("JSON output missing 'LogLevel' field. Got: %s", jsonStr)
+	if !strings.Contains(jsonStr, "log_level") {
+		t.Errorf("JSON output missing 'log_level' field. Got: %s", jsonStr)
 	}
 	if !strings.Contains(jsonStr, "silent") {
 		t.Errorf("JSON output missing 'silent' value. Got: %s", jsonStr)

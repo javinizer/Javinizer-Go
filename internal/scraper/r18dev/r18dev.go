@@ -319,8 +319,8 @@ func (s *Scraper) parseResponse(data *R18Response, sourceURL string) (*models.Sc
 		Language:      "en", // R18.dev provides English metadata
 		ID:            movieID,
 		ContentID:     data.ContentID,
-		Title:         cleanString(getPreferredString(data.TitleEn, data.Title)),
-		OriginalTitle: cleanString(data.Title), // Japanese title
+		Title:         cleanString(getPreferredString(data.TitleEn, data.TitleJA)),
+		OriginalTitle: cleanString(data.TitleJA), // Japanese title
 		Description:   cleanString(getPreferredString(data.DescriptionEn, data.Description)),
 		Runtime:       data.Runtime,
 	}
@@ -575,12 +575,12 @@ func getPreferredString(preferred, fallback string) string {
 type R18Response struct {
 	DVDID         string `json:"dvd_id"`
 	ContentID     string `json:"content_id"`
-	Title         string `json:"title"`
-	TitleEn       string `json:"title_en"` // New English title field
-	Description   string `json:"description"`
-	DescriptionEn string `json:"description_en"` // New English description field
+	TitleJA       string `json:"title_ja"`       // Japanese title
+	TitleEn       string `json:"title_en"`       // English title (may be null)
+	Description   string `json:"description"`    // Legacy field (not used by current API)
+	DescriptionEn string `json:"description_en"` // English description field
 	ReleaseDate   string `json:"release_date"`
-	Runtime       int    `json:"runtime"`
+	Runtime       int    `json:"runtime_mins"` // API uses runtime_mins, not runtime
 
 	// Top-level jacket URLs
 	JacketFullURL  string `json:"jacket_full_url"`

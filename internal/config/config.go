@@ -22,228 +22,228 @@ const (
 
 // Config represents the application configuration
 type Config struct {
-	Server      ServerConfig      `yaml:"server"`
-	API         APIConfig         `yaml:"api"`
-	System      SystemConfig      `yaml:"system"`
-	Scrapers    ScrapersConfig    `yaml:"scrapers"`
-	Metadata    MetadataConfig    `yaml:"metadata"`
-	Matching    MatchingConfig    `yaml:"file_matching"`
-	Output      OutputConfig      `yaml:"output"`
-	Database    DatabaseConfig    `yaml:"database"`
-	Logging     LoggingConfig     `yaml:"logging"`
-	Performance PerformanceConfig `yaml:"performance"`
-	MediaInfo   MediaInfoConfig   `yaml:"mediainfo"`
+	Server      ServerConfig      `yaml:"server" json:"server"`
+	API         APIConfig         `yaml:"api" json:"api"`
+	System      SystemConfig      `yaml:"system" json:"system"`
+	Scrapers    ScrapersConfig    `yaml:"scrapers" json:"scrapers"`
+	Metadata    MetadataConfig    `yaml:"metadata" json:"metadata"`
+	Matching    MatchingConfig    `yaml:"file_matching" json:"file_matching"`
+	Output      OutputConfig      `yaml:"output" json:"output"`
+	Database    DatabaseConfig    `yaml:"database" json:"database"`
+	Logging     LoggingConfig     `yaml:"logging" json:"logging"`
+	Performance PerformanceConfig `yaml:"performance" json:"performance"`
+	MediaInfo   MediaInfoConfig   `yaml:"mediainfo" json:"mediainfo"`
 }
 
 // ServerConfig holds API server configuration
 type ServerConfig struct {
-	Host string `yaml:"host"`
-	Port int    `yaml:"port"`
+	Host string `yaml:"host" json:"host"`
+	Port int    `yaml:"port" json:"port"`
 }
 
 // APIConfig holds API-specific configuration
 type APIConfig struct {
-	Security SecurityConfig `yaml:"security"`
+	Security SecurityConfig `yaml:"security" json:"security"`
 }
 
 // SecurityConfig holds API security settings for path validation and resource limits
 type SecurityConfig struct {
 	// Allowed directories for scanning/browsing (empty = no allowlist restriction)
-	AllowedDirectories []string `yaml:"allowed_directories"`
+	AllowedDirectories []string `yaml:"allowed_directories" json:"allowed_directories"`
 	// Denied directories (in addition to built-in system directories)
-	DeniedDirectories []string `yaml:"denied_directories"`
+	DeniedDirectories []string `yaml:"denied_directories" json:"denied_directories"`
 	// Maximum number of files to return in a scan
-	MaxFilesPerScan int `yaml:"max_files_per_scan"`
+	MaxFilesPerScan int `yaml:"max_files_per_scan" json:"max_files_per_scan"`
 	// Timeout for scan operations in seconds
-	ScanTimeoutSeconds int `yaml:"scan_timeout_seconds"`
+	ScanTimeoutSeconds int `yaml:"scan_timeout_seconds" json:"scan_timeout_seconds"`
 	// Allowed origins for CORS and WebSocket connections (empty = same-origin only, "*" = allow all)
-	AllowedOrigins []string `yaml:"allowed_origins"`
+	AllowedOrigins []string `yaml:"allowed_origins" json:"allowed_origins"`
 }
 
 // SystemConfig holds system-level settings
 type SystemConfig struct {
 	// Umask for file creation (e.g., "002" for rwxrwxr-x)
 	// Can be overridden with UMASK environment variable
-	Umask string `yaml:"umask"`
+	Umask string `yaml:"umask" json:"umask"`
 }
 
 // ScrapersConfig holds scraper-specific settings
 type ScrapersConfig struct {
-	UserAgent             string       `yaml:"user_agent"`
-	Referer               string       `yaml:"referer"`                 // Referer header for CDN compatibility (default: https://www.dmm.co.jp/)
-	TimeoutSeconds        int          `yaml:"timeout_seconds"`         // HTTP client timeout in seconds (default: 30)
-	RequestTimeoutSeconds int          `yaml:"request_timeout_seconds"` // Overall request timeout in seconds (default: 60)
-	Priority              []string     `yaml:"priority"`                // Global scraper priority order
-	Proxy                 ProxyConfig  `yaml:"proxy"`                   // HTTP/SOCKS5 proxy for scraper requests
-	R18Dev                R18DevConfig `yaml:"r18dev"`
-	DMM                   DMMConfig    `yaml:"dmm"`
+	UserAgent             string       `yaml:"user_agent" json:"user_agent"`
+	Referer               string       `yaml:"referer" json:"referer"`                                 // Referer header for CDN compatibility (default: https://www.dmm.co.jp/)
+	TimeoutSeconds        int          `yaml:"timeout_seconds" json:"timeout_seconds"`                 // HTTP client timeout in seconds (default: 30)
+	RequestTimeoutSeconds int          `yaml:"request_timeout_seconds" json:"request_timeout_seconds"` // Overall request timeout in seconds (default: 60)
+	Priority              []string     `yaml:"priority" json:"priority"`                               // Global scraper priority order
+	Proxy                 ProxyConfig  `yaml:"proxy" json:"proxy"`                                     // HTTP/SOCKS5 proxy for scraper requests
+	R18Dev                R18DevConfig `yaml:"r18dev" json:"r18dev"`
+	DMM                   DMMConfig    `yaml:"dmm" json:"dmm"`
 }
 
 // R18DevConfig holds R18.dev scraper configuration
 type R18DevConfig struct {
-	Enabled           bool `yaml:"enabled"`
-	RequestDelay      int  `yaml:"request_delay"`       // Delay between requests in milliseconds (0 = no delay)
-	MaxRetries        int  `yaml:"max_retries"`         // Maximum number of retry attempts for rate-limited requests
-	RespectRetryAfter bool `yaml:"respect_retry_after"` // Whether to respect Retry-After header from server
+	Enabled           bool `yaml:"enabled" json:"enabled"`
+	RequestDelay      int  `yaml:"request_delay" json:"request_delay"`             // Delay between requests in milliseconds (0 = no delay)
+	MaxRetries        int  `yaml:"max_retries" json:"max_retries"`                 // Maximum number of retry attempts for rate-limited requests
+	RespectRetryAfter bool `yaml:"respect_retry_after" json:"respect_retry_after"` // Whether to respect Retry-After header from server
 }
 
 // DMMConfig holds DMM/Fanza scraper configuration
 type DMMConfig struct {
-	Enabled        bool `yaml:"enabled"`
-	ScrapeActress  bool `yaml:"scrape_actress"`
-	EnableBrowser  bool `yaml:"enable_browser"`  // Enable browser mode for video.dmm.co.jp (JavaScript rendering)
-	BrowserTimeout int  `yaml:"browser_timeout"` // Timeout in seconds for browser operations (default: 30)
+	Enabled        bool `yaml:"enabled" json:"enabled"`
+	ScrapeActress  bool `yaml:"scrape_actress" json:"scrape_actress"`
+	EnableBrowser  bool `yaml:"enable_browser" json:"enable_browser"`   // Enable browser mode for video.dmm.co.jp (JavaScript rendering)
+	BrowserTimeout int  `yaml:"browser_timeout" json:"browser_timeout"` // Timeout in seconds for browser operations (default: 30)
 }
 
 // ProxyConfig holds HTTP/SOCKS5 proxy configuration
 type ProxyConfig struct {
-	Enabled  bool   `yaml:"enabled"`  // Enable proxy for HTTP requests
-	URL      string `yaml:"url"`      // Proxy URL (e.g., "http://proxy:8080" or "socks5://proxy:1080")
-	Username string `yaml:"username"` // Optional proxy authentication username
-	Password string `yaml:"password"` // Optional proxy authentication password
+	Enabled  bool   `yaml:"enabled" json:"enabled"`   // Enable proxy for HTTP requests
+	URL      string `yaml:"url" json:"url"`           // Proxy URL (e.g., "http://proxy:8080" or "socks5://proxy:1080")
+	Username string `yaml:"username" json:"username"` // Optional proxy authentication username
+	Password string `yaml:"password" json:"password"` // Optional proxy authentication password
 }
 
 // MetadataConfig holds metadata aggregation settings
 type MetadataConfig struct {
-	Priority         PriorityConfig         `yaml:"priority"`
-	ActressDatabase  ActressDatabaseConfig  `yaml:"actress_database"`  // Actress image database (SQLite-backed)
-	GenreReplacement GenreReplacementConfig `yaml:"genre_replacement"` // Genre replacement/normalization (SQLite-backed)
-	TagDatabase      TagDatabaseConfig      `yaml:"tag_database"`      // Per-movie tag database (SQLite-backed)
-	IgnoreGenres     []string               `yaml:"ignore_genres"`
-	RequiredFields   []string               `yaml:"required_fields"`
-	NFO              NFOConfig              `yaml:"nfo"`
+	Priority         PriorityConfig         `yaml:"priority" json:"priority"`
+	ActressDatabase  ActressDatabaseConfig  `yaml:"actress_database" json:"actress_database"`   // Actress image database (SQLite-backed)
+	GenreReplacement GenreReplacementConfig `yaml:"genre_replacement" json:"genre_replacement"` // Genre replacement/normalization (SQLite-backed)
+	TagDatabase      TagDatabaseConfig      `yaml:"tag_database" json:"tag_database"`           // Per-movie tag database (SQLite-backed)
+	IgnoreGenres     []string               `yaml:"ignore_genres" json:"ignore_genres"`
+	RequiredFields   []string               `yaml:"required_fields" json:"required_fields"`
+	NFO              NFOConfig              `yaml:"nfo" json:"nfo"`
 }
 
 // PriorityConfig defines which scraper to prefer for each field
 // Note: omitempty is removed so empty arrays are preserved in YAML (signaling "use global")
 type PriorityConfig struct {
-	Actress       []string `yaml:"actress" json:"Actress"`
-	OriginalTitle []string `yaml:"original_title" json:"OriginalTitle"`
-	CoverURL      []string `yaml:"cover_url" json:"CoverURL"`
-	Description   []string `yaml:"description" json:"Description"`
-	Director      []string `yaml:"director" json:"Director"`
-	Genre         []string `yaml:"genre" json:"Genre"`
-	ID            []string `yaml:"id" json:"ID"`
-	ContentID     []string `yaml:"content_id" json:"ContentID"`
-	Label         []string `yaml:"label" json:"Label"`
-	Maker         []string `yaml:"maker" json:"Maker"`
-	PosterURL     []string `yaml:"poster_url" json:"PosterURL"`
-	Rating        []string `yaml:"rating" json:"Rating"`
-	ReleaseDate   []string `yaml:"release_date" json:"ReleaseDate"`
-	Runtime       []string `yaml:"runtime" json:"Runtime"`
-	Series        []string `yaml:"series" json:"Series"`
-	ScreenshotURL []string `yaml:"screenshot_url" json:"ScreenshotURL"`
-	Title         []string `yaml:"title" json:"Title"`
-	TrailerURL    []string `yaml:"trailer_url" json:"TrailerURL"`
+	Actress       []string `yaml:"actress" json:"actress"`
+	OriginalTitle []string `yaml:"original_title" json:"original_title"`
+	CoverURL      []string `yaml:"cover_url" json:"cover_url"`
+	Description   []string `yaml:"description" json:"description"`
+	Director      []string `yaml:"director" json:"director"`
+	Genre         []string `yaml:"genre" json:"genre"`
+	ID            []string `yaml:"id" json:"id"`
+	ContentID     []string `yaml:"content_id" json:"content_id"`
+	Label         []string `yaml:"label" json:"label"`
+	Maker         []string `yaml:"maker" json:"maker"`
+	PosterURL     []string `yaml:"poster_url" json:"poster_url"`
+	Rating        []string `yaml:"rating" json:"rating"`
+	ReleaseDate   []string `yaml:"release_date" json:"release_date"`
+	Runtime       []string `yaml:"runtime" json:"runtime"`
+	Series        []string `yaml:"series" json:"series"`
+	ScreenshotURL []string `yaml:"screenshot_url" json:"screenshot_url"`
+	Title         []string `yaml:"title" json:"title"`
+	TrailerURL    []string `yaml:"trailer_url" json:"trailer_url"`
 }
 
 // ActressDatabaseConfig holds actress image database configuration
 type ActressDatabaseConfig struct {
-	Enabled      bool `yaml:"enabled"`       // Enable actress image lookup from database
-	AutoAdd      bool `yaml:"auto_add"`      // Automatically add new actresses to database
-	ConvertAlias bool `yaml:"convert_alias"` // Convert actress names using alias database
+	Enabled      bool `yaml:"enabled" json:"enabled"`             // Enable actress image lookup from database
+	AutoAdd      bool `yaml:"auto_add" json:"auto_add"`           // Automatically add new actresses to database
+	ConvertAlias bool `yaml:"convert_alias" json:"convert_alias"` // Convert actress names using alias database
 }
 
 // GenreReplacementConfig holds genre replacement/normalization configuration
 type GenreReplacementConfig struct {
-	Enabled bool `yaml:"enabled"`  // Enable genre replacement from database
-	AutoAdd bool `yaml:"auto_add"` // Automatically add new genres to database (identity mapping)
+	Enabled bool `yaml:"enabled" json:"enabled"`   // Enable genre replacement from database
+	AutoAdd bool `yaml:"auto_add" json:"auto_add"` // Automatically add new genres to database (identity mapping)
 }
 
 // TagDatabaseConfig holds per-movie tag database configuration
 type TagDatabaseConfig struct {
-	Enabled bool `yaml:"enabled"` // Enable per-movie tag lookup from database
+	Enabled bool `yaml:"enabled" json:"enabled"` // Enable per-movie tag lookup from database
 }
 
 // NFOConfig holds NFO generation settings
 type NFOConfig struct {
-	Enabled              bool     `yaml:"enabled"`
-	DisplayName          string   `yaml:"display_name"`
-	FilenameTemplate     string   `yaml:"filename_template"`
-	FirstNameOrder       bool     `yaml:"first_name_order"`
-	ActressLanguageJA    bool     `yaml:"actress_language_ja"`
-	PerFile              bool     `yaml:"per_file"` // Create separate NFO for each multi-part file
-	UnknownActressText   string   `yaml:"unknown_actress_text"`
-	ActressAsTag         bool     `yaml:"actress_as_tag"`
-	AddGenericRole       bool     `yaml:"add_generic_role"`     // Add generic "Actress" role to all actresses
-	AltNameRole          bool     `yaml:"alt_name_role"`        // Use alternate name (Japanese) in role field
-	IncludeOriginalPath  bool     `yaml:"include_originalpath"` // Include source filename in NFO
-	IncludeStreamDetails bool     `yaml:"include_stream_details"`
-	IncludeFanart        bool     `yaml:"include_fanart"`
-	IncludeTrailer       bool     `yaml:"include_trailer"`
-	RatingSource         string   `yaml:"rating_source"`
-	Tag                  []string `yaml:"tag"`
-	Tagline              string   `yaml:"tagline"`
-	Credits              []string `yaml:"credits"`
+	Enabled              bool     `yaml:"enabled" json:"enabled"`
+	DisplayName          string   `yaml:"display_name" json:"display_name"`
+	FilenameTemplate     string   `yaml:"filename_template" json:"filename_template"`
+	FirstNameOrder       bool     `yaml:"first_name_order" json:"first_name_order"`
+	ActressLanguageJA    bool     `yaml:"actress_language_ja" json:"actress_language_ja"`
+	PerFile              bool     `yaml:"per_file" json:"per_file"` // Create separate NFO for each multi-part file
+	UnknownActressText   string   `yaml:"unknown_actress_text" json:"unknown_actress_text"`
+	ActressAsTag         bool     `yaml:"actress_as_tag" json:"actress_as_tag"`
+	AddGenericRole       bool     `yaml:"add_generic_role" json:"add_generic_role"`         // Add generic "Actress" role to all actresses
+	AltNameRole          bool     `yaml:"alt_name_role" json:"alt_name_role"`               // Use alternate name (Japanese) in role field
+	IncludeOriginalPath  bool     `yaml:"include_originalpath" json:"include_originalpath"` // Include source filename in NFO
+	IncludeStreamDetails bool     `yaml:"include_stream_details" json:"include_stream_details"`
+	IncludeFanart        bool     `yaml:"include_fanart" json:"include_fanart"`
+	IncludeTrailer       bool     `yaml:"include_trailer" json:"include_trailer"`
+	RatingSource         string   `yaml:"rating_source" json:"rating_source"`
+	Tag                  []string `yaml:"tag" json:"tag"`
+	Tagline              string   `yaml:"tagline" json:"tagline"`
+	Credits              []string `yaml:"credits" json:"credits"`
 }
 
 // MatchingConfig holds file matching configuration
 type MatchingConfig struct {
-	Extensions      []string `yaml:"extensions"`
-	MinSizeMB       int      `yaml:"min_size_mb"`
-	ExcludePatterns []string `yaml:"exclude_patterns"`
-	RegexEnabled    bool     `yaml:"regex_enabled"`
-	RegexPattern    string   `yaml:"regex_pattern"`
+	Extensions      []string `yaml:"extensions" json:"extensions"`
+	MinSizeMB       int      `yaml:"min_size_mb" json:"min_size_mb"`
+	ExcludePatterns []string `yaml:"exclude_patterns" json:"exclude_patterns"`
+	RegexEnabled    bool     `yaml:"regex_enabled" json:"regex_enabled"`
+	RegexPattern    string   `yaml:"regex_pattern" json:"regex_pattern"`
 }
 
 // OutputConfig holds output/organization settings
 type OutputConfig struct {
-	FolderFormat        string      `yaml:"folder_format"`
-	FileFormat          string      `yaml:"file_format"`
-	SubfolderFormat     []string    `yaml:"subfolder_format"`
-	Delimiter           string      `yaml:"delimiter"`
-	MaxTitleLength      int         `yaml:"max_title_length"`
-	MaxPathLength       int         `yaml:"max_path_length"`
-	MoveSubtitles       bool        `yaml:"move_subtitles"`
-	SubtitleExtensions  []string    `yaml:"subtitle_extensions"`
-	RenameFolderInPlace bool        `yaml:"rename_folder_in_place"`
-	MoveToFolder        bool        `yaml:"move_to_folder"` // Move/copy files to organized folders (default: true)
-	RenameFile          bool        `yaml:"rename_file"`    // Rename files using file_format template (default: true)
-	GroupActress        bool        `yaml:"group_actress"`  // Replace multiple actresses with "@Group" in templates (default: false)
-	PosterFormat        string      `yaml:"poster_format"`
-	FanartFormat        string      `yaml:"fanart_format"`
-	TrailerFormat       string      `yaml:"trailer_format"`
-	ScreenshotFormat    string      `yaml:"screenshot_format"`
-	ScreenshotFolder    string      `yaml:"screenshot_folder"`
-	ScreenshotPadding   int         `yaml:"screenshot_padding"`
-	ActressFolder       string      `yaml:"actress_folder"`
-	ActressFormat       string      `yaml:"actress_format"`
-	DownloadCover       bool        `yaml:"download_cover"`
-	DownloadPoster      bool        `yaml:"download_poster"`
-	DownloadExtrafanart bool        `yaml:"download_extrafanart"`
-	DownloadTrailer     bool        `yaml:"download_trailer"`
-	DownloadActress     bool        `yaml:"download_actress"`
-	DownloadTimeout     int         `yaml:"download_timeout"` // Timeout in seconds for HTTP downloads (default: 60)
-	DownloadProxy       ProxyConfig `yaml:"download_proxy"`   // Separate proxy for downloads (optional)
+	FolderFormat        string      `yaml:"folder_format" json:"folder_format"`
+	FileFormat          string      `yaml:"file_format" json:"file_format"`
+	SubfolderFormat     []string    `yaml:"subfolder_format" json:"subfolder_format"`
+	Delimiter           string      `yaml:"delimiter" json:"delimiter"`
+	MaxTitleLength      int         `yaml:"max_title_length" json:"max_title_length"`
+	MaxPathLength       int         `yaml:"max_path_length" json:"max_path_length"`
+	MoveSubtitles       bool        `yaml:"move_subtitles" json:"move_subtitles"`
+	SubtitleExtensions  []string    `yaml:"subtitle_extensions" json:"subtitle_extensions"`
+	RenameFolderInPlace bool        `yaml:"rename_folder_in_place" json:"rename_folder_in_place"`
+	MoveToFolder        bool        `yaml:"move_to_folder" json:"move_to_folder"` // Move/copy files to organized folders (default: true)
+	RenameFile          bool        `yaml:"rename_file" json:"rename_file"`       // Rename files using file_format template (default: true)
+	GroupActress        bool        `yaml:"group_actress" json:"group_actress"`   // Replace multiple actresses with "@Group" in templates (default: false)
+	PosterFormat        string      `yaml:"poster_format" json:"poster_format"`
+	FanartFormat        string      `yaml:"fanart_format" json:"fanart_format"`
+	TrailerFormat       string      `yaml:"trailer_format" json:"trailer_format"`
+	ScreenshotFormat    string      `yaml:"screenshot_format" json:"screenshot_format"`
+	ScreenshotFolder    string      `yaml:"screenshot_folder" json:"screenshot_folder"`
+	ScreenshotPadding   int         `yaml:"screenshot_padding" json:"screenshot_padding"`
+	ActressFolder       string      `yaml:"actress_folder" json:"actress_folder"`
+	ActressFormat       string      `yaml:"actress_format" json:"actress_format"`
+	DownloadCover       bool        `yaml:"download_cover" json:"download_cover"`
+	DownloadPoster      bool        `yaml:"download_poster" json:"download_poster"`
+	DownloadExtrafanart bool        `yaml:"download_extrafanart" json:"download_extrafanart"`
+	DownloadTrailer     bool        `yaml:"download_trailer" json:"download_trailer"`
+	DownloadActress     bool        `yaml:"download_actress" json:"download_actress"`
+	DownloadTimeout     int         `yaml:"download_timeout" json:"download_timeout"` // Timeout in seconds for HTTP downloads (default: 60)
+	DownloadProxy       ProxyConfig `yaml:"download_proxy" json:"download_proxy"`     // Separate proxy for downloads (optional)
 }
 
 // DatabaseConfig holds database configuration
 type DatabaseConfig struct {
-	Type     string `yaml:"type" json:"Type"`          // sqlite, postgres, mysql
-	DSN      string `yaml:"dsn" json:"DSN"`            // Data Source Name
-	LogLevel string `yaml:"log_level" json:"LogLevel"` // Database query logging: silent, error, warn, info (default: silent)
+	Type     string `yaml:"type" json:"type"`           // sqlite, postgres, mysql
+	DSN      string `yaml:"dsn" json:"dsn"`             // Data Source Name
+	LogLevel string `yaml:"log_level" json:"log_level"` // Database query logging: silent, error, warn, info (default: silent)
 }
 
 // LoggingConfig holds logging configuration
 type LoggingConfig struct {
-	Level  string `yaml:"level"`  // debug, info, warn, error
-	Format string `yaml:"format"` // json, text
-	Output string `yaml:"output"` // stdout, file path
+	Level  string `yaml:"level" json:"level"`   // debug, info, warn, error
+	Format string `yaml:"format" json:"format"` // json, text
+	Output string `yaml:"output" json:"output"` // stdout, file path
 }
 
 // PerformanceConfig holds performance and concurrency settings
 type PerformanceConfig struct {
-	MaxWorkers     int `yaml:"max_workers"`     // Maximum concurrent workers (default: 5)
-	WorkerTimeout  int `yaml:"worker_timeout"`  // Timeout per task in seconds (default: 300)
-	BufferSize     int `yaml:"buffer_size"`     // Channel buffer size (default: 100)
-	UpdateInterval int `yaml:"update_interval"` // UI update interval in milliseconds (default: 100)
+	MaxWorkers     int `yaml:"max_workers" json:"max_workers"`         // Maximum concurrent workers (default: 5)
+	WorkerTimeout  int `yaml:"worker_timeout" json:"worker_timeout"`   // Timeout per task in seconds (default: 300)
+	BufferSize     int `yaml:"buffer_size" json:"buffer_size"`         // Channel buffer size (default: 100)
+	UpdateInterval int `yaml:"update_interval" json:"update_interval"` // UI update interval in milliseconds (default: 100)
 }
 
 // MediaInfoConfig holds MediaInfo functionality configuration
 type MediaInfoConfig struct {
-	CLIEnabled bool   `yaml:"cli_enabled"` // Enable MediaInfo CLI fallback (default: false)
-	CLIPath    string `yaml:"cli_path"`    // Path to mediainfo binary (default: "mediainfo")
-	CLITimeout int    `yaml:"cli_timeout"` // Timeout in seconds for CLI execution (default: 30)
+	CLIEnabled bool   `yaml:"cli_enabled" json:"cli_enabled"` // Enable MediaInfo CLI fallback (default: false)
+	CLIPath    string `yaml:"cli_path" json:"cli_path"`       // Path to mediainfo binary (default: "mediainfo")
+	CLITimeout int    `yaml:"cli_timeout" json:"cli_timeout"` // Timeout in seconds for CLI execution (default: 30)
 }
 
 // DefaultConfig returns the default configuration
