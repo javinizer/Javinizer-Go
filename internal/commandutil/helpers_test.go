@@ -23,9 +23,9 @@ import (
 type MockDownloaderWithTracking struct {
 	*MockDownloader
 	Calls []struct {
-		Movie      *models.Movie
-		DestDir    string
-		PartNumber int
+		Movie     *models.Movie
+		DestDir   string
+		Multipart *downloader.MultipartInfo
 	}
 }
 
@@ -33,20 +33,20 @@ func NewMockDownloaderWithTracking(results []downloader.DownloadResult, err erro
 	return &MockDownloaderWithTracking{
 		MockDownloader: NewMockDownloader(results, err),
 		Calls: make([]struct {
-			Movie      *models.Movie
-			DestDir    string
-			PartNumber int
+			Movie     *models.Movie
+			DestDir   string
+			Multipart *downloader.MultipartInfo
 		}, 0),
 	}
 }
 
-func (m *MockDownloaderWithTracking) DownloadAll(movie *models.Movie, destDir string, partNumber int) ([]downloader.DownloadResult, error) {
+func (m *MockDownloaderWithTracking) DownloadAll(movie *models.Movie, destDir string, multipart *downloader.MultipartInfo) ([]downloader.DownloadResult, error) {
 	m.Calls = append(m.Calls, struct {
-		Movie      *models.Movie
-		DestDir    string
-		PartNumber int
-	}{movie, destDir, partNumber})
-	return m.MockDownloader.DownloadAll(movie, destDir, partNumber)
+		Movie     *models.Movie
+		DestDir   string
+		Multipart *downloader.MultipartInfo
+	}{movie, destDir, multipart})
+	return m.MockDownloader.DownloadAll(movie, destDir, multipart)
 }
 
 // TestGenerateNFOs tests the NFO generation helper function
@@ -523,9 +523,10 @@ func TestDownloadMediaFiles(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, 1, count, "Should download for multi-part movie")
 
-		// Verify DownloadAll was called with partNumber=1 (lowest part)
+		// Verify DownloadAll was called with multipart info
 		assert.Equal(t, 1, len(mockDownloader.Calls), "Should have called DownloadAll once")
-		assert.Equal(t, 1, mockDownloader.Calls[0].PartNumber, "Should use lowest part number (1)")
+		assert.NotNil(t, mockDownloader.Calls[0].Multipart, "Should have multipart info for multi-part file")
+		assert.Equal(t, 1, mockDownloader.Calls[0].Multipart.PartNumber, "Should use lowest part number (1)")
 	})
 
 	t.Run("Mixed results counts only downloaded", func(t *testing.T) {

@@ -17,7 +17,7 @@ import (
 // MediaDownloader defines the interface for downloading media files.
 // This interface allows for easier testing by enabling mock implementations.
 type MediaDownloader interface {
-	DownloadAll(movie *models.Movie, destDir string, partNumber int) ([]downloader.DownloadResult, error)
+	DownloadAll(movie *models.Movie, destDir string, multipart *downloader.MultipartInfo) ([]downloader.DownloadResult, error)
 }
 
 // ScanAndMatch scans files and extracts JAV IDs.
@@ -344,9 +344,9 @@ func DownloadMediaFiles(
 			fmt.Printf("   %s: would download ~%d file(s)\n", id, count)
 		} else {
 			logging.Debugf("[%s] Starting download to: %s", id, downloadDir)
-			// Use PartNumber for deduplication (0 for single file, 1+ for multi-part)
+			// Build multipart info for template rendering
 			// Find the lowest part number to determine if we should download shared media
-			partNumber := 0
+			var multipart *downloader.MultipartInfo
 			if firstMatch.IsMultiPart {
 				// For multi-part, find the lowest part number among all matches
 				minPartNumber := idMatches[0].PartNumber
@@ -360,9 +360,13 @@ func DownloadMediaFiles(
 				if minPartNumber > 1 {
 					minPartNumber = 1
 				}
-				partNumber = minPartNumber
+				multipart = &downloader.MultipartInfo{
+					IsMultiPart: true,
+					PartNumber:  minPartNumber,
+					PartSuffix:  firstMatch.PartSuffix,
+				}
 			}
-			results, err := mediaDownloader.DownloadAll(movie, downloadDir, partNumber)
+			results, err := mediaDownloader.DownloadAll(movie, downloadDir, multipart)
 			if err != nil {
 				logging.Infof("Download error for %s: %v", id, err)
 			}

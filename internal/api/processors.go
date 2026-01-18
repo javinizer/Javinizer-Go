@@ -247,31 +247,32 @@ func copyTempCroppedPoster(job *worker.BatchJob, movie *models.Movie, destDir st
 
 // downloadMediaFiles downloads all configured media files for a movie
 // destDir is where files should be downloaded to
+// Note: This function is called without multipart context (single file operations)
 func downloadMediaFiles(dl *downloader.Downloader, movie *models.Movie, destDir string, cfg *config.Config) {
 	// Download poster (may be skipped if temp poster was already copied)
 	if cfg.Output.DownloadPoster {
-		if _, err := dl.DownloadPoster(movie, destDir); err != nil {
+		if _, err := dl.DownloadPoster(movie, destDir, nil); err != nil {
 			logging.Errorf("Failed to download poster for %s: %v", movie.ID, err)
 		}
 	}
 
 	// Download cover
 	if cfg.Output.DownloadCover {
-		if _, err := dl.DownloadCover(movie, destDir); err != nil {
+		if _, err := dl.DownloadCover(movie, destDir, nil); err != nil {
 			logging.Errorf("Failed to download cover for %s: %v", movie.ID, err)
 		}
 	}
 
 	// Download screenshots
 	if cfg.Output.DownloadExtrafanart {
-		if _, err := dl.DownloadExtrafanart(movie, destDir); err != nil {
+		if _, err := dl.DownloadExtrafanart(movie, destDir, nil); err != nil {
 			logging.Errorf("Failed to download screenshots for %s: %v", movie.ID, err)
 		}
 	}
 
 	// Download trailer
 	if cfg.Output.DownloadTrailer {
-		if _, err := dl.DownloadTrailer(movie, destDir); err != nil {
+		if _, err := dl.DownloadTrailer(movie, destDir, nil); err != nil {
 			logging.Errorf("Failed to download trailer for %s: %v", movie.ID, err)
 		}
 	}
@@ -287,7 +288,8 @@ func downloadMediaFiles(dl *downloader.Downloader, movie *models.Movie, destDir 
 // downloadMediaFilesWithHistory downloads all configured media files and logs to history
 func downloadMediaFilesWithHistory(dl *downloader.Downloader, movie *models.Movie, destDir string, cfg *config.Config, historyLogger *history.Logger) {
 	// Use DownloadAll to get results for history logging
-	results, err := dl.DownloadAll(movie, destDir, 0)
+	// Pass nil for multipart since this is called for single file operations
+	results, err := dl.DownloadAll(movie, destDir, nil)
 	if err != nil {
 		logging.Errorf("Failed to download media for %s: %v", movie.ID, err)
 		return
@@ -538,7 +540,16 @@ func processUpdateMode(job *worker.BatchJob, cfg *config.Config, db *database.DB
 
 		// Download all media files to source directory
 		// Use movieToWrite (merged) to include NFO data in downloads
-		results, err := dl.DownloadAll(movieToWrite, sourceDir, 0)
+		// Build multipart info for template rendering (from earlier part detection)
+		var multipart *downloader.MultipartInfo
+		if tmplCtx.IsMultiPart {
+			multipart = &downloader.MultipartInfo{
+				IsMultiPart: true,
+				PartNumber:  tmplCtx.PartNumber,
+				PartSuffix:  tmplCtx.PartSuffix,
+			}
+		}
+		results, err := dl.DownloadAll(movieToWrite, sourceDir, multipart)
 		if err != nil {
 			logging.Warnf("Failed to download media for %s: %v", movie.ID, err)
 			hasErrors = true

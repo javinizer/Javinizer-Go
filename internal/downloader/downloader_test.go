@@ -64,7 +64,7 @@ func TestDownloader_DownloadCover(t *testing.T) {
 
 	downloader := NewDownloader(http.DefaultClient, afero.NewOsFs(), cfg, "test-agent")
 
-	result, err := downloader.DownloadCover(movie, tmpDir)
+	result, err := downloader.DownloadCover(movie, tmpDir, nil)
 	if err != nil {
 		t.Fatalf("DownloadCover failed: %v", err)
 	}
@@ -107,7 +107,7 @@ func TestDownloader_DownloadCover_Disabled(t *testing.T) {
 
 	downloader := NewDownloader(http.DefaultClient, afero.NewOsFs(), cfg, "test-agent")
 
-	result, err := downloader.DownloadCover(movie, tmpDir)
+	result, err := downloader.DownloadCover(movie, tmpDir, nil)
 	if err != nil {
 		t.Fatalf("DownloadCover failed: %v", err)
 	}
@@ -134,7 +134,7 @@ func TestDownloader_DownloadCover_AlreadyExists(t *testing.T) {
 		t.Fatalf("Failed to create existing file: %v", err)
 	}
 
-	result, err := downloader.DownloadCover(movie, tmpDir)
+	result, err := downloader.DownloadCover(movie, tmpDir, nil)
 	if err != nil {
 		t.Fatalf("DownloadCover failed: %v", err)
 	}
@@ -175,7 +175,7 @@ func TestDownloader_DownloadExtrafanart(t *testing.T) {
 
 	downloader := NewDownloader(http.DefaultClient, afero.NewOsFs(), cfg, "test-agent")
 
-	results, err := downloader.DownloadExtrafanart(movie, tmpDir)
+	results, err := downloader.DownloadExtrafanart(movie, tmpDir, nil)
 	if err != nil {
 		t.Fatalf("DownloadExtrafanart failed: %v", err)
 	}
@@ -218,7 +218,7 @@ func TestDownloader_DownloadTrailer(t *testing.T) {
 
 	downloader := NewDownloader(http.DefaultClient, afero.NewOsFs(), cfg, "test-agent")
 
-	result, err := downloader.DownloadTrailer(movie, tmpDir)
+	result, err := downloader.DownloadTrailer(movie, tmpDir, nil)
 	if err != nil {
 		t.Fatalf("DownloadTrailer failed: %v", err)
 	}
@@ -306,7 +306,7 @@ func TestDownloader_Download_BadStatusCode(t *testing.T) {
 
 	downloader := NewDownloader(http.DefaultClient, afero.NewOsFs(), cfg, "test-agent")
 
-	result, err := downloader.DownloadCover(movie, tmpDir)
+	result, err := downloader.DownloadCover(movie, tmpDir, nil)
 	if err == nil {
 		t.Error("Expected error for 404 status")
 	}
@@ -359,7 +359,8 @@ func TestDownloader_DownloadAll_MultiPartDeduplication(t *testing.T) {
 	downloader := NewDownloader(http.DefaultClient, afero.NewOsFs(), cfg, "test-agent")
 
 	// Part 1 should download everything
-	resultsPart1, err := downloader.DownloadAll(movie, tmpDir, 1)
+	multipartPart1 := &MultipartInfo{IsMultiPart: true, PartNumber: 1, PartSuffix: "-pt1"}
+	resultsPart1, err := downloader.DownloadAll(movie, tmpDir, multipartPart1)
 	if err != nil {
 		t.Fatalf("DownloadAll part 1 failed: %v", err)
 	}
@@ -369,7 +370,8 @@ func TestDownloader_DownloadAll_MultiPartDeduplication(t *testing.T) {
 	}
 
 	// Part 2 should NOT download anything (deduplication)
-	resultsPart2, err := downloader.DownloadAll(movie, tmpDir, 2)
+	multipartPart2 := &MultipartInfo{IsMultiPart: true, PartNumber: 2, PartSuffix: "-pt2"}
+	resultsPart2, err := downloader.DownloadAll(movie, tmpDir, multipartPart2)
 	if err != nil {
 		t.Fatalf("DownloadAll part 2 failed: %v", err)
 	}
@@ -378,15 +380,15 @@ func TestDownloader_DownloadAll_MultiPartDeduplication(t *testing.T) {
 		t.Errorf("Expected 0 downloads for part 2 (deduplication), got %d", len(resultsPart2))
 	}
 
-	// Part 0 (single file) should download everything
+	// nil (single file) should download everything
 	tmpDir2 := t.TempDir()
-	resultsPart0, err := downloader.DownloadAll(movie, tmpDir2, 0)
+	resultsSingle, err := downloader.DownloadAll(movie, tmpDir2, nil)
 	if err != nil {
-		t.Fatalf("DownloadAll part 0 failed: %v", err)
+		t.Fatalf("DownloadAll single file failed: %v", err)
 	}
 
-	if len(resultsPart0) == 0 {
-		t.Error("Expected downloads for part 0 (single file), got 0")
+	if len(resultsSingle) == 0 {
+		t.Error("Expected downloads for single file, got 0")
 	}
 }
 
@@ -417,7 +419,7 @@ func TestDownloader_DownloadAll(t *testing.T) {
 
 	downloader := NewDownloader(http.DefaultClient, afero.NewOsFs(), cfg, "test-agent")
 
-	results, err := downloader.DownloadAll(movie, tmpDir, 0) // Part 0 = single file
+	results, err := downloader.DownloadAll(movie, tmpDir, nil) // nil = single file
 	if err != nil {
 		t.Fatalf("DownloadAll failed: %v", err)
 	}
@@ -484,6 +486,7 @@ func TestDownloader_generateFilename(t *testing.T) {
 		name        string
 		template    string
 		index       int
+		multipart   *MultipartInfo
 		expected    string
 		description string
 	}{
@@ -491,6 +494,7 @@ func TestDownloader_generateFilename(t *testing.T) {
 			name:        "Poster template",
 			template:    "<ID>-poster.jpg",
 			index:       0,
+			multipart:   nil,
 			expected:    "IPX-535-poster.jpg",
 			description: "Simple poster template with ID",
 		},
@@ -498,6 +502,7 @@ func TestDownloader_generateFilename(t *testing.T) {
 			name:        "Fanart template with title",
 			template:    "<ID>-<TITLE>-fanart.jpg",
 			index:       0,
+			multipart:   nil,
 			expected:    "IPX-535-Test Movie-fanart.jpg",
 			description: "Template with title",
 		},
@@ -505,6 +510,7 @@ func TestDownloader_generateFilename(t *testing.T) {
 			name:        "Screenshot with index",
 			template:    "fanart<INDEX:2>.jpg",
 			index:       5,
+			multipart:   nil,
 			expected:    "fanart05.jpg",
 			description: "Screenshot template with padded index",
 		},
@@ -512,6 +518,7 @@ func TestDownloader_generateFilename(t *testing.T) {
 			name:        "Complex template",
 			template:    "<ID>-<TITLE:10>-<YEAR>.jpg",
 			index:       0,
+			multipart:   nil,
 			expected:    "IPX-535-Test Movie-2020.jpg",
 			description: "Complex template with title truncation",
 		},
@@ -519,14 +526,88 @@ func TestDownloader_generateFilename(t *testing.T) {
 			name:        "Empty template",
 			template:    "",
 			index:       0,
+			multipart:   nil,
 			expected:    "",
 			description: "Empty template returns empty string",
+		},
+		// Multipart conditional templating tests
+		{
+			name:        "Multipart conditional - single file (nil multipart)",
+			template:    "<ID><IF:MULTIPART>-pt<PART></IF>-poster.jpg",
+			index:       0,
+			multipart:   nil,
+			expected:    "IPX-535-poster.jpg",
+			description: "Single file should not include multipart section",
+		},
+		{
+			name:        "Multipart conditional - multi-part file part 1",
+			template:    "<ID><IF:MULTIPART>-pt<PART></IF>-poster.jpg",
+			index:       0,
+			multipart:   &MultipartInfo{IsMultiPart: true, PartNumber: 1, PartSuffix: "-pt1"},
+			expected:    "IPX-535-pt1-poster.jpg",
+			description: "Multi-part file part 1 should include part number",
+		},
+		{
+			name:        "Multipart conditional - multi-part file part 2",
+			template:    "<ID><IF:MULTIPART>-pt<PART></IF>-poster.jpg",
+			index:       0,
+			multipart:   &MultipartInfo{IsMultiPart: true, PartNumber: 2, PartSuffix: "-pt2"},
+			expected:    "IPX-535-pt2-poster.jpg",
+			description: "Multi-part file part 2 should include part number",
+		},
+		{
+			name:        "Multipart PARTSUFFIX placeholder",
+			template:    "<ID><PARTSUFFIX>-fanart.jpg",
+			index:       0,
+			multipart:   &MultipartInfo{IsMultiPart: true, PartNumber: 1, PartSuffix: "-A"},
+			expected:    "IPX-535-A-fanart.jpg",
+			description: "PARTSUFFIX should use original suffix from filename",
+		},
+		{
+			name:        "Multipart PARTSUFFIX - single file (empty)",
+			template:    "<ID><PARTSUFFIX>-fanart.jpg",
+			index:       0,
+			multipart:   nil,
+			expected:    "IPX-535-fanart.jpg",
+			description: "PARTSUFFIX should be empty for single files",
+		},
+		{
+			name:        "Multipart PART:2 zero-padded",
+			template:    "<ID>-pt<PART:2>-poster.jpg",
+			index:       0,
+			multipart:   &MultipartInfo{IsMultiPart: true, PartNumber: 3, PartSuffix: "-pt3"},
+			expected:    "IPX-535-pt03-poster.jpg",
+			description: "PART:2 should zero-pad to 2 digits",
+		},
+		{
+			name:        "Multipart conditional with fanart",
+			template:    "<ID><IF:MULTIPART><PARTSUFFIX></IF>-fanart.jpg",
+			index:       0,
+			multipart:   &MultipartInfo{IsMultiPart: true, PartNumber: 2, PartSuffix: "-cd2"},
+			expected:    "IPX-535-cd2-fanart.jpg",
+			description: "Fanart template with multipart conditional and PARTSUFFIX",
+		},
+		{
+			name:        "Multipart conditional with trailer",
+			template:    "<ID><IF:MULTIPART>-part<PART></IF>-trailer.mp4",
+			index:       0,
+			multipart:   &MultipartInfo{IsMultiPart: true, PartNumber: 1, PartSuffix: "-pt1"},
+			expected:    "IPX-535-part1-trailer.mp4",
+			description: "Trailer template with multipart conditional",
+		},
+		{
+			name:        "Multipart IsMultiPart false should not render conditional",
+			template:    "<ID><IF:MULTIPART>-pt<PART></IF>-poster.jpg",
+			index:       0,
+			multipart:   &MultipartInfo{IsMultiPart: false, PartNumber: 0, PartSuffix: ""},
+			expected:    "IPX-535-poster.jpg",
+			description: "IsMultiPart=false should not render conditional content",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := downloader.generateFilename(movie, tt.template, tt.index)
+			result := downloader.generateFilename(movie, tt.template, tt.index, tt.multipart)
 			if result != tt.expected {
 				t.Errorf("generateFilename() = %q, want %q (%s)", result, tt.expected, tt.description)
 			}
@@ -569,7 +650,7 @@ func TestDownloader_generateFilenameActress(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := downloader.generateFilename(actressMovie, tt.template, 0)
+			result := downloader.generateFilename(actressMovie, tt.template, 0, nil)
 			if result != tt.expected {
 				t.Errorf("generateFilename() = %q, want %q", result, tt.expected)
 			}
@@ -673,7 +754,7 @@ func TestDownloader_DownloadPoster_WithPosterURL(t *testing.T) {
 
 	downloader := NewDownloader(http.DefaultClient, afero.NewOsFs(), cfg, "test-agent")
 
-	result, err := downloader.DownloadPoster(movie, tmpDir)
+	result, err := downloader.DownloadPoster(movie, tmpDir, nil)
 	if err != nil {
 		t.Fatalf("DownloadPoster failed: %v", err)
 	}
@@ -712,7 +793,7 @@ func TestDownloader_DownloadPoster_Disabled(t *testing.T) {
 
 	downloader := NewDownloader(http.DefaultClient, afero.NewOsFs(), cfg, "test-agent")
 
-	result, err := downloader.DownloadPoster(movie, tmpDir)
+	result, err := downloader.DownloadPoster(movie, tmpDir, nil)
 	if err != nil {
 		t.Fatalf("DownloadPoster failed: %v", err)
 	}
@@ -736,7 +817,7 @@ func TestDownloader_DownloadExtrafanart_Disabled(t *testing.T) {
 
 	downloader := NewDownloader(http.DefaultClient, afero.NewOsFs(), cfg, "test-agent")
 
-	results, err := downloader.DownloadExtrafanart(movie, tmpDir)
+	results, err := downloader.DownloadExtrafanart(movie, tmpDir, nil)
 	if err != nil {
 		t.Fatalf("DownloadExtrafanart failed: %v", err)
 	}
@@ -758,7 +839,7 @@ func TestDownloader_DownloadExtrafanart_EmptyScreenshots(t *testing.T) {
 
 	downloader := NewDownloader(http.DefaultClient, afero.NewOsFs(), cfg, "test-agent")
 
-	results, err := downloader.DownloadExtrafanart(movie, tmpDir)
+	results, err := downloader.DownloadExtrafanart(movie, tmpDir, nil)
 	if err != nil {
 		t.Fatalf("DownloadExtrafanart failed: %v", err)
 	}
@@ -797,7 +878,7 @@ func TestDownloader_DownloadExtrafanart_PartialFailure(t *testing.T) {
 
 	downloader := NewDownloader(http.DefaultClient, afero.NewOsFs(), cfg, "test-agent")
 
-	results, err := downloader.DownloadExtrafanart(movie, tmpDir)
+	results, err := downloader.DownloadExtrafanart(movie, tmpDir, nil)
 	if err != nil {
 		t.Fatalf("DownloadExtrafanart failed: %v", err)
 	}
@@ -836,7 +917,7 @@ func TestDownloader_DownloadTrailer_Disabled(t *testing.T) {
 
 	downloader := NewDownloader(http.DefaultClient, afero.NewOsFs(), cfg, "test-agent")
 
-	result, err := downloader.DownloadTrailer(movie, tmpDir)
+	result, err := downloader.DownloadTrailer(movie, tmpDir, nil)
 	if err != nil {
 		t.Fatalf("DownloadTrailer failed: %v", err)
 	}
@@ -857,7 +938,7 @@ func TestDownloader_DownloadTrailer_EmptyURL(t *testing.T) {
 
 	downloader := NewDownloader(http.DefaultClient, afero.NewOsFs(), cfg, "test-agent")
 
-	result, err := downloader.DownloadTrailer(movie, tmpDir)
+	result, err := downloader.DownloadTrailer(movie, tmpDir, nil)
 	if err != nil {
 		t.Fatalf("DownloadTrailer failed: %v", err)
 	}
@@ -955,7 +1036,7 @@ func TestDownloader_Download_InvalidURL(t *testing.T) {
 
 	downloader := NewDownloader(http.DefaultClient, afero.NewOsFs(), cfg, "test-agent")
 
-	result, err := downloader.DownloadCover(movie, tmpDir)
+	result, err := downloader.DownloadCover(movie, tmpDir, nil)
 	if err == nil {
 		t.Error("Expected error for invalid URL")
 	}
@@ -985,7 +1066,7 @@ func TestDownloader_Download_ServerError(t *testing.T) {
 
 	downloader := NewDownloader(http.DefaultClient, afero.NewOsFs(), cfg, "test-agent")
 
-	result, err := downloader.DownloadCover(movie, tmpDir)
+	result, err := downloader.DownloadCover(movie, tmpDir, nil)
 	if err == nil {
 		t.Error("Expected error for 500 status")
 	}
@@ -1025,7 +1106,7 @@ func TestDownloader_Download_Timeout(t *testing.T) {
 
 	downloader := NewDownloader(httpClient, afero.NewOsFs(), cfg, "test-agent")
 
-	result, err := downloader.DownloadCover(movie, tmpDir)
+	result, err := downloader.DownloadCover(movie, tmpDir, nil)
 	if err == nil {
 		t.Error("Expected timeout error")
 	}
@@ -1056,7 +1137,7 @@ func TestDownloader_Download_WithUserAgent(t *testing.T) {
 	expectedUserAgent := "test-custom-agent/1.0"
 	downloader := NewDownloader(http.DefaultClient, afero.NewOsFs(), cfg, expectedUserAgent)
 
-	_, err := downloader.DownloadCover(movie, tmpDir)
+	_, err := downloader.DownloadCover(movie, tmpDir, nil)
 	if err != nil {
 		t.Fatalf("DownloadCover failed: %v", err)
 	}
@@ -1122,7 +1203,7 @@ func TestDownloader_DownloadAll_AllDisabled(t *testing.T) {
 
 	downloader := NewDownloader(http.DefaultClient, afero.NewOsFs(), cfg, "test-agent")
 
-	results, err := downloader.DownloadAll(movie, tmpDir, 0)
+	results, err := downloader.DownloadAll(movie, tmpDir, nil)
 	if err != nil {
 		t.Fatalf("DownloadAll failed: %v", err)
 	}
@@ -1388,7 +1469,7 @@ func TestDownloader_DownloadPoster_WithCropping(t *testing.T) {
 
 	downloader := NewDownloader(http.DefaultClient, afero.NewOsFs(), cfg, "test-agent")
 
-	result, err := downloader.DownloadPoster(movie, tmpDir)
+	result, err := downloader.DownloadPoster(movie, tmpDir, nil)
 	if err != nil {
 		t.Fatalf("DownloadPoster with cropping failed: %v", err)
 	}
@@ -1530,7 +1611,7 @@ func BenchmarkDownload(b *testing.B) {
 
 	// Benchmark loop
 	for i := 0; i < b.N; i++ {
-		_, err := downloader.DownloadCover(movie, destDir)
+		_, err := downloader.DownloadCover(movie, destDir, nil)
 		if err != nil {
 			b.Fatalf("DownloadCover failed: %v", err)
 		}

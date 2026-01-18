@@ -186,11 +186,11 @@ func TestNFOTask_Execute_Cancellation(t *testing.T) {
 // TestDownloadTask_Execute tests download task execution
 func TestDownloadTask_Execute(t *testing.T) {
 	tests := []struct {
-		name       string
-		movie      *models.Movie
-		dryRun     bool
-		partNumber int
-		wantErr    bool
+		name      string
+		movie     *models.Movie
+		dryRun    bool
+		multipart *downloader.MultipartInfo
+		wantErr   bool
 	}{
 		{
 			name: "dry-run mode with URLs",
@@ -199,18 +199,18 @@ func TestDownloadTask_Execute(t *testing.T) {
 				CoverURL:    "https://example.com/cover.jpg",
 				Screenshots: []string{"https://example.com/shot1.jpg", "https://example.com/shot2.jpg"},
 			},
-			dryRun:     true,
-			partNumber: 0,
-			wantErr:    false,
+			dryRun:    true,
+			multipart: nil, // single file
+			wantErr:   false,
 		},
 		{
 			name: "dry-run mode without URLs",
 			movie: &models.Movie{
 				ID: "IPX-002",
 			},
-			dryRun:     true,
-			partNumber: 0,
-			wantErr:    false,
+			dryRun:    true,
+			multipart: nil, // single file
+			wantErr:   false,
 		},
 		{
 			name: "multi-part movie",
@@ -218,9 +218,9 @@ func TestDownloadTask_Execute(t *testing.T) {
 				ID:       "IPX-003",
 				CoverURL: "https://example.com/cover.jpg",
 			},
-			dryRun:     true,
-			partNumber: 1,
-			wantErr:    false,
+			dryRun:    true,
+			multipart: &downloader.MultipartInfo{IsMultiPart: true, PartNumber: 1, PartSuffix: "-pt1"},
+			wantErr:   false,
 		},
 	}
 
@@ -238,7 +238,7 @@ func TestDownloadTask_Execute(t *testing.T) {
 			dl := downloader.NewDownloader(http.DefaultClient, afero.NewOsFs(), outputCfg, "test-agent")
 
 			// Create task
-			task := NewDownloadTask(tt.movie, tmpDir, dl, tracker, tt.dryRun, tt.partNumber)
+			task := NewDownloadTask(tt.movie, tmpDir, dl, tracker, tt.dryRun, tt.multipart)
 
 			// Start tracking before execution
 			taskID := "download-" + tt.movie.ID
@@ -290,7 +290,7 @@ func TestDownloadTask_Execute_Cancellation(t *testing.T) {
 		CoverURL: "https://example.com/cover.jpg",
 	}
 
-	task := NewDownloadTask(movie, tmpDir, dl, tracker, false, 0)
+	task := NewDownloadTask(movie, tmpDir, dl, tracker, false, nil)
 
 	// Create canceled context
 	ctx, cancel := context.WithCancel(context.Background())
@@ -892,7 +892,7 @@ func TestNewTaskConstructors(t *testing.T) {
 		dl := downloader.NewDownloader(http.DefaultClient, afero.NewOsFs(), outputCfg, "test-agent")
 		movie := &models.Movie{ID: "IPX-001"}
 
-		task := NewDownloadTask(movie, "/tmp", dl, tracker, false, 0)
+		task := NewDownloadTask(movie, "/tmp", dl, tracker, false, nil)
 		assert.NotNil(t, task)
 		assert.Equal(t, "download-IPX-001", task.ID())
 		assert.Equal(t, TaskTypeDownload, task.Type())

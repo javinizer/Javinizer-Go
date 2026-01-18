@@ -50,6 +50,13 @@ const (
 	MediaTypeActress     MediaType = "actress"
 )
 
+// MultipartInfo holds multipart file information for template rendering
+type MultipartInfo struct {
+	IsMultiPart bool   // Whether this is a multi-part file
+	PartNumber  int    // Part number (1, 2, 3, etc.) - 0 means single file
+	PartSuffix  string // Original part suffix detected from filename (e.g., "-pt1", "-A")
+}
+
 // NewHTTPClientForDownloader creates an HTTP client for production use with proxy and timeout configuration
 func NewHTTPClientForDownloader(cfg *config.OutputConfig) (httpclient.HTTPClient, error) {
 	// Use configured timeout, default to 60 seconds if not set
@@ -108,7 +115,7 @@ func NewDownloaderWithNFOConfig(client httpclient.HTTPClient, fs afero.Fs, cfg *
 }
 
 // generateFilename generates a filename using the configured template
-func (d *Downloader) generateFilename(movie *models.Movie, templateStr string, index int) string {
+func (d *Downloader) generateFilename(movie *models.Movie, templateStr string, index int, multipart *MultipartInfo) string {
 	if templateStr == "" {
 		return ""
 	}
@@ -116,6 +123,13 @@ func (d *Downloader) generateFilename(movie *models.Movie, templateStr string, i
 	ctx := template.NewContextFromMovie(movie)
 	ctx.Index = index // Set index for screenshot numbering
 	ctx.GroupActress = d.config.GroupActress
+
+	// Set multipart info if provided
+	if multipart != nil {
+		ctx.IsMultiPart = multipart.IsMultiPart
+		ctx.PartNumber = multipart.PartNumber
+		ctx.PartSuffix = multipart.PartSuffix
+	}
 
 	engine := template.NewEngine()
 	filename, err := engine.Execute(templateStr, ctx)
@@ -133,12 +147,12 @@ func (d *Downloader) SetDownloadExtrafanart(enabled bool) {
 }
 
 // DownloadCover downloads the movie cover image (fanart)
-func (d *Downloader) DownloadCover(movie *models.Movie, destDir string) (*DownloadResult, error) {
+func (d *Downloader) DownloadCover(movie *models.Movie, destDir string, multipart *MultipartInfo) (*DownloadResult, error) {
 	if !d.config.DownloadCover || movie.CoverURL == "" {
 		return &DownloadResult{Type: MediaTypeCover, Downloaded: false}, nil
 	}
 
-	filename := d.generateFilename(movie, d.config.FanartFormat, 0)
+	filename := d.generateFilename(movie, d.config.FanartFormat, 0, multipart)
 	if filename == "" {
 		// Fallback to hardcoded format
 		filename = fmt.Sprintf("%s-fanart.jpg", movie.ID)
@@ -151,7 +165,7 @@ func (d *Downloader) DownloadCover(movie *models.Movie, destDir string) (*Downlo
 // DownloadPoster downloads the movie poster
 // If ShouldCropPoster is true, the poster is created by cropping the right 47.2% of the cover image
 // If ShouldCropPoster is false, the poster is downloaded directly without cropping (high-quality poster)
-func (d *Downloader) DownloadPoster(movie *models.Movie, destDir string) (*DownloadResult, error) {
+func (d *Downloader) DownloadPoster(movie *models.Movie, destDir string, multipart *MultipartInfo) (*DownloadResult, error) {
 	if !d.config.DownloadPoster {
 		return &DownloadResult{Type: MediaTypePoster, Downloaded: false}, nil
 	}
@@ -165,7 +179,7 @@ func (d *Downloader) DownloadPoster(movie *models.Movie, destDir string) (*Downl
 		return &DownloadResult{Type: MediaTypePoster, Downloaded: false}, nil
 	}
 
-	filename := d.generateFilename(movie, d.config.PosterFormat, 0)
+	filename := d.generateFilename(movie, d.config.PosterFormat, 0, multipart)
 	if filename == "" {
 		// Fallback to hardcoded format
 		filename = fmt.Sprintf("%s-poster.jpg", movie.ID)
@@ -222,7 +236,7 @@ func (d *Downloader) DownloadPoster(movie *models.Movie, destDir string) (*Downl
 // DownloadExtrafanart downloads screenshots to the extrafanart subdirectory
 // Extrafanart is used by media centers like Kodi/Plex for background images
 // Note: In the original Javinizer, screenshots and extrafanart are the same thing
-func (d *Downloader) DownloadExtrafanart(movie *models.Movie, destDir string) ([]DownloadResult, error) {
+func (d *Downloader) DownloadExtrafanart(movie *models.Movie, destDir string, multipart *MultipartInfo) ([]DownloadResult, error) {
 	if !d.config.DownloadExtrafanart || len(movie.Screenshots) == 0 {
 		return []DownloadResult{}, nil
 	}
@@ -234,7 +248,7 @@ func (d *Downloader) DownloadExtrafanart(movie *models.Movie, destDir string) ([
 
 	for i, url := range movie.Screenshots {
 		// Use configurable screenshot format with index for numbering
-		filename := d.generateFilename(movie, d.config.ScreenshotFormat, i+1)
+		filename := d.generateFilename(movie, d.config.ScreenshotFormat, i+1, multipart)
 		if filename == "" {
 			// Fallback to hardcoded format with configurable padding
 			if d.config.ScreenshotPadding > 0 {
@@ -260,7 +274,7 @@ func (d *Downloader) DownloadExtrafanart(movie *models.Movie, destDir string) ([
 }
 
 // DownloadTrailer downloads the movie trailer
-func (d *Downloader) DownloadTrailer(movie *models.Movie, destDir string) (*DownloadResult, error) {
+func (d *Downloader) DownloadTrailer(movie *models.Movie, destDir string, multipart *MultipartInfo) (*DownloadResult, error) {
 	if !d.config.DownloadTrailer || movie.TrailerURL == "" {
 		return &DownloadResult{Type: MediaTypeTrailer, Downloaded: false}, nil
 	}
@@ -271,7 +285,7 @@ func (d *Downloader) DownloadTrailer(movie *models.Movie, destDir string) (*Down
 		ext = ".mp4" // Default to mp4
 	}
 
-	filename := d.generateFilename(movie, d.config.TrailerFormat, 0)
+	filename := d.generateFilename(movie, d.config.TrailerFormat, 0, multipart)
 	if filename == "" {
 		// Fallback to hardcoded format
 		filename = fmt.Sprintf("%s-trailer%s", movie.ID, ext)
@@ -350,7 +364,7 @@ func (d *Downloader) DownloadActressImages(movie *models.Movie, destDir string) 
 			Title: formattedName,
 		}
 
-		filename := d.generateFilename(actressMovie, d.config.ActressFormat, 0)
+		filename := d.generateFilename(actressMovie, d.config.ActressFormat, 0, nil)
 		if filename == "" {
 			// Fallback to default format
 			name := template.SanitizeFilename(formattedName)
@@ -373,36 +387,41 @@ func (d *Downloader) DownloadActressImages(movie *models.Movie, destDir string) 
 }
 
 // DownloadAll downloads all enabled media types for a movie
-// partNumber: 0 = single file or first part, 1+ = subsequent parts
-// For multi-part files, only downloads shared media (cover/poster/trailer/actresses) for part 0 or 1
-func (d *Downloader) DownloadAll(movie *models.Movie, destDir string, partNumber int) ([]DownloadResult, error) {
+// multipart: nil for single files, or MultipartInfo for multi-part files
+// For multi-part files, only downloads shared media (cover/poster/trailer/actresses) for first part
+func (d *Downloader) DownloadAll(movie *models.Movie, destDir string, multipart *MultipartInfo) ([]DownloadResult, error) {
 	results := make([]DownloadResult, 0)
 
-	// Download shared media only for single files (partNumber == 0) or first part (partNumber == 1)
+	// Determine if we should download shared media
+	// For single files (multipart == nil) or first part (PartNumber <= 1), download shared media
+	partNumber := 0
+	if multipart != nil {
+		partNumber = multipart.PartNumber
+	}
 	shouldDownloadShared := partNumber == 0 || partNumber == 1
 
 	if shouldDownloadShared {
 		// Download cover
-		if coverResult, err := d.DownloadCover(movie, destDir); err == nil && coverResult != nil {
+		if coverResult, err := d.DownloadCover(movie, destDir, multipart); err == nil && coverResult != nil {
 			results = append(results, *coverResult)
 		}
 
 		// Download poster
-		if posterResult, err := d.DownloadPoster(movie, destDir); err == nil && posterResult != nil {
+		if posterResult, err := d.DownloadPoster(movie, destDir, multipart); err == nil && posterResult != nil {
 			results = append(results, *posterResult)
 		}
 
 		// Download extrafanart (screenshots)
-		if extrafanart, err := d.DownloadExtrafanart(movie, destDir); err == nil {
+		if extrafanart, err := d.DownloadExtrafanart(movie, destDir, multipart); err == nil {
 			results = append(results, extrafanart...)
 		}
 
 		// Download trailer
-		if trailerResult, err := d.DownloadTrailer(movie, destDir); err == nil && trailerResult != nil {
+		if trailerResult, err := d.DownloadTrailer(movie, destDir, multipart); err == nil && trailerResult != nil {
 			results = append(results, *trailerResult)
 		}
 
-		// Download actress images
+		// Download actress images (doesn't use multipart - shared across all parts)
 		if actresses, err := d.DownloadActressImages(movie, destDir); err == nil {
 			results = append(results, actresses...)
 		}

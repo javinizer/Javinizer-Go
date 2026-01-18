@@ -150,7 +150,7 @@ func TestDownloadTask_DryRunPreview(t *testing.T) {
 				&downloader.Downloader{}, // Nil is fine for dry-run (not actually used)
 				progressTracker,
 				true, // dryRun = true
-				0,    // partNumber
+				nil,  // multipart (nil = single file)
 			)
 
 			// Start the task in progress tracker
@@ -216,7 +216,7 @@ func TestDownloadTask_DryRunNoActualDownloads(t *testing.T) {
 			nil, // Downloader is nil - would panic if actually called
 			progressTracker,
 			true, // dryRun
-			0,
+			nil,  // multipart (nil = single file)
 		)
 
 		// Start the task in progress tracker
@@ -255,7 +255,7 @@ func TestDownloadTask_ContextCancellation(t *testing.T) {
 			&downloader.Downloader{},
 			progressTracker,
 			true, // dry-run
-			0,
+			nil,  // multipart (nil = single file)
 		)
 
 		// Create cancelled context
@@ -274,16 +274,16 @@ func TestDownloadTask_ContextCancellation(t *testing.T) {
 	})
 }
 
-func TestDownloadTask_PartNumber(t *testing.T) {
-	// Test that part number is properly stored (used for multi-part videos)
+func TestDownloadTask_Multipart(t *testing.T) {
+	// Test that multipart info is properly stored (used for multi-part videos)
 	tests := []struct {
-		name       string
-		partNumber int
+		name      string
+		multipart *downloader.MultipartInfo
 	}{
-		{"Single file (part 0)", 0},
-		{"Multi-part file 1", 1},
-		{"Multi-part file 2", 2},
-		{"Multi-part file 3", 3},
+		{"Single file (nil)", nil},
+		{"Multi-part file 1", &downloader.MultipartInfo{IsMultiPart: true, PartNumber: 1, PartSuffix: "-pt1"}},
+		{"Multi-part file 2", &downloader.MultipartInfo{IsMultiPart: true, PartNumber: 2, PartSuffix: "-pt2"}},
+		{"Multi-part file 3", &downloader.MultipartInfo{IsMultiPart: true, PartNumber: 3, PartSuffix: "-pt3"}},
 	}
 
 	for _, tt := range tests {
@@ -304,10 +304,10 @@ func TestDownloadTask_PartNumber(t *testing.T) {
 				&downloader.Downloader{},
 				progressTracker,
 				true,
-				tt.partNumber,
+				tt.multipart,
 			)
 
-			assert.Equal(t, tt.partNumber, task.partNumber, "Part number should be stored correctly")
+			assert.Equal(t, tt.multipart, task.multipart, "Multipart info should be stored correctly")
 
 			// Execute dry-run
 			ctx := context.Background()
@@ -356,7 +356,7 @@ func TestDownloadTask_Description(t *testing.T) {
 				&downloader.Downloader{},
 				progressTracker,
 				tt.dryRun,
-				0,
+				nil, // multipart (nil = single file)
 			)
 
 			description := task.Description()
@@ -395,7 +395,7 @@ func TestDownloadTask_ProgressUpdates(t *testing.T) {
 			&downloader.Downloader{},
 			progressTracker,
 			true, // dry-run
-			0,
+			nil,  // multipart (nil = single file)
 		)
 
 		// Start the task in progress tracker

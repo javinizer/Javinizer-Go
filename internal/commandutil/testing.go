@@ -831,6 +831,6 @@ func NewMockDownloader(results []downloader.DownloadResult, err error) *MockDown
 }
 
 // DownloadAll implements MediaDownloader interface
-func (m *MockDownloader) DownloadAll(movie *models.Movie, destDir string, partNumber int) ([]downloader.DownloadResult, error) {
+func (m *MockDownloader) DownloadAll(movie *models.Movie, destDir string, multipart *downloader.MultipartInfo) ([]downloader.DownloadResult, error) {
 	return m.results, m.err
 }

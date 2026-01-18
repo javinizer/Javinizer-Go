@@ -206,7 +206,7 @@ type DownloadTask struct {
 	downloader      *downloader.Downloader
 	progressTracker *ProgressTracker
 	dryRun          bool
-	partNumber      int // 0 = single file, 1+ = multi-part
+	multipart       *downloader.MultipartInfo // nil = single file, or multipart info
 }
 
 // NewDownloadTask creates a new download task
@@ -216,7 +216,7 @@ func NewDownloadTask(
 	dl *downloader.Downloader,
 	progressTracker *ProgressTracker,
 	dryRun bool,
-	partNumber int,
+	multipart *downloader.MultipartInfo,
 ) *DownloadTask {
 	desc := fmt.Sprintf("Downloading media for %s", movie.ID)
 	if dryRun {
@@ -234,7 +234,7 @@ func NewDownloadTask(
 		downloader:      dl,
 		progressTracker: progressTracker,
 		dryRun:          dryRun,
-		partNumber:      partNumber,
+		multipart:       multipart,
 	}
 }
 
@@ -272,8 +272,12 @@ func (t *DownloadTask) Execute(ctx context.Context) error {
 		return nil
 	}
 
-	logging.Debugf("[%s] Initiating DownloadAll for media files (part %d)", t.movie.ID, t.partNumber)
-	results, err := t.downloader.DownloadAll(t.movie, t.targetDir, t.partNumber)
+	partInfo := "single"
+	if t.multipart != nil {
+		partInfo = fmt.Sprintf("part %d", t.multipart.PartNumber)
+	}
+	logging.Debugf("[%s] Initiating DownloadAll for media files (%s)", t.movie.ID, partInfo)
+	results, err := t.downloader.DownloadAll(t.movie, t.targetDir, t.multipart)
 	if err != nil {
 		logging.Debugf("[%s] Download failed: %v", t.movie.ID, err)
 		return fmt.Errorf("download failed: %w", err)
@@ -689,10 +693,14 @@ func (t *ProcessFileTask) Execute(ctx context.Context) error {
 
 	// Step 2: Download media (before organizing so files are in place)
 	if t.downloadEnabled {
-		// Use match.PartNumber for deduplication (0 for single, 1+ for multi-part)
-		partNumber := t.match.PartNumber
-		if !t.match.IsMultiPart {
-			partNumber = 0
+		// Build multipart info for template rendering
+		var multipart *downloader.MultipartInfo
+		if t.match.IsMultiPart {
+			multipart = &downloader.MultipartInfo{
+				IsMultiPart: true,
+				PartNumber:  t.match.PartNumber,
+				PartSuffix:  t.match.PartSuffix,
+			}
 		}
 		downloadTask := NewDownloadTask(
 			movie,
@@ -700,7 +708,7 @@ func (t *ProcessFileTask) Execute(ctx context.Context) error {
 			t.downloader,
 			t.progressTracker,
 			t.dryRun,
-			partNumber,
+			multipart,
 		)
 		if err := downloadTask.Execute(ctx); err != nil {
 			// Log but don't fail - continue with other tasks
