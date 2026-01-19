@@ -698,6 +698,11 @@ func (m *Model) Rescan(path string) {
 
 	// Match JAV IDs
 	matches := m.matcher.Match(scanResult.Files)
+
+	// Validate letter-based multipart patterns using directory context
+	// This prevents false positives like ABW-121-C.mp4 (Chinese subtitles) being marked as multipart
+	matches = matcher.ValidateMultipartInDirectory(matches)
+
 	m.AddLog("info", fmt.Sprintf("Matched %d JAV IDs", len(matches)))
 	m.AddConsoleOutput(fmt.Sprintf("🎯 Matched %d JAV IDs", len(matches)))
 

@@ -57,6 +57,11 @@ func ScanAndMatch(
 	// Step 2: Match JAV IDs
 	fmt.Println("\n🔍 Extracting JAV IDs...")
 	matches := fileMatcher.Match(scanResult.Files)
+
+	// Validate letter-based multipart patterns using directory context
+	// This prevents false positives like ABW-121-C.mp4 (Chinese subtitles) being marked as multipart
+	matches = matcher.ValidateMultipartInDirectory(matches)
+
 	fmt.Printf("   Matched %d file(s)\n", len(matches))
 
 	if len(matches) == 0 {

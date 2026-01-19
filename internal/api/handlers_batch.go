@@ -140,6 +140,10 @@ func discoverSiblingParts(files []string, fileMatcher *matcher.Matcher, cfg *con
 	// Match submitted files to detect multi-part status
 	submittedMatches := fileMatcher.Match(fileInfos)
 
+	// Validate letter-based multipart patterns using directory context
+	// This enables correct multipart detection when user submits multiple files like ABW-121-A.mp4 + ABW-121-B.mp4
+	submittedMatches = matcher.ValidateMultipartInDirectory(submittedMatches)
+
 	// Group submitted files by movie ID and check if any are multi-part
 	movieIDsToProcess := make(map[string]bool) // movie IDs that need sibling discovery
 	directoriesScanned := make(map[string]bool)
@@ -215,6 +219,10 @@ func discoverSiblingParts(files []string, fileMatcher *matcher.Matcher, cfg *con
 
 		// Match all files in the directory
 		matchResults := fileMatcher.Match(result.Files)
+
+		// Validate letter-based multipart patterns using directory context
+		// This enables detection of letter-suffix siblings (e.g., ABW-121-A.mp4, ABW-121-B.mp4)
+		matchResults = matcher.ValidateMultipartInDirectory(matchResults)
 
 		// Find siblings for the multi-part movies we're processing
 		// Note: All files in result.Files come from 'dir', which was already validated above.

@@ -78,6 +78,10 @@ func scanDirectory(deps *ServerDependencies) gin.HandlerFunc {
 		// Match IDs - use getter for thread-safe access
 		matchResults := deps.GetMatcher().Match(result.Files)
 
+		// Validate letter-based multipart patterns using directory context
+		// This prevents false positives like ABW-121-C.mp4 (Chinese subtitles) being marked as multipart
+		matchResults = matcher.ValidateMultipartInDirectory(matchResults)
+
 		// Build response
 		files := make([]FileInfo, 0, len(result.Files))
 		matchMap := make(map[string]*matcher.MatchResult)

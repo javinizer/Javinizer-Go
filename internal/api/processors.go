@@ -427,13 +427,16 @@ func processUpdateMode(job *worker.BatchJob, cfg *config.Config, db *database.DB
 		partSuffix := ""
 		if cfg.Metadata.NFO.PerFile && filePath != "" {
 			videoName := strings.TrimSuffix(filepath.Base(filePath), filepath.Ext(filePath))
-			partNum, detectedSuffix := matcher.DetectPartSuffix(videoName, movie.ID)
+			partNum, detectedSuffix, patternType := matcher.DetectPartSuffix(videoName, movie.ID)
 			partSuffix = detectedSuffix
 
 			// Populate template context with multi-part fields for accurate NFO lookup
+			// Note: For single-file context, only explicit patterns (pt1, part2, -1, -2) are
+			// considered multipart. Letter patterns need directory context validation which
+			// isn't available here.
 			tmplCtx.PartNumber = partNum
 			tmplCtx.PartSuffix = partSuffix
-			tmplCtx.IsMultiPart = partNum > 0 || partSuffix != ""
+			tmplCtx.IsMultiPart = patternType == matcher.PatternExplicit
 		}
 
 		// Generate expected filename using template

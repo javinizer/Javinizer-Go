@@ -789,27 +789,29 @@ func TestMatcher_PartSuffixVariations(t *testing.T) {
 	}
 
 	testCases := []struct {
-		name         string
-		filename     string
-		expectedID   string
-		expectedPart int
-		isMultiPart  bool
+		name            string
+		filename        string
+		expectedID      string
+		expectedPart    int
+		isMultiPart     bool
+		expectedPattern string
 	}{
-		// Letter suffixes
-		{"Letter A", "IPX-535-A.mp4", "IPX-535", 1, true},
-		{"Letter B", "IPX-535-B.mp4", "IPX-535", 2, true},
-		{"Letter C", "IPX-535-C.mp4", "IPX-535", 3, true},
-		{"Lowercase letter", "IPX-535-a.mp4", "IPX-535", 1, true},
+		// Letter suffixes - ambiguous, require directory validation
+		// IsMultiPart starts as false, becomes true after ValidateMultipartInDirectory
+		{"Letter A", "IPX-535-A.mp4", "IPX-535", 1, false, PatternLetter},
+		{"Letter B", "IPX-535-B.mp4", "IPX-535", 2, false, PatternLetter},
+		{"Letter C", "IPX-535-C.mp4", "IPX-535", 3, false, PatternLetter},
+		{"Lowercase letter", "IPX-535-a.mp4", "IPX-535", 1, false, PatternLetter},
 
-		// Numeric suffixes
-		{"pt1", "IPX-535-pt1.mp4", "IPX-535", 1, true},
-		{"pt2", "IPX-535-pt2.mp4", "IPX-535", 2, true},
-		{"part1", "IPX-535-part1.mp4", "IPX-535", 1, true},
-		{"part2", "IPX-535-part2.mp4", "IPX-535", 2, true},
-		{"Double digit", "IPX-535-pt10.mp4", "IPX-535", 10, true},
+		// Numeric suffixes - explicit, always multipart
+		{"pt1", "IPX-535-pt1.mp4", "IPX-535", 1, true, PatternExplicit},
+		{"pt2", "IPX-535-pt2.mp4", "IPX-535", 2, true, PatternExplicit},
+		{"part1", "IPX-535-part1.mp4", "IPX-535", 1, true, PatternExplicit},
+		{"part2", "IPX-535-part2.mp4", "IPX-535", 2, true, PatternExplicit},
+		{"Double digit", "IPX-535-pt10.mp4", "IPX-535", 10, true, PatternExplicit},
 
 		// No suffix - single part
-		{"No suffix", "IPX-535.mp4", "IPX-535", 0, false},
+		{"No suffix", "IPX-535.mp4", "IPX-535", 0, false, PatternNone},
 	}
 
 	for _, tc := range testCases {
@@ -834,6 +836,10 @@ func TestMatcher_PartSuffixVariations(t *testing.T) {
 
 			if result.IsMultiPart != tc.isMultiPart {
 				t.Errorf("Expected IsMultiPart %v, got %v", tc.isMultiPart, result.IsMultiPart)
+			}
+
+			if result.MultipartPattern != tc.expectedPattern {
+				t.Errorf("Expected MultipartPattern %s, got %s", tc.expectedPattern, result.MultipartPattern)
 			}
 		})
 	}
@@ -1288,43 +1294,44 @@ func TestMatcher_PartSuffixEdgeCases(t *testing.T) {
 	}
 
 	testCases := []struct {
-		name           string
-		filename       string
-		expectedID     string
-		expectedPart   int
-		expectedSuffix string
-		expectedMulti  bool
+		name            string
+		filename        string
+		expectedID      string
+		expectedPart    int
+		expectedSuffix  string
+		expectedMulti   bool
+		expectedPattern string
 	}{
-		// Uppercase PT/PART
-		{"Uppercase PT", "IPX-535-PT1.mp4", "IPX-535", 1, "-pt1", true},
-		{"Uppercase PART", "IPX-535-PART1.mp4", "IPX-535", 1, "-part1", true},
+		// Uppercase PT/PART - explicit patterns, always multipart
+		{"Uppercase PT", "IPX-535-PT1.mp4", "IPX-535", 1, "-pt1", true, PatternExplicit},
+		{"Uppercase PART", "IPX-535-PART1.mp4", "IPX-535", 1, "-part1", true, PatternExplicit},
 
-		// Mixed case
-		{"Mixed case pt", "IPX-535-Pt1.mp4", "IPX-535", 1, "-pt1", true},
-		{"Mixed case part", "IPX-535-Part1.mp4", "IPX-535", 1, "-part1", true},
+		// Mixed case - explicit patterns
+		{"Mixed case pt", "IPX-535-Pt1.mp4", "IPX-535", 1, "-pt1", true, PatternExplicit},
+		{"Mixed case part", "IPX-535-Part1.mp4", "IPX-535", 1, "-part1", true, PatternExplicit},
 
-		// Letter suffixes
-		{"Letter D", "IPX-535-D.mp4", "IPX-535", 4, "-D", true},
-		{"Letter Z", "IPX-535-Z.mp4", "IPX-535", 26, "-Z", true},
-		{"Lowercase z", "IPX-535-z.mp4", "IPX-535", 26, "-Z", true},
+		// Letter suffixes - ambiguous, require directory validation
+		// Note: IsMultiPart is false until ValidateMultipartInDirectory is called
+		{"Letter D", "IPX-535-D.mp4", "IPX-535", 4, "-D", false, PatternLetter},
+		{"Letter Z", "IPX-535-Z.mp4", "IPX-535", 26, "-Z", false, PatternLetter},
+		{"Lowercase z", "IPX-535-z.mp4", "IPX-535", 26, "-Z", false, PatternLetter},
 
 		// Part 0 doesn't exist (returns 0 for invalid)
-		{"Part 0 not valid", "IPX-535-pt0.mp4", "IPX-535", 0, "", false},
+		{"Part 0 not valid", "IPX-535-pt0.mp4", "IPX-535", 0, "", false, PatternNone},
 
-		// Double digit parts
-		{"Part 11", "IPX-535-pt11.mp4", "IPX-535", 11, "-pt11", true},
-		{"Part 99", "IPX-535-pt99.mp4", "IPX-535", 99, "-pt99", true},
+		// Double digit parts - explicit patterns
+		{"Part 11", "IPX-535-pt11.mp4", "IPX-535", 11, "-pt11", true, PatternExplicit},
+		{"Part 99", "IPX-535-pt99.mp4", "IPX-535", 99, "-pt99", true, PatternExplicit},
 
 		// Parts with extra text (the regex is flexible and still detects these)
-		{"Part with text after", "IPX-535-part1-extra.mp4", "IPX-535", 1, "-part1", true},
-		{"Letter with text after", "IPX-535-A-extra.mp4", "IPX-535", 0, "", false}, // Extra text prevents letter detection
+		{"Part with text after", "IPX-535-part1-extra.mp4", "IPX-535", 1, "-part1", true, PatternExplicit},
+		{"Letter with text after", "IPX-535-A-extra.mp4", "IPX-535", 0, "", false, PatternNone}, // Extra text prevents letter detection
 
-		// Note: The current implementation treats letter suffixes as part numbers.
-		// This is a bug for genuine IDs like ABC-123A where A is part of the ID, not a disc part.
-		// The tests below document current behavior, but this should be fixed.
-		// TODO: Fix matcher to distinguish between genuine letter-suffixed IDs and multi-part indicators
-		{"ID ending in letter ABC-123A (current: treated as part)", "ABC-123A.mp4", "ABC-123", 1, "-A", true}, // Bug: A detected as part suffix
-		{"ID with E suffix IPX-535E (correct: E is part of ID)", "IPX-535E.mp4", "IPX-535E", 0, "", false},    // E is part of ID (matched by regex)
+		// Note: Letter suffixes now require directory validation before being treated as multipart.
+		// ABC-123A will have PartNumber=1 and PartSuffix="-A" but IsMultiPart=false until validated.
+		// This helps prevent false positives for single files with subtitle markers (-C for Chinese).
+		{"ID ending in letter ABC-123A (letter pattern - needs validation)", "ABC-123A.mp4", "ABC-123", 1, "-A", false, PatternLetter},
+		{"ID with E suffix IPX-535E (correct: E is part of ID)", "IPX-535E.mp4", "IPX-535E", 0, "", false, PatternNone}, // E is part of ID (matched by regex)
 	}
 
 	for _, tc := range testCases {
@@ -1353,6 +1360,10 @@ func TestMatcher_PartSuffixEdgeCases(t *testing.T) {
 
 			if result.IsMultiPart != tc.expectedMulti {
 				t.Errorf("Expected IsMultiPart %v, got %v", tc.expectedMulti, result.IsMultiPart)
+			}
+
+			if result.MultipartPattern != tc.expectedPattern {
+				t.Errorf("Expected MultipartPattern %s, got %s", tc.expectedPattern, result.MultipartPattern)
 			}
 		})
 	}
@@ -1401,5 +1412,322 @@ func TestMatcher_RegressionCases(t *testing.T) {
 				t.Errorf("Expected ID %s, got %s", tc.expectedID, result.ID)
 			}
 		})
+	}
+}
+
+// TestValidateMultipartInDirectory tests the directory context validation for letter-based multipart patterns
+func TestValidateMultipartInDirectory(t *testing.T) {
+	testCases := []struct {
+		name          string
+		results       []MatchResult
+		expectedMulti []bool // Expected IsMultiPart after validation for each result
+		desc          string
+	}{
+		{
+			name: "single file with letter suffix - NOT multipart",
+			results: []MatchResult{
+				{
+					ID:               "ABW-121",
+					PartNumber:       3,
+					PartSuffix:       "-C",
+					MultipartPattern: PatternLetter,
+					IsMultiPart:      false,
+					File:             scanner.FileInfo{Path: "/videos/ABW-121-C.mp4"},
+				},
+			},
+			expectedMulti: []bool{false},
+			desc:          "Single file with -C suffix (Chinese subtitles) should NOT be treated as multipart",
+		},
+		{
+			name: "multiple letter-pattern files same ID - IS multipart",
+			results: []MatchResult{
+				{
+					ID:               "ABW-121",
+					PartNumber:       1,
+					PartSuffix:       "-A",
+					MultipartPattern: PatternLetter,
+					IsMultiPart:      false,
+					File:             scanner.FileInfo{Path: "/videos/ABW-121-A.mp4"},
+				},
+				{
+					ID:               "ABW-121",
+					PartNumber:       2,
+					PartSuffix:       "-B",
+					MultipartPattern: PatternLetter,
+					IsMultiPart:      false,
+					File:             scanner.FileInfo{Path: "/videos/ABW-121-B.mp4"},
+				},
+			},
+			expectedMulti: []bool{true, true},
+			desc:          "Two files with same ID and letter suffixes should be detected as multipart",
+		},
+		{
+			name: "explicit pattern stays multipart regardless of sibling count",
+			results: []MatchResult{
+				{
+					ID:               "IPX-535",
+					PartNumber:       1,
+					PartSuffix:       "-pt1",
+					MultipartPattern: PatternExplicit,
+					IsMultiPart:      true,
+					File:             scanner.FileInfo{Path: "/videos/IPX-535-pt1.mp4"},
+				},
+			},
+			expectedMulti: []bool{true},
+			desc:          "Explicit patterns (pt1, part2, etc.) are always multipart",
+		},
+		{
+			name: "mixed patterns - only letter patterns validated",
+			results: []MatchResult{
+				{
+					ID:               "IPX-535",
+					PartNumber:       1,
+					PartSuffix:       "-pt1",
+					MultipartPattern: PatternExplicit,
+					IsMultiPart:      true,
+					File:             scanner.FileInfo{Path: "/videos/IPX-535-pt1.mp4"},
+				},
+				{
+					ID:               "ABW-121",
+					PartNumber:       3,
+					PartSuffix:       "-C",
+					MultipartPattern: PatternLetter,
+					IsMultiPart:      false,
+					File:             scanner.FileInfo{Path: "/videos/ABW-121-C.mp4"},
+				},
+			},
+			expectedMulti: []bool{true, false},
+			desc:          "Explicit multipart stays multipart, lone letter pattern stays single",
+		},
+		{
+			name: "different directories - separate validation",
+			results: []MatchResult{
+				{
+					ID:               "ABW-121",
+					PartNumber:       1,
+					PartSuffix:       "-A",
+					MultipartPattern: PatternLetter,
+					IsMultiPart:      false,
+					File:             scanner.FileInfo{Path: "/videos/dir1/ABW-121-A.mp4"},
+				},
+				{
+					ID:               "ABW-121",
+					PartNumber:       2,
+					PartSuffix:       "-B",
+					MultipartPattern: PatternLetter,
+					IsMultiPart:      false,
+					File:             scanner.FileInfo{Path: "/videos/dir2/ABW-121-B.mp4"},
+				},
+			},
+			expectedMulti: []bool{false, false},
+			desc:          "Same ID but different directories should NOT be grouped as multipart",
+		},
+		{
+			name: "three parts with letter suffixes",
+			results: []MatchResult{
+				{
+					ID:               "MDB-087",
+					PartNumber:       1,
+					PartSuffix:       "-A",
+					MultipartPattern: PatternLetter,
+					IsMultiPart:      false,
+					File:             scanner.FileInfo{Path: "/videos/MDB-087-A.mp4"},
+				},
+				{
+					ID:               "MDB-087",
+					PartNumber:       2,
+					PartSuffix:       "-B",
+					MultipartPattern: PatternLetter,
+					IsMultiPart:      false,
+					File:             scanner.FileInfo{Path: "/videos/MDB-087-B.mp4"},
+				},
+				{
+					ID:               "MDB-087",
+					PartNumber:       3,
+					PartSuffix:       "-C",
+					MultipartPattern: PatternLetter,
+					IsMultiPart:      false,
+					File:             scanner.FileInfo{Path: "/videos/MDB-087-C.mp4"},
+				},
+			},
+			expectedMulti: []bool{true, true, true},
+			desc:          "Three letter-pattern files with same ID should all be multipart",
+		},
+		{
+			name:          "empty results",
+			results:       []MatchResult{},
+			expectedMulti: []bool{},
+			desc:          "Empty input should return empty output",
+		},
+		{
+			name: "letter and explicit patterns mixed for same ID",
+			results: []MatchResult{
+				{
+					ID:               "IPX-535",
+					PartNumber:       1,
+					PartSuffix:       "-A",
+					MultipartPattern: PatternLetter,
+					IsMultiPart:      false,
+					File:             scanner.FileInfo{Path: "/videos/IPX-535-A.mp4"},
+				},
+				{
+					ID:               "IPX-535",
+					PartNumber:       2,
+					PartSuffix:       "-pt2",
+					MultipartPattern: PatternExplicit,
+					IsMultiPart:      true,
+					File:             scanner.FileInfo{Path: "/videos/IPX-535-pt2.mp4"},
+				},
+			},
+			expectedMulti: []bool{false, true},
+			desc:          "Mixed: explicit stays true, single letter stays false (needs 2+ letter files)",
+		},
+		{
+			name: "no pattern files unchanged",
+			results: []MatchResult{
+				{
+					ID:               "IPX-535",
+					PartNumber:       0,
+					PartSuffix:       "",
+					MultipartPattern: PatternNone,
+					IsMultiPart:      false,
+					File:             scanner.FileInfo{Path: "/videos/IPX-535.mp4"},
+				},
+			},
+			expectedMulti: []bool{false},
+			desc:          "Files with no pattern should remain single-part",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			validated := ValidateMultipartInDirectory(tc.results)
+
+			if len(validated) != len(tc.expectedMulti) {
+				t.Fatalf("Expected %d results, got %d", len(tc.expectedMulti), len(validated))
+			}
+
+			for i, expected := range tc.expectedMulti {
+				if validated[i].IsMultiPart != expected {
+					t.Errorf("Result %d: expected IsMultiPart=%v, got %v (%s)",
+						i, expected, validated[i].IsMultiPart, tc.desc)
+				}
+			}
+		})
+	}
+}
+
+// TestValidateMultipartInDirectory_DoesNotModifyInput verifies that the function doesn't modify the input slice
+func TestValidateMultipartInDirectory_DoesNotModifyInput(t *testing.T) {
+	input := []MatchResult{
+		{
+			ID:               "ABW-121",
+			PartNumber:       1,
+			PartSuffix:       "-A",
+			MultipartPattern: PatternLetter,
+			IsMultiPart:      false,
+			File:             scanner.FileInfo{Path: "/videos/ABW-121-A.mp4"},
+		},
+		{
+			ID:               "ABW-121",
+			PartNumber:       2,
+			PartSuffix:       "-B",
+			MultipartPattern: PatternLetter,
+			IsMultiPart:      false,
+			File:             scanner.FileInfo{Path: "/videos/ABW-121-B.mp4"},
+		},
+	}
+
+	// Store original values
+	originalMulti0 := input[0].IsMultiPart
+	originalMulti1 := input[1].IsMultiPart
+
+	_ = ValidateMultipartInDirectory(input)
+
+	// Verify input wasn't modified
+	if input[0].IsMultiPart != originalMulti0 {
+		t.Errorf("Input[0].IsMultiPart was modified: expected %v, got %v", originalMulti0, input[0].IsMultiPart)
+	}
+	if input[1].IsMultiPart != originalMulti1 {
+		t.Errorf("Input[1].IsMultiPart was modified: expected %v, got %v", originalMulti1, input[1].IsMultiPart)
+	}
+}
+
+// TestValidateMultipartInDirectory_RealWorldScenario tests the main use case: Chinese subtitle files
+func TestValidateMultipartInDirectory_RealWorldScenario(t *testing.T) {
+	cfg := &config.MatchingConfig{
+		RegexEnabled: false,
+	}
+
+	matcher, err := NewMatcher(cfg)
+	if err != nil {
+		t.Fatalf("Failed to create matcher: %v", err)
+	}
+
+	// Scenario: User has ABW-121-C.mp4 where -C means Chinese subtitles, NOT part 3
+	files := []scanner.FileInfo{
+		{Name: "ABW-121-C.mp4", Extension: ".mp4", Path: "/videos/ABW-121-C.mp4"},
+	}
+
+	// Match files
+	results := matcher.Match(files)
+	if len(results) != 1 {
+		t.Fatalf("Expected 1 result, got %d", len(results))
+	}
+
+	// Before validation: should have letter pattern detected but NOT be multipart
+	if results[0].MultipartPattern != PatternLetter {
+		t.Errorf("Expected MultipartPattern %s, got %s", PatternLetter, results[0].MultipartPattern)
+	}
+	if results[0].IsMultiPart != false {
+		t.Errorf("Expected IsMultiPart=false before validation, got true")
+	}
+
+	// After validation: should still NOT be multipart (single file)
+	validated := ValidateMultipartInDirectory(results)
+	if validated[0].IsMultiPart != false {
+		t.Errorf("Expected IsMultiPart=false after validation, got true")
+	}
+}
+
+// TestValidateMultipartInDirectory_ActualMultipart tests genuine multipart detection
+func TestValidateMultipartInDirectory_ActualMultipart(t *testing.T) {
+	cfg := &config.MatchingConfig{
+		RegexEnabled: false,
+	}
+
+	matcher, err := NewMatcher(cfg)
+	if err != nil {
+		t.Fatalf("Failed to create matcher: %v", err)
+	}
+
+	// Scenario: User has ABW-121-A.mp4 and ABW-121-B.mp4 - these are genuine multipart
+	files := []scanner.FileInfo{
+		{Name: "ABW-121-A.mp4", Extension: ".mp4", Path: "/videos/ABW-121-A.mp4"},
+		{Name: "ABW-121-B.mp4", Extension: ".mp4", Path: "/videos/ABW-121-B.mp4"},
+	}
+
+	// Match files
+	results := matcher.Match(files)
+	if len(results) != 2 {
+		t.Fatalf("Expected 2 results, got %d", len(results))
+	}
+
+	// Before validation: should have letter pattern detected but NOT be multipart
+	for i, r := range results {
+		if r.MultipartPattern != PatternLetter {
+			t.Errorf("Result %d: expected MultipartPattern %s, got %s", i, PatternLetter, r.MultipartPattern)
+		}
+		if r.IsMultiPart != false {
+			t.Errorf("Result %d: expected IsMultiPart=false before validation, got true", i)
+		}
+	}
+
+	// After validation: should be multipart (multiple files with same ID)
+	validated := ValidateMultipartInDirectory(results)
+	for i, r := range validated {
+		if r.IsMultiPart != true {
+			t.Errorf("Result %d: expected IsMultiPart=true after validation, got false", i)
+		}
 	}
 }

@@ -18,12 +18,13 @@ type Matcher struct {
 
 // MatchResult represents a matched file with extracted ID
 type MatchResult struct {
-	File        scanner.FileInfo
-	ID          string // Extracted JAV ID (e.g., "IPX-535")
-	PartNumber  int    // 0 = single-part, 1..N = part index
-	PartSuffix  string // "-A", "-pt1", "-part2" (always with leading dash)
-	IsMultiPart bool   // Whether this is a multi-part file
-	MatchedBy   string // "regex" or "builtin"
+	File             scanner.FileInfo
+	ID               string // Extracted JAV ID (e.g., "IPX-535")
+	PartNumber       int    // 0 = single-part, 1..N = part index
+	PartSuffix       string // "-A", "-pt1", "-part2" (always with leading dash)
+	IsMultiPart      bool   // Whether this is a multi-part file
+	MatchedBy        string // "regex" or "builtin"
+	MultipartPattern string // Pattern type: "explicit", "letter", or "" (see PatternExplicit, PatternLetter, PatternNone)
 }
 
 // NewMatcher creates a new file matcher
@@ -115,10 +116,13 @@ func (m *Matcher) matchWithRegex(file scanner.FileInfo, filename string, pattern
 	}
 
 	// Detect part suffix from the rest of the filename
-	num, suffix := DetectPartSuffix(filename, result.ID)
+	num, suffix, patternType := DetectPartSuffix(filename, result.ID)
 	result.PartNumber = num
 	result.PartSuffix = suffix
-	result.IsMultiPart = num > 0 || suffix != ""
+	result.MultipartPattern = patternType
+	// Only mark explicit patterns as multipart immediately.
+	// Letter patterns need directory context validation via ValidateMultipartInDirectory().
+	result.IsMultiPart = patternType == PatternExplicit
 
 	return result
 }
@@ -177,4 +181,56 @@ func FilterSinglePart(results []MatchResult) []MatchResult {
 	}
 
 	return filtered
+}
+
+// ValidateMultipartInDirectory validates letter-based multipart patterns
+// by checking for sibling files in the same directory with the same ID.
+// Files with ambiguous letter patterns (-A, -B, -C) are only marked as multipart
+// if multiple files with the same movie ID exist in the same directory.
+// This prevents false positives for files like "ABW-121-C.mp4" where -C means
+// Chinese subtitles, not part 3.
+func ValidateMultipartInDirectory(results []MatchResult) []MatchResult {
+	if len(results) == 0 {
+		return results
+	}
+
+	// Create a copy to avoid modifying input slice
+	validated := make([]MatchResult, len(results))
+	copy(validated, results)
+
+	// Group by (directory, movieID)
+	type dirIDKey struct {
+		dir string
+		id  string
+	}
+	groups := make(map[dirIDKey][]int)
+
+	for i, r := range validated {
+		key := dirIDKey{dir: filepath.Dir(r.File.Path), id: r.ID}
+		groups[key] = append(groups[key], i)
+	}
+
+	// For each group, upgrade letter patterns to multipart if multiple letter-pattern files exist
+	for _, indices := range groups {
+		if len(indices) < 2 {
+			continue
+		}
+
+		// Collect indices of files with letter patterns in this group
+		letterIndices := []int{}
+		for _, idx := range indices {
+			if validated[idx].MultipartPattern == PatternLetter {
+				letterIndices = append(letterIndices, idx)
+			}
+		}
+
+		// Multiple letter-pattern files with same ID = actual multipart
+		if len(letterIndices) >= 2 {
+			for _, idx := range letterIndices {
+				validated[idx].IsMultiPart = true
+			}
+		}
+	}
+
+	return validated
 }
