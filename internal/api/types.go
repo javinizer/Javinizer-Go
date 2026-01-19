@@ -89,6 +89,7 @@ type AvailableScrapersResponse struct {
 type ScanRequest struct {
 	Path      string `json:"path" binding:"required" example:"/path/to/videos"`
 	Recursive bool   `json:"recursive" example:"true"`
+	Filter    string `json:"filter,omitempty" example:"STSK"` // Filter folder/file names (case-insensitive substring match)
 }
 
 // ScanResponse represents scan results

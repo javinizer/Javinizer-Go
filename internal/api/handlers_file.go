@@ -51,15 +51,25 @@ func scanDirectory(deps *ServerDependencies) gin.HandlerFunc {
 		ctx, cancel := context.WithTimeout(context.Background(), timeout)
 		defer cancel()
 
-		// Scan directory with resource limits
+		// Scan directory - recursive or non-recursive based on request
 		scan := scanner.NewScanner(afero.NewOsFs(), &cfg.Matching)
-		result, err := scan.ScanWithLimits(ctx, validPath, cfg.API.Security.MaxFilesPerScan)
+		var result *scanner.ScanResult
+
+		if req.Recursive {
+			// Recursive scan with resource limits and optional filter
+			// Filter skips directories that don't match, improving performance
+			result, err = scan.ScanWithFilter(ctx, validPath, cfg.API.Security.MaxFilesPerScan, req.Filter)
+		} else {
+			// Non-recursive scan (immediate children only)
+			result, err = scan.ScanSingle(validPath)
+		}
+
 		if err != nil {
 			c.JSON(500, ErrorResponse{Error: err.Error()})
 			return
 		}
 
-		// Check if scan was limited or timed out
+		// Check if scan was limited or timed out (only applicable to recursive scan)
 		if result.TimedOut {
 			c.JSON(503, ErrorResponse{Error: "scan operation timed out"})
 			return

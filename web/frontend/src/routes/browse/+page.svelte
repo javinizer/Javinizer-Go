@@ -78,20 +78,22 @@
 	}
 
 	// Unified scan handler - handles both recursive and non-recursive scans
-	async function handleScan(path: string, recursive: boolean, visibleFiles: FileInfo[]) {
+	// filter: when provided with recursive scan, only scans directories/files matching the filter (case-insensitive)
+	async function handleScan(path: string, recursive: boolean, visibleFiles: FileInfo[], filter: string = '') {
 		if (!path.trim()) return;
 
 		scanning = true;
 		try {
 			const response = await apiClient.scan({
 				path: path,
-				recursive: recursive
+				recursive: recursive,
+				filter: recursive ? filter : undefined  // Only pass filter for recursive scans
 			});
 
 			let matchedFiles: string[];
 
 			if (recursive) {
-				// For recursive scan, include all matched files
+				// For recursive scan, include all matched files (backend already filtered by folder/file name)
 				matchedFiles = response.files
 					.filter((f) => f.matched && !f.is_dir)
 					.map((f) => f.path);
@@ -107,8 +109,9 @@
 				// Merge with existing selections
 				selectedFiles = [...new Set([...selectedFiles, ...matchedFiles])];
 				const scanType = recursive ? 'recursive' : 'current folder';
+				const filterInfo = recursive && filter ? ` matching "${filter}"` : '';
 				toastStore.success(
-					`Added ${matchedFiles.length} JAV file${matchedFiles.length !== 1 ? 's' : ''} (${scanType})`,
+					`Added ${matchedFiles.length} JAV file${matchedFiles.length !== 1 ? 's' : ''}${filterInfo} (${scanType})`,
 					3000
 				);
 			} else {
@@ -120,7 +123,8 @@
 						return;
 					}
 				}
-				toastStore.warning(`No JAV files found${recursive ? ' in any subfolder' : ''}`, 5000);
+				const filterInfo = recursive && filter ? ` matching "${filter}"` : '';
+				toastStore.warning(`No JAV files found${filterInfo}${recursive ? ' in any subfolder' : ''}`, 5000);
 			}
 		} catch (error) {
 			toastStore.error(error instanceof Error ? error.message : 'Failed to scan directory', 5000);

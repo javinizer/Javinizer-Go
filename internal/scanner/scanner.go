@@ -67,6 +67,13 @@ func (s *Scanner) Scan(rootPath string) (*ScanResult, error) {
 // ScanWithLimits recursively scans a directory for video files with timeout and file count limits
 // maxFiles = 0 means no limit
 func (s *Scanner) ScanWithLimits(ctx context.Context, rootPath string, maxFiles int) (*ScanResult, error) {
+	return s.ScanWithFilter(ctx, rootPath, maxFiles, "")
+}
+
+// ScanWithFilter recursively scans a directory for video files with timeout, file count limits, and optional name filter
+// maxFiles = 0 means no limit
+// filter = "" means no filter; otherwise, only directories/files containing the filter string (case-insensitive) are processed
+func (s *Scanner) ScanWithFilter(ctx context.Context, rootPath string, maxFiles int, filter string) (*ScanResult, error) {
 	result := &ScanResult{
 		Files:   make([]FileInfo, 0),
 		Skipped: make([]string, 0),
@@ -83,6 +90,9 @@ func (s *Scanner) ScanWithLimits(ctx context.Context, rootPath string, maxFiles 
 	if _, err := s.fs.Stat(absPath); err != nil {
 		return nil, err
 	}
+
+	// Normalize filter for case-insensitive matching
+	filterLower := strings.ToLower(filter)
 
 	// Walk the directory tree
 	fileCount := 0
@@ -103,9 +113,27 @@ func (s *Scanner) ScanWithLimits(ctx context.Context, rootPath string, maxFiles 
 			return nil // Continue scanning
 		}
 
-		// Skip directories
+		// For directories: skip if filter is set and directory name doesn't match
+		// Always process the root directory regardless of filter
 		if d.IsDir() {
+			if filterLower != "" && path != absPath {
+				dirName := strings.ToLower(d.Name())
+				if !strings.Contains(dirName, filterLower) {
+					// Skip this directory entirely - don't recurse into it
+					return filepath.SkipDir
+				}
+			}
 			return nil
+		}
+
+		// For files: check if filter matches the file name
+		if filterLower != "" {
+			fileName := strings.ToLower(d.Name())
+			if !strings.Contains(fileName, filterLower) {
+				// File doesn't match filter, skip it
+				result.SkippedCount++
+				return nil
+			}
 		}
 
 		result.TotalScanned++

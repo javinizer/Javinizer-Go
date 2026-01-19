@@ -13,6 +13,7 @@ export interface FileInfo {
 export interface ScanRequest {
 	path: string;
 	recursive: boolean;
+	filter?: string; // Filter folder/file names (case-insensitive substring match)
 }
 
 export interface ScanResponse {

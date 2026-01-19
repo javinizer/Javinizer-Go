@@ -33,7 +33,7 @@
 		onPathChange?: (path: string) => void;
 		multiSelect?: boolean;
 		folderOnly?: boolean;  // When true, only allows folder navigation (no file selection)
-		onScan?: (path: string, recursive: boolean, visibleFiles: FileInfo[]) => void;  // Unified scan callback
+		onScan?: (path: string, recursive: boolean, visibleFiles: FileInfo[], filter: string) => void;  // Unified scan callback with filter
 		scanLoading?: boolean;  // External loading state
 	}
 
@@ -126,7 +126,7 @@
 	// Handle scan button click
 	function handleScan() {
 		const visibleFiles = sortedAndFilteredItems().filter((f) => !f.is_dir);
-		onScan?.(currentPath, recursiveScan, visibleFiles);
+		onScan?.(currentPath, recursiveScan, visibleFiles, filterText);
 	}
 
 	// Navigate to path from input

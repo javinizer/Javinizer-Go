@@ -601,3 +601,221 @@ func TestScanDirectory_LargeDirectory(t *testing.T) {
 	// Should handle large directory without timeout
 	assert.Greater(t, response.Count, 50, "Should process many files")
 }
+
+func TestScanDirectory_RecursiveFlag(t *testing.T) {
+	// Create directory structure:
+	// tempDir/
+	//   ├── IPX-001.mp4 (root file)
+	//   └── subdir/
+	//       └── IPX-002.mp4 (nested file)
+	tempDir := t.TempDir()
+
+	// Create root level file
+	rootFile := filepath.Join(tempDir, "IPX-001.mp4")
+	require.NoError(t, os.WriteFile(rootFile, []byte("test"), 0644))
+
+	// Create subdirectory with nested file
+	subDir := filepath.Join(tempDir, "subdir")
+	require.NoError(t, os.MkdirAll(subDir, 0755))
+	nestedFile := filepath.Join(subDir, "IPX-002.mp4")
+	require.NoError(t, os.WriteFile(nestedFile, []byte("test"), 0644))
+
+	// Setup deps
+	cfg := &config.Config{
+		API: config.APIConfig{
+			Security: config.SecurityConfig{
+				AllowedDirectories: []string{tempDir},
+				ScanTimeoutSeconds: 30,
+				MaxFilesPerScan:    1000,
+			},
+		},
+		Matching: config.MatchingConfig{
+			Extensions: []string{".mp4", ".mkv"},
+		},
+	}
+
+	deps := createTestDeps(t, cfg, "")
+
+	router := gin.New()
+	router.POST("/scan", scanDirectory(deps))
+
+	t.Run("non-recursive scan should only find root files", func(t *testing.T) {
+		reqBody := ScanRequest{Path: tempDir, Recursive: false}
+		body, err := json.Marshal(reqBody)
+		require.NoError(t, err)
+
+		req := httptest.NewRequest("POST", "/scan", bytes.NewBuffer(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, 200, w.Code)
+
+		var response ScanResponse
+		err = json.Unmarshal(w.Body.Bytes(), &response)
+		require.NoError(t, err)
+
+		// Non-recursive should only find IPX-001.mp4 (root file)
+		assert.Equal(t, 1, response.Count, "Non-recursive scan should find only root-level files")
+		if len(response.Files) > 0 {
+			assert.Contains(t, response.Files[0].Path, "IPX-001.mp4")
+		}
+	})
+
+	t.Run("recursive scan should find all files", func(t *testing.T) {
+		reqBody := ScanRequest{Path: tempDir, Recursive: true}
+		body, err := json.Marshal(reqBody)
+		require.NoError(t, err)
+
+		req := httptest.NewRequest("POST", "/scan", bytes.NewBuffer(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, 200, w.Code)
+
+		var response ScanResponse
+		err = json.Unmarshal(w.Body.Bytes(), &response)
+		require.NoError(t, err)
+
+		// Recursive should find both IPX-001.mp4 and IPX-002.mp4
+		assert.Equal(t, 2, response.Count, "Recursive scan should find files in subdirectories")
+
+		// Verify both files are found
+		paths := make([]string, len(response.Files))
+		for i, f := range response.Files {
+			paths[i] = f.Path
+		}
+		assert.True(t, containsPath(paths, "IPX-001.mp4"), "Should find root file")
+		assert.True(t, containsPath(paths, "IPX-002.mp4"), "Should find nested file")
+	})
+}
+
+func containsPath(paths []string, substr string) bool {
+	for _, p := range paths {
+		if strings.Contains(p, substr) {
+			return true
+		}
+	}
+	return false
+}
+
+func TestScanDirectory_FilterFlag(t *testing.T) {
+	// Create directory structure:
+	// tempDir/
+	//   ├── IPX-001.mp4 (root file - matches filter "IPX")
+	//   ├── ABC-001.mp4 (root file - doesn't match filter "IPX")
+	//   ├── IPX-folder/
+	//   │   └── IPX-002.mp4 (nested - folder matches filter)
+	//   └── OTHER-folder/
+	//       └── IPX-003.mp4 (nested - folder doesn't match filter, skipped)
+	tempDir := t.TempDir()
+
+	// Create root level files
+	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "IPX-001.mp4"), []byte("test"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "ABC-001.mp4"), []byte("test"), 0644))
+
+	// Create IPX-folder with nested file
+	ipxDir := filepath.Join(tempDir, "IPX-folder")
+	require.NoError(t, os.MkdirAll(ipxDir, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(ipxDir, "IPX-002.mp4"), []byte("test"), 0644))
+
+	// Create OTHER-folder with nested file (should be skipped when filtering)
+	otherDir := filepath.Join(tempDir, "OTHER-folder")
+	require.NoError(t, os.MkdirAll(otherDir, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(otherDir, "IPX-003.mp4"), []byte("test"), 0644))
+
+	// Setup deps
+	cfg := &config.Config{
+		API: config.APIConfig{
+			Security: config.SecurityConfig{
+				AllowedDirectories: []string{tempDir},
+				ScanTimeoutSeconds: 30,
+				MaxFilesPerScan:    1000,
+			},
+		},
+		Matching: config.MatchingConfig{
+			Extensions: []string{".mp4", ".mkv"},
+		},
+	}
+
+	deps := createTestDeps(t, cfg, "")
+
+	router := gin.New()
+	router.POST("/scan", scanDirectory(deps))
+
+	t.Run("recursive scan with filter skips non-matching directories", func(t *testing.T) {
+		reqBody := ScanRequest{Path: tempDir, Recursive: true, Filter: "IPX"}
+		body, err := json.Marshal(reqBody)
+		require.NoError(t, err)
+
+		req := httptest.NewRequest("POST", "/scan", bytes.NewBuffer(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, 200, w.Code)
+
+		var response ScanResponse
+		err = json.Unmarshal(w.Body.Bytes(), &response)
+		require.NoError(t, err)
+
+		// Should find: IPX-001.mp4 (root), IPX-002.mp4 (in IPX-folder)
+		// Should NOT find: ABC-001.mp4 (doesn't match filter), IPX-003.mp4 (in OTHER-folder which doesn't match)
+		assert.Equal(t, 2, response.Count, "Filter should only find files in matching directories")
+
+		paths := make([]string, len(response.Files))
+		for i, f := range response.Files {
+			paths[i] = f.Path
+		}
+		assert.True(t, containsPath(paths, "IPX-001.mp4"), "Should find IPX-001.mp4 in root (matches filter)")
+		assert.True(t, containsPath(paths, "IPX-002.mp4"), "Should find IPX-002.mp4 in IPX-folder")
+		assert.False(t, containsPath(paths, "ABC-001.mp4"), "Should NOT find ABC-001.mp4 (doesn't match filter)")
+		assert.False(t, containsPath(paths, "IPX-003.mp4"), "Should NOT find IPX-003.mp4 (in OTHER-folder which doesn't match)")
+	})
+
+	t.Run("recursive scan without filter finds all files", func(t *testing.T) {
+		reqBody := ScanRequest{Path: tempDir, Recursive: true, Filter: ""}
+		body, err := json.Marshal(reqBody)
+		require.NoError(t, err)
+
+		req := httptest.NewRequest("POST", "/scan", bytes.NewBuffer(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, 200, w.Code)
+
+		var response ScanResponse
+		err = json.Unmarshal(w.Body.Bytes(), &response)
+		require.NoError(t, err)
+
+		// Should find all 4 files
+		assert.Equal(t, 4, response.Count, "No filter should find all files")
+	})
+
+	t.Run("filter is case insensitive", func(t *testing.T) {
+		reqBody := ScanRequest{Path: tempDir, Recursive: true, Filter: "ipx"} // lowercase
+		body, err := json.Marshal(reqBody)
+		require.NoError(t, err)
+
+		req := httptest.NewRequest("POST", "/scan", bytes.NewBuffer(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, 200, w.Code)
+
+		var response ScanResponse
+		err = json.Unmarshal(w.Body.Bytes(), &response)
+		require.NoError(t, err)
+
+		// Should still find IPX files (case insensitive)
+		assert.Equal(t, 2, response.Count, "Lowercase filter should match uppercase directories/files")
+	})
+}
