@@ -32,9 +32,11 @@ type Scraper struct {
 
 // New creates a new MGStage scraper
 func New(cfg *config.Config) *Scraper {
+	proxyConfig := config.ResolveScraperProxy(cfg.Scrapers.Proxy, cfg.Scrapers.MGStage.Proxy)
+
 	// Create resty client with proxy support
 	client, err := httpclient.NewRestyClient(
-		&cfg.Scrapers.Proxy,
+		proxyConfig,
 		30*time.Second,
 		3,
 	)
@@ -63,8 +65,8 @@ func New(cfg *config.Config) *Scraper {
 	// Set age verification cookie (required for MGStage)
 	client.SetHeader("Cookie", "adc=1")
 
-	if cfg.Scrapers.Proxy.Enabled {
-		logging.Infof("MGStage: Using proxy %s", httpclient.SanitizeProxyURL(cfg.Scrapers.Proxy.URL))
+	if proxyConfig.Enabled {
+		logging.Infof("MGStage: Using proxy %s", httpclient.SanitizeProxyURL(proxyConfig.URL))
 	}
 
 	// Calculate request delay from config (milliseconds to duration)

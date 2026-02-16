@@ -806,11 +806,6 @@ func (a *Aggregator) getActressesByPriority(
 					if actressNameKey == nameKey {
 						existing = actress
 						foundInDMMIDMap = true
-						// Upgrade with DMMID if this entry has one and existing doesn't
-						if info.DMMID != 0 && actress.DMMID == 0 {
-							// Move to DMMID map
-							actressByDMMID[info.DMMID] = actress
-						}
 						break
 					}
 				}
@@ -823,13 +818,17 @@ func (a *Aggregator) getActressesByPriority(
 
 			// If actress exists, merge fields
 			if existing != nil {
-				if existing.DMMID == 0 && info.DMMID != 0 {
+				if existing.DMMID <= 0 && info.DMMID != 0 {
+					oldDMMID := existing.DMMID
 					existing.DMMID = info.DMMID
-					// Move from name map to DMMID map
+					// Move from placeholder/non-DMMID entries to real DMMID key.
+					if foundInDMMIDMap && oldDMMID != info.DMMID {
+						delete(actressByDMMID, oldDMMID)
+					}
 					if !foundInDMMIDMap && nameKey != "" {
 						delete(actressByName, nameKey)
-						actressByDMMID[info.DMMID] = existing
 					}
+					actressByDMMID[info.DMMID] = existing
 				}
 				if existing.FirstName == "" && info.FirstName != "" {
 					existing.FirstName = info.FirstName

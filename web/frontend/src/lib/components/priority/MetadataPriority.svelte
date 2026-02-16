@@ -266,7 +266,7 @@
 			>
 				{#snippet children({ item })}
 					<span class="font-medium">
-						{item === 'dmm' ? 'DMM/Fanza' : item === 'r18dev' ? 'R18.dev' : item}
+						{item === 'dmm' ? 'DMM/Fanza' : item === 'r18dev' ? 'R18.dev' : item === 'javlibrary' ? 'JavLibrary' : item}
 					</span>
 				{/snippet}
 			</DraggableList>
@@ -344,7 +344,7 @@
 					>
 						{#snippet children({ item })}
 							<span class="font-medium">
-								{item === 'dmm' ? 'DMM/Fanza' : item === 'r18dev' ? 'R18.dev' : item}
+								{item === 'dmm' ? 'DMM/Fanza' : item === 'r18dev' ? 'R18.dev' : item === 'javlibrary' ? 'JavLibrary' : item}
 							</span>
 						{/snippet}
 					</DraggableList>

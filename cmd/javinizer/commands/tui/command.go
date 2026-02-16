@@ -23,6 +23,7 @@ import (
 	"github.com/javinizer/javinizer-go/internal/organizer"
 	"github.com/javinizer/javinizer-go/internal/scanner"
 	"github.com/javinizer/javinizer-go/internal/scraper/dmm"
+	"github.com/javinizer/javinizer-go/internal/scraper/javdb"
 	"github.com/javinizer/javinizer-go/internal/scraper/mgstage"
 	"github.com/javinizer/javinizer-go/internal/scraper/r18dev"
 	"github.com/javinizer/javinizer-go/internal/tui"
@@ -201,6 +202,7 @@ func run(cmd *cobra.Command, args []string) error {
 	registry.Register(r18dev.New(cfg))
 	registry.Register(dmm.New(cfg, contentIDRepo))
 	registry.Register(mgstage.New(cfg))
+	registry.Register(javdb.New(cfg))
 
 	// Initialize aggregator
 	agg := aggregator.NewWithDatabase(cfg, db)

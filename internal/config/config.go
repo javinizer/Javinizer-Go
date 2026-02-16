@@ -69,45 +69,82 @@ type SystemConfig struct {
 
 // ScrapersConfig holds scraper-specific settings
 type ScrapersConfig struct {
-	UserAgent             string        `yaml:"user_agent" json:"user_agent"`
-	Referer               string        `yaml:"referer" json:"referer"`                                 // Referer header for CDN compatibility (default: https://www.dmm.co.jp/)
-	TimeoutSeconds        int           `yaml:"timeout_seconds" json:"timeout_seconds"`                 // HTTP client timeout in seconds (default: 30)
-	RequestTimeoutSeconds int           `yaml:"request_timeout_seconds" json:"request_timeout_seconds"` // Overall request timeout in seconds (default: 60)
-	Priority              []string      `yaml:"priority" json:"priority"`                               // Global scraper priority order
-	Proxy                 ProxyConfig   `yaml:"proxy" json:"proxy"`                                     // HTTP/SOCKS5 proxy for scraper requests
-	R18Dev                R18DevConfig  `yaml:"r18dev" json:"r18dev"`
-	DMM                   DMMConfig     `yaml:"dmm" json:"dmm"`
-	MGStage               MGStageConfig `yaml:"mgstage" json:"mgstage"`
+	UserAgent             string           `yaml:"user_agent" json:"user_agent"`
+	Referer               string           `yaml:"referer" json:"referer"`                                 // Referer header for CDN compatibility (default: https://www.dmm.co.jp/)
+	TimeoutSeconds        int              `yaml:"timeout_seconds" json:"timeout_seconds"`                 // HTTP client timeout in seconds (default: 30)
+	RequestTimeoutSeconds int              `yaml:"request_timeout_seconds" json:"request_timeout_seconds"` // Overall request timeout in seconds (default: 60)
+	Priority              []string         `yaml:"priority" json:"priority"`                               // Global scraper priority order
+	Proxy                 ProxyConfig      `yaml:"proxy" json:"proxy"`                                     // Default HTTP/SOCKS5 proxy for scraper requests
+	R18Dev                R18DevConfig     `yaml:"r18dev" json:"r18dev"`
+	DMM                   DMMConfig        `yaml:"dmm" json:"dmm"`
+	MGStage               MGStageConfig    `yaml:"mgstage" json:"mgstage"`
+	JavLibrary            JavLibraryConfig `yaml:"javlibrary" json:"javlibrary"`
+	JavDB                 JavDBConfig      `yaml:"javdb" json:"javdb"`
 }
 
 // R18DevConfig holds R18.dev scraper configuration
 type R18DevConfig struct {
-	Enabled           bool `yaml:"enabled" json:"enabled"`
-	RequestDelay      int  `yaml:"request_delay" json:"request_delay"`             // Delay between requests in milliseconds (0 = no delay)
-	MaxRetries        int  `yaml:"max_retries" json:"max_retries"`                 // Maximum number of retry attempts for rate-limited requests
-	RespectRetryAfter bool `yaml:"respect_retry_after" json:"respect_retry_after"` // Whether to respect Retry-After header from server
+	Enabled           bool         `yaml:"enabled" json:"enabled"`
+	RequestDelay      int          `yaml:"request_delay" json:"request_delay"`             // Delay between requests in milliseconds (0 = no delay)
+	MaxRetries        int          `yaml:"max_retries" json:"max_retries"`                 // Maximum number of retry attempts for rate-limited requests
+	RespectRetryAfter bool         `yaml:"respect_retry_after" json:"respect_retry_after"` // Whether to respect Retry-After header from server
+	Proxy             *ProxyConfig `yaml:"proxy,omitempty" json:"proxy,omitempty"`         // Optional scraper-specific proxy override
 }
 
 // DMMConfig holds DMM/Fanza scraper configuration
 type DMMConfig struct {
-	Enabled        bool `yaml:"enabled" json:"enabled"`
-	ScrapeActress  bool `yaml:"scrape_actress" json:"scrape_actress"`
-	EnableBrowser  bool `yaml:"enable_browser" json:"enable_browser"`   // Enable browser mode for video.dmm.co.jp (JavaScript rendering)
-	BrowserTimeout int  `yaml:"browser_timeout" json:"browser_timeout"` // Timeout in seconds for browser operations (default: 30)
+	Enabled        bool         `yaml:"enabled" json:"enabled"`
+	ScrapeActress  bool         `yaml:"scrape_actress" json:"scrape_actress"`
+	EnableBrowser  bool         `yaml:"enable_browser" json:"enable_browser"`   // Enable browser mode for video.dmm.co.jp (JavaScript rendering)
+	BrowserTimeout int          `yaml:"browser_timeout" json:"browser_timeout"` // Timeout in seconds for browser operations (default: 30)
+	Proxy          *ProxyConfig `yaml:"proxy,omitempty" json:"proxy,omitempty"` // Optional scraper-specific proxy override
 }
 
 // MGStageConfig holds MGStage scraper configuration
 type MGStageConfig struct {
-	Enabled      bool `yaml:"enabled" json:"enabled"`
-	RequestDelay int  `yaml:"request_delay" json:"request_delay"` // Delay between requests in milliseconds (0 = no delay)
+	Enabled      bool         `yaml:"enabled" json:"enabled"`
+	RequestDelay int          `yaml:"request_delay" json:"request_delay"`     // Delay between requests in milliseconds (0 = no delay)
+	Proxy        *ProxyConfig `yaml:"proxy,omitempty" json:"proxy,omitempty"` // Optional scraper-specific proxy override
+}
+
+// JavLibraryConfig holds JavLibrary scraper configuration
+type JavLibraryConfig struct {
+	Enabled         bool         `yaml:"enabled" json:"enabled"`
+	Language        string       `yaml:"language" json:"language"`                 // Language code: en, ja, cn, tw (default: en)
+	RequestDelay    int          `yaml:"request_delay" json:"request_delay"`       // Delay between requests in milliseconds (0 = no delay)
+	BaseURL         string       `yaml:"base_url" json:"base_url"`                 // Base URL for JavLibrary
+	CfClearance     string       `yaml:"cf_clearance" json:"cf_clearance"`         // Cloudflare clearance cookie (deprecated, use FlareSolverr)
+	CfBm            string       `yaml:"cf_bm" json:"cf_bm"`                       // Cloudflare Bot Management cookie (deprecated)
+	UserAgent       string       `yaml:"user_agent" json:"user_agent"`             // Custom user agent (optional)
+	UseFlareSolverr bool         `yaml:"use_flaresolverr" json:"use_flaresolverr"` // Enable FlareSolverr for Cloudflare bypass
+	Proxy           *ProxyConfig `yaml:"proxy,omitempty" json:"proxy,omitempty"`   // Optional scraper-specific proxy override
+}
+
+// JavDBConfig holds JavDB scraper configuration
+type JavDBConfig struct {
+	Enabled         bool         `yaml:"enabled" json:"enabled"`
+	RequestDelay    int          `yaml:"request_delay" json:"request_delay"`       // Delay between requests in milliseconds (0 = no delay)
+	BaseURL         string       `yaml:"base_url" json:"base_url"`                 // Base URL for JavDB
+	UseFlareSolverr bool         `yaml:"use_flaresolverr" json:"use_flaresolverr"` // Enable FlareSolverr for Cloudflare bypass
+	Proxy           *ProxyConfig `yaml:"proxy,omitempty" json:"proxy,omitempty"`   // Optional scraper-specific proxy override
+}
+
+// FlareSolverrConfig holds FlareSolverr configuration for bypassing Cloudflare
+type FlareSolverrConfig struct {
+	Enabled    bool   `yaml:"enabled" json:"enabled"`         // Enable FlareSolverr for bypassing Cloudflare
+	URL        string `yaml:"url" json:"url"`                 // FlareSolverr endpoint (default: http://localhost:8191/v1)
+	Timeout    int    `yaml:"timeout" json:"timeout"`         // Request timeout in seconds (default: 30)
+	MaxRetries int    `yaml:"max_retries" json:"max_retries"` // Max retry attempts for FlareSolverr calls (default: 3)
+	SessionTTL int    `yaml:"session_ttl" json:"session_ttl"` // Session TTL in seconds (default: 300)
 }
 
 // ProxyConfig holds HTTP/SOCKS5 proxy configuration
 type ProxyConfig struct {
-	Enabled  bool   `yaml:"enabled" json:"enabled"`   // Enable proxy for HTTP requests
-	URL      string `yaml:"url" json:"url"`           // Proxy URL (e.g., "http://proxy:8080" or "socks5://proxy:1080")
-	Username string `yaml:"username" json:"username"` // Optional proxy authentication username
-	Password string `yaml:"password" json:"password"` // Optional proxy authentication password
+	Enabled      bool               `yaml:"enabled" json:"enabled"`           // Enable proxy for HTTP requests
+	URL          string             `yaml:"url" json:"url"`                   // Proxy URL (e.g., "http://proxy:8080" or "socks5://proxy:1080")
+	Username     string             `yaml:"username" json:"username"`         // Optional proxy authentication username
+	Password     string             `yaml:"password" json:"password"`         // Optional proxy authentication password
+	FlareSolverr FlareSolverrConfig `yaml:"flaresolverr" json:"flaresolverr"` // FlareSolverr for Cloudflare bypass
 }
 
 // MetadataConfig holds metadata aggregation settings
@@ -276,6 +313,13 @@ func DefaultConfig() *Config {
 			Proxy: ProxyConfig{
 				Enabled: false,
 				URL:     "",
+				FlareSolverr: FlareSolverrConfig{
+					Enabled:    false,
+					URL:        "http://localhost:8191/v1",
+					Timeout:    30,
+					MaxRetries: 3,
+					SessionTTL: 300,
+				},
 			},
 			R18Dev: R18DevConfig{
 				Enabled: true,
@@ -288,6 +332,19 @@ func DefaultConfig() *Config {
 			MGStage: MGStageConfig{
 				Enabled:      false, // Opt-in, requires age verification cookie
 				RequestDelay: 500,   // 500ms default delay
+			},
+			JavLibrary: JavLibraryConfig{
+				Enabled:         false, // Opt-in, requires Cloudflare bypass
+				Language:        "en",
+				RequestDelay:    1000, // 1 second default delay
+				BaseURL:         "http://www.javlibrary.com",
+				UseFlareSolverr: false,
+			},
+			JavDB: JavDBConfig{
+				Enabled:         false, // Opt-in, often requires Cloudflare bypass
+				RequestDelay:    1000,  // 1 second default delay
+				BaseURL:         "https://javdb.com",
+				UseFlareSolverr: false,
 			},
 		},
 		Metadata: MetadataConfig{
@@ -412,6 +469,36 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("scrapers.dmm.browser_timeout must be between 1 and 300")
 	}
 
+	// Validate FlareSolverr config (global + scraper-specific overrides)
+	if err := validateFlareSolverrConfig("scrapers.proxy.flaresolverr", c.Scrapers.Proxy.FlareSolverr); err != nil {
+		return err
+	}
+	if c.Scrapers.R18Dev.Proxy != nil {
+		if err := validateFlareSolverrConfig("scrapers.r18dev.proxy.flaresolverr", c.Scrapers.R18Dev.Proxy.FlareSolverr); err != nil {
+			return err
+		}
+	}
+	if c.Scrapers.DMM.Proxy != nil {
+		if err := validateFlareSolverrConfig("scrapers.dmm.proxy.flaresolverr", c.Scrapers.DMM.Proxy.FlareSolverr); err != nil {
+			return err
+		}
+	}
+	if c.Scrapers.MGStage.Proxy != nil {
+		if err := validateFlareSolverrConfig("scrapers.mgstage.proxy.flaresolverr", c.Scrapers.MGStage.Proxy.FlareSolverr); err != nil {
+			return err
+		}
+	}
+	if c.Scrapers.JavLibrary.Proxy != nil {
+		if err := validateFlareSolverrConfig("scrapers.javlibrary.proxy.flaresolverr", c.Scrapers.JavLibrary.Proxy.FlareSolverr); err != nil {
+			return err
+		}
+	}
+	if c.Scrapers.JavDB.Proxy != nil {
+		if err := validateFlareSolverrConfig("scrapers.javdb.proxy.flaresolverr", c.Scrapers.JavDB.Proxy.FlareSolverr); err != nil {
+			return err
+		}
+	}
+
 	// Set default referer if not specified (for backward compatibility with old configs)
 	// DMM CDN requires a referer header to avoid 403 errors
 	if c.Scrapers.Referer == "" {
@@ -435,6 +522,35 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("performance.update_interval must be between 10 and 5000")
 	}
 
+	return nil
+}
+
+// ResolveScraperProxy returns the effective proxy config for a scraper.
+// If scraperOverride is nil, the global proxy config is used.
+func ResolveScraperProxy(global ProxyConfig, scraperOverride *ProxyConfig) *ProxyConfig {
+	resolved := global
+	if scraperOverride != nil {
+		resolved = *scraperOverride
+	}
+	return &resolved
+}
+
+func validateFlareSolverrConfig(path string, cfg FlareSolverrConfig) error {
+	if !cfg.Enabled {
+		return nil
+	}
+	if cfg.URL == "" {
+		return fmt.Errorf("%s.url is required when flaresolverr is enabled", path)
+	}
+	if cfg.Timeout < 1 || cfg.Timeout > 300 {
+		return fmt.Errorf("%s.timeout must be between 1 and 300", path)
+	}
+	if cfg.MaxRetries < 0 || cfg.MaxRetries > 10 {
+		return fmt.Errorf("%s.max_retries must be between 0 and 10", path)
+	}
+	if cfg.SessionTTL < 60 || cfg.SessionTTL > 3600 {
+		return fmt.Errorf("%s.session_ttl must be between 60 and 3600", path)
+	}
 	return nil
 }
 

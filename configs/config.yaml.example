@@ -59,9 +59,50 @@ scrapers:
         scrape_actress: false
         enable_browser: true      # Enable browser automation for JavaScript-rendered pages
         browser_timeout: 30       # Timeout in seconds for browser operations
+        # Optional per-scraper proxy override (if omitted, uses scrapers.proxy above)
+        # proxy:
+        #   enabled: true
+        #   url: "http://dmm-proxy.example.com:8080"
+        #   username: ""
+        #   password: ""
     mgstage:
         enabled: false            # Opt-in: requires age verification cookie (adc=1)
         request_delay: 500        # Delay between requests in milliseconds
+        # Optional per-scraper proxy override (if omitted, uses scrapers.proxy above)
+        # proxy:
+        #   enabled: true
+        #   url: "http://mgstage-proxy.example.com:8080"
+    javlibrary:
+        enabled: false
+        language: en
+        request_delay: 1000
+        base_url: "http://www.javlibrary.com"
+        use_flaresolverr: true
+        # Optional per-scraper proxy + FlareSolverr override
+        # proxy:
+        #   enabled: true
+        #   url: "http://javlibrary-proxy.example.com:8080"
+        #   flaresolverr:
+        #     enabled: true
+        #     url: "http://localhost:8191/v1"
+        #     timeout: 30
+        #     max_retries: 3
+        #     session_ttl: 300
+    javdb:
+        enabled: false
+        request_delay: 1000
+        base_url: "https://javdb.com"
+        use_flaresolverr: true
+        # Optional per-scraper proxy + FlareSolverr override
+        # proxy:
+        #   enabled: true
+        #   url: "http://javdb-proxy.example.com:8080"
+        #   flaresolverr:
+        #     enabled: true
+        #     url: "http://localhost:8191/v1"
+        #     timeout: 30
+        #     max_retries: 3
+        #     session_ttl: 300
 metadata:
     priority:
         actress:

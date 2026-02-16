@@ -52,11 +52,18 @@ scrapers:
   priority:
     - r18dev  # Try R18.dev first
     - dmm     # Fall back to DMM
+  proxy:      # Optional global proxy for all scrapers
+    enabled: false
+    url: ""
 ```
 
 **user_agent**: HTTP User-Agent header sent to scraper websites. This identifies your scraper to the server.
 
 **priority**: Order to query scrapers. First scraper is tried first. If it fails, the next one is attempted.
+
+**proxy**: Global proxy used by all scrapers by default.
+
+Each scraper can also define its own `proxy` block (`scrapers.<name>.proxy`) to override global proxy settings with scraper-level granularity.
 
 ### R18.dev Scraper
 
@@ -99,6 +106,25 @@ scrapers:
 **Cons**:
 - Slower (HTML parsing)
 - May require more requests
+
+### JavDB Scraper
+
+JavDB can be useful as a supplemental source. It may require both proxy routing and FlareSolverr depending on your network/location.
+
+```yaml
+scrapers:
+  javdb:
+    enabled: true
+    base_url: "https://javdb.com"
+    request_delay: 1000
+    use_flaresolverr: true
+    proxy:                # Optional per-scraper override
+      enabled: true
+      url: "http://proxy.example.com:8080"
+      flaresolverr:
+        enabled: true
+        url: "http://localhost:8191/v1"
+```
 
 ## Metadata Priority
 

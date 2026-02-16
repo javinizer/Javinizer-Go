@@ -63,13 +63,20 @@ type ErrorResponse struct {
 
 // ScraperOption represents a configurable option for a scraper
 type ScraperOption struct {
-	Key         string `json:"key" example:"scrape_actress"`
-	Label       string `json:"label" example:"Scrape Actress Information"`
-	Description string `json:"description" example:"Enable detailed actress data scraping from DMM (may be slower)"`
-	Type        string `json:"type" example:"boolean"` // boolean, string, number, etc.
-	Min         *int   `json:"min,omitempty" example:"5"`
-	Max         *int   `json:"max,omitempty" example:"120"`
-	Unit        string `json:"unit,omitempty" example:"seconds"`
+	Key         string          `json:"key" example:"scrape_actress"`
+	Label       string          `json:"label" example:"Scrape Actress Information"`
+	Description string          `json:"description" example:"Enable detailed actress data scraping from DMM (may be slower)"`
+	Type        string          `json:"type" example:"boolean"` // boolean, string, number, select
+	Min         *int            `json:"min,omitempty" example:"5"`
+	Max         *int            `json:"max,omitempty" example:"120"`
+	Unit        string          `json:"unit,omitempty" example:"seconds"`
+	Choices     []ScraperChoice `json:"choices,omitempty"` // For select type: available choices
+}
+
+// ScraperChoice represents a choice for a select-type scraper option
+type ScraperChoice struct {
+	Value string `json:"value" example:"en"`
+	Label string `json:"label" example:"English"`
 }
 
 // ScraperInfo represents information about a scraper

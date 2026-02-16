@@ -14,6 +14,7 @@ import (
 	"github.com/javinizer/javinizer-go/internal/matcher"
 	"github.com/javinizer/javinizer-go/internal/models"
 	"github.com/javinizer/javinizer-go/internal/scraper/dmm"
+	"github.com/javinizer/javinizer-go/internal/scraper/javdb"
 	"github.com/javinizer/javinizer-go/internal/scraper/mgstage"
 	"github.com/javinizer/javinizer-go/internal/scraper/r18dev"
 	"github.com/javinizer/javinizer-go/internal/worker"
@@ -121,6 +122,7 @@ func Run(cmd *cobra.Command, configFile string, hostFlag string, portFlag int) (
 	registry.Register(r18dev.New(cfg))
 	registry.Register(dmm.New(cfg, contentIDRepo))
 	registry.Register(mgstage.New(cfg))
+	registry.Register(javdb.New(cfg))
 
 	logging.Infof("Registered %d scrapers", len(registry.GetAll()))
 

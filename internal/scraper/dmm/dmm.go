@@ -52,9 +52,11 @@ type Scraper struct {
 
 // New creates a new DMM scraper
 func New(cfg *config.Config, contentIDRepo *database.ContentIDMappingRepository) *Scraper {
+	proxyConfig := config.ResolveScraperProxy(cfg.Scrapers.Proxy, cfg.Scrapers.DMM.Proxy)
+
 	// Create resty client with proxy support
 	client, err := httpclient.NewRestyClient(
-		&cfg.Scrapers.Proxy,
+		proxyConfig,
 		30*time.Second,
 		3,
 	)
@@ -84,8 +86,8 @@ func New(cfg *config.Config, contentIDRepo *database.ContentIDMappingRepository)
 	// These will be sent with all requests automatically
 	client.SetHeader("Cookie", "age_check_done=1; cklg=ja")
 
-	if cfg.Scrapers.Proxy.Enabled {
-		logging.Infof("DMM: Using proxy %s", httpclient.SanitizeProxyURL(cfg.Scrapers.Proxy.URL))
+	if proxyConfig.Enabled {
+		logging.Infof("DMM: Using proxy %s", httpclient.SanitizeProxyURL(proxyConfig.URL))
 	}
 
 	return &Scraper{
@@ -95,7 +97,7 @@ func New(cfg *config.Config, contentIDRepo *database.ContentIDMappingRepository)
 		enableBrowser:  cfg.Scrapers.DMM.EnableBrowser,
 		browserTimeout: cfg.Scrapers.DMM.BrowserTimeout,
 		contentIDRepo:  contentIDRepo,
-		proxyConfig:    &cfg.Scrapers.Proxy, // Store proxy config for browser operations
+		proxyConfig:    proxyConfig, // Store effective proxy config for browser operations
 	}
 }
 

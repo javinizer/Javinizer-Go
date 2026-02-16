@@ -32,6 +32,8 @@ type Hub struct {
 	broadcast  chan []byte
 	register   chan *Client
 	unregister chan *Client
+	done       chan struct{}
+	closeOnce  sync.Once
 	mu         sync.RWMutex
 }
 
@@ -42,6 +44,7 @@ func NewHub() *Hub {
 		broadcast:  make(chan []byte, 256),
 		register:   make(chan *Client),
 		unregister: make(chan *Client),
+		done:       make(chan struct{}),
 	}
 }
 
@@ -50,6 +53,8 @@ func (h *Hub) Run(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
+			h.closeDone()
+
 			// Context cancelled, clean up all clients
 			// Snapshot clients first to minimize lock duration
 			h.mu.Lock()
@@ -116,14 +121,34 @@ func (h *Hub) Run(ctx context.Context) {
 	}
 }
 
+func (h *Hub) closeDone() {
+	h.closeOnce.Do(func() {
+		close(h.done)
+	})
+}
+
 // Register registers a new client
 func (h *Hub) Register(client *Client) {
-	h.register <- client
+	if h == nil || client == nil {
+		return
+	}
+	select {
+	case <-h.done:
+		return
+	case h.register <- client:
+	}
 }
 
 // Unregister unregisters a client
 func (h *Hub) Unregister(client *Client) {
-	h.unregister <- client
+	if h == nil || client == nil {
+		return
+	}
+	select {
+	case <-h.done:
+		return
+	case h.unregister <- client:
+	}
 }
 
 // Broadcast sends a message to all connected clients

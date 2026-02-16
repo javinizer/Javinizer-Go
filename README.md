@@ -12,6 +12,7 @@ A modern, high-performance Go implementation of Javinizer - a metadata scraper a
 ✅ **Multi-Source Scraping**
 - R18.dev scraper (fast JSON API)
 - DMM/Fanza scraper (HTML parsing)
+- JavDB scraper (optional, with FlareSolverr/proxy support)
 - Intelligent metadata aggregation with configurable priority
 - Database caching for instant lookups
 
@@ -142,7 +143,7 @@ javinizer-go/
 │   ├── nfo/              # NFO generation
 │   ├── organizer/        # File organization
 │   ├── scanner/          # File scanning
-│   ├── scraper/          # Scrapers (R18.dev, DMM)
+│   ├── scraper/          # Scrapers (R18.dev, DMM, JavDB, ...)
 │   ├── template/         # Template engine
 │   ├── tui/              # Terminal User Interface (Bubble Tea)
 │   └── worker/           # Worker pool and task execution

@@ -1209,6 +1209,39 @@ func TestAggregatePartialData(t *testing.T) {
 		assert.Equal(t, 0, movie.Actresses[0].DMMID)
 	})
 
+	t.Run("actress DMMID upgraded from non-positive placeholder", func(t *testing.T) {
+		results := []*models.ScraperResult{
+			{
+				Source: "r18dev",
+				ID:     "IPX-001",
+				Title:  "Test Movie",
+				Actresses: []models.ActressInfo{
+					{
+						JapaneseName: "波多野結衣",
+						DMMID:        -123456, // Placeholder/surrogate from a source without real DMM ID
+					},
+				},
+			},
+			{
+				Source: "dmm",
+				ID:     "IPX-001",
+				Title:  "Test Movie",
+				Actresses: []models.ActressInfo{
+					{
+						JapaneseName: "波多野結衣",
+						DMMID:        12345, // Real DMM ID
+					},
+				},
+			},
+		}
+
+		movie, err := agg.Aggregate(results)
+		require.NoError(t, err)
+		require.NotNil(t, movie)
+		require.Len(t, movie.Actresses, 1)
+		assert.Equal(t, 12345, movie.Actresses[0].DMMID)
+	})
+
 	t.Run("gap filling from lower priority scraper", func(t *testing.T) {
 		// Scenario: r18dev has title, dmm has description
 		results := []*models.ScraperResult{

@@ -19,6 +19,7 @@
 	function formatScraperName(name: string): string {
 		if (name === 'dmm') return 'DMM';
 		if (name === 'r18dev') return 'R18.dev';
+		if (name === 'javlibrary') return 'JavLibrary';
 		return name.charAt(0).toUpperCase() + name.slice(1);
 	}
 </script>

@@ -12,6 +12,8 @@ import (
 	"github.com/javinizer/javinizer-go/internal/matcher"
 	"github.com/javinizer/javinizer-go/internal/models"
 	"github.com/javinizer/javinizer-go/internal/scraper/dmm"
+	"github.com/javinizer/javinizer-go/internal/scraper/javdb"
+	"github.com/javinizer/javinizer-go/internal/scraper/javlibrary"
 	"github.com/javinizer/javinizer-go/internal/scraper/mgstage"
 	"github.com/javinizer/javinizer-go/internal/scraper/r18dev"
 )
@@ -124,6 +126,56 @@ func getAvailableScrapers(deps *ServerDependencies) gin.HandlerFunc {
 						Unit:        "ms",
 					},
 				}
+			case "javlibrary":
+				displayName = "JavLibrary"
+				options = []ScraperOption{
+					{
+						Key:         "language",
+						Label:       "Language",
+						Description: "Language for metadata (affects title, genres, and actress names)",
+						Type:        "select",
+						Choices: []ScraperChoice{
+							{Value: "en", Label: "English"},
+							{Value: "ja", Label: "Japanese"},
+							{Value: "cn", Label: "Chinese (Simplified)"},
+							{Value: "tw", Label: "Chinese (Traditional)"},
+						},
+					},
+					{
+						Key:         "request_delay",
+						Label:       "Request delay",
+						Description: "Delay between requests to avoid rate limiting",
+						Type:        "number",
+						Min:         ptrInt(0),
+						Max:         ptrInt(5000),
+						Unit:        "ms",
+					},
+					{
+						Key:         "use_flaresolverr",
+						Label:       "Use FlareSolverr",
+						Description: "Route requests through FlareSolverr to bypass Cloudflare protection (requires FlareSolverr to be configured in Proxy settings)",
+						Type:        "boolean",
+					},
+				}
+			case "javdb":
+				displayName = "JavDB"
+				options = []ScraperOption{
+					{
+						Key:         "request_delay",
+						Label:       "Request delay",
+						Description: "Delay between requests to avoid rate limiting",
+						Type:        "number",
+						Min:         ptrInt(0),
+						Max:         ptrInt(5000),
+						Unit:        "ms",
+					},
+					{
+						Key:         "use_flaresolverr",
+						Label:       "Use FlareSolverr",
+						Description: "Route requests through FlareSolverr to bypass Cloudflare protection (often needed for JavDB)",
+						Type:        "boolean",
+					},
+				}
 			}
 
 			scrapers = append(scrapers, ScraperInfo{
@@ -216,6 +268,16 @@ func reloadComponents(deps *ServerDependencies, newCfg *config.Config) error {
 	newRegistry.Register(r18dev.New(newCfg))
 	newRegistry.Register(dmm.New(newCfg, contentIDRepo))
 	newRegistry.Register(mgstage.New(newCfg))
+	newRegistry.Register(javdb.New(newCfg))
+
+	// Register JavLibrary scraper (may return error if language is invalid)
+	javLibraryProxy := config.ResolveScraperProxy(newCfg.Scrapers.Proxy, newCfg.Scrapers.JavLibrary.Proxy)
+	javlib, err := javlibrary.New(&newCfg.Scrapers.JavLibrary, javLibraryProxy)
+	if err != nil {
+		logging.Warnf("Failed to initialize JavLibrary scraper: %v", err)
+	} else {
+		newRegistry.Register(javlib)
+	}
 
 	// 2. Build new aggregator (outside lock)
 	logging.Debug("Reinitializing aggregator...")

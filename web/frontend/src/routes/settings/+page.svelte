@@ -400,6 +400,23 @@
 															<p class="text-xs text-muted-foreground ml-6">
 																{option.description}
 															</p>
+														{:else if option.type === 'select'}
+															<div>
+																<label class="block text-sm font-medium mb-1" for="option-{scraper.name}-{option.key}">{option.label}</label>
+																<select
+																	id="option-{scraper.name}-{option.key}"
+																	value={getOptionValue(scraper.name, option.key) ?? ''}
+																	onchange={(e) => setOptionValue(scraper.name, option.key, e.currentTarget.value)}
+																	class="w-48 px-3 py-2 border rounded-md focus:ring-2 focus:ring-primary focus:border-primary transition-all bg-background text-sm"
+																>
+																	{#each option.choices ?? [] as choice}
+																		<option value={choice.value}>{choice.label}</option>
+																	{/each}
+																</select>
+																<p class="text-xs text-muted-foreground mt-1">
+																	{option.description}
+																</p>
+															</div>
 														{:else if option.type === 'number'}
 															<div>
 																<label class="block text-sm font-medium mb-1" for="option-{scraper.name}-{option.key}">{option.label}</label>
@@ -1044,6 +1061,72 @@
 						onchange={(val) => {
 							if (!config.scrapers.proxy) config.scrapers.proxy = {};
 							config.scrapers.proxy.password = val;
+						}}
+					/>
+				</SettingsSubsection>
+
+				<SettingsSubsection title="FlareSolverr">
+					<FormToggle
+						label="Enable FlareSolverr"
+						description="Use FlareSolverr to bypass Cloudflare protection (required for JavLibrary). Run FlareSolverr via Docker: docker run -p 8191:8191 ghcr.io/flaresolverr/flaresolverr:latest"
+						checked={config.scrapers.proxy?.flaresolverr?.enabled ?? false}
+						onchange={(val) => {
+							if (!config.scrapers.proxy) config.scrapers.proxy = {};
+							if (!config.scrapers.proxy.flaresolverr) config.scrapers.proxy.flaresolverr = {};
+							config.scrapers.proxy.flaresolverr.enabled = val;
+						}}
+					/>
+
+					<FormTextInput
+						label="FlareSolverr URL"
+						description="FlareSolverr API endpoint"
+						value={config.scrapers.proxy?.flaresolverr?.url ?? "http://localhost:8191/v1"}
+						placeholder="http://localhost:8191/v1"
+						onchange={(val) => {
+							if (!config.scrapers.proxy) config.scrapers.proxy = {};
+							if (!config.scrapers.proxy.flaresolverr) config.scrapers.proxy.flaresolverr = {};
+							config.scrapers.proxy.flaresolverr.url = val;
+						}}
+					/>
+
+					<FormNumberInput
+						label="Timeout"
+						description="Maximum time to wait for FlareSolverr to solve challenges"
+						value={config.scrapers.proxy?.flaresolverr?.timeout ?? 30}
+						min={5}
+						max={300}
+						unit="seconds"
+						onchange={(val) => {
+							if (!config.scrapers.proxy) config.scrapers.proxy = {};
+							if (!config.scrapers.proxy.flaresolverr) config.scrapers.proxy.flaresolverr = {};
+							config.scrapers.proxy.flaresolverr.timeout = val;
+						}}
+					/>
+
+					<FormNumberInput
+						label="Max retries"
+						description="Number of retry attempts for failed FlareSolverr requests"
+						value={config.scrapers.proxy?.flaresolverr?.max_retries ?? 3}
+						min={0}
+						max={10}
+						onchange={(val) => {
+							if (!config.scrapers.proxy) config.scrapers.proxy = {};
+							if (!config.scrapers.proxy.flaresolverr) config.scrapers.proxy.flaresolverr = {};
+							config.scrapers.proxy.flaresolverr.max_retries = val;
+						}}
+					/>
+
+					<FormNumberInput
+						label="Session TTL"
+						description="How long to keep FlareSolverr browser sessions alive"
+						value={config.scrapers.proxy?.flaresolverr?.session_ttl ?? 300}
+						min={60}
+						max={3600}
+						unit="seconds"
+						onchange={(val) => {
+							if (!config.scrapers.proxy) config.scrapers.proxy = {};
+							if (!config.scrapers.proxy.flaresolverr) config.scrapers.proxy.flaresolverr = {};
+							config.scrapers.proxy.flaresolverr.session_ttl = val;
 						}}
 					/>
 				</SettingsSubsection>

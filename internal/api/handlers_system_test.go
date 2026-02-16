@@ -215,6 +215,27 @@ func TestGetAvailableScrapers(t *testing.T) {
 				require.Len(t, resp.Scrapers, 2)
 			},
 		},
+		{
+			name: "javdb scraper with options",
+			scrapers: []models.Scraper{
+				&mockScraper{name: "javdb", enabled: true},
+			},
+			expectedStatus: 200,
+			validateFn: func(t *testing.T, resp AvailableScrapersResponse) {
+				require.Len(t, resp.Scrapers, 1)
+				assert.Equal(t, "javdb", resp.Scrapers[0].Name)
+				assert.Equal(t, "JavDB", resp.Scrapers[0].DisplayName)
+				assert.True(t, resp.Scrapers[0].Enabled)
+				assert.Len(t, resp.Scrapers[0].Options, 2)
+
+				optionKeys := make(map[string]bool)
+				for _, opt := range resp.Scrapers[0].Options {
+					optionKeys[opt.Key] = true
+				}
+				assert.True(t, optionKeys["request_delay"])
+				assert.True(t, optionKeys["use_flaresolverr"])
+			},
+		},
 	}
 
 	for _, tt := range tests {

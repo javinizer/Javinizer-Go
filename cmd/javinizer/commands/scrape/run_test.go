@@ -261,6 +261,66 @@ func TestRun_CustomScrapers(t *testing.T) {
 	assert.Equal(t, "mock2", results[0].Source)
 }
 
+// TestRun_CustomScrapers_OverridesMetadataPriority ensures --scrapers controls
+// aggregation order even when metadata priorities exclude the selected scraper.
+func TestRun_CustomScrapers_OverridesMetadataPriority(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+
+	configContent := `
+database:
+  dsn: ":memory:"
+scrapers:
+  priority: ["mock1"]
+  dmm:
+    enabled: false
+  r18dev:
+    enabled: false
+metadata:
+  priority:
+    id: ["mock1"]
+    content_id: ["mock1"]
+    title: ["mock1"]
+matching:
+  extensions: [".mp4"]
+  regex_enabled: false
+`
+	configPath := t.TempDir() + "/config.yaml"
+	require.NoError(t, os.WriteFile(configPath, []byte(configContent), 0644))
+
+	cfg, err := config.Load(configPath)
+	require.NoError(t, err)
+
+	db, err := database.New(cfg)
+	require.NoError(t, err)
+	defer db.Close()
+	require.NoError(t, db.AutoMigrate())
+
+	cmd := scrape.NewCommand()
+	cmd.Flags().Set("scrapers", "mock2")
+
+	registry := models.NewScraperRegistry()
+	registry.Register(NewMockScraper("mock1"))
+	registry.Register(NewMockScraper("mock2"))
+
+	deps, err := commandutil.NewDependenciesWithOptions(cfg, &commandutil.DependenciesOptions{
+		DB:              db,
+		ScraperRegistry: registry,
+	})
+	require.NoError(t, err)
+	defer deps.Close()
+
+	movie, results, err := scrape.Run(cmd, []string{"TEST-002"}, configPath, deps)
+	require.NoError(t, err)
+	require.NotNil(t, movie)
+	require.Len(t, results, 1)
+	assert.Equal(t, "mock2", results[0].Source)
+	assert.Equal(t, "TEST-002", movie.ID)
+	assert.Equal(t, "TEST-002", movie.ContentID)
+	assert.Equal(t, "Test Movie TEST-002", movie.Title)
+}
+
 // TestRun_EmptyResults tests error handling when no scrapers return results
 // UNSKIPPED in Epic 8 Story 8.3: aggregator.NewWithOptions() enables testable aggregator initialization
 func TestRun_EmptyResults(t *testing.T) {
