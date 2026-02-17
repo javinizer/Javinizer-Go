@@ -181,7 +181,8 @@ func TestGetAvailableScrapers(t *testing.T) {
 				assert.Equal(t, "r18dev", resp.Scrapers[0].Name)
 				assert.Equal(t, "R18.dev", resp.Scrapers[0].DisplayName)
 				assert.True(t, resp.Scrapers[0].Enabled)
-				assert.Empty(t, resp.Scrapers[0].Options)
+				assert.Len(t, resp.Scrapers[0].Options, 1)
+				assert.Equal(t, "proxy.enabled", resp.Scrapers[0].Options[0].Key)
 			},
 		},
 		{
@@ -195,7 +196,7 @@ func TestGetAvailableScrapers(t *testing.T) {
 				assert.Equal(t, "dmm", resp.Scrapers[0].Name)
 				assert.Equal(t, "DMM/Fanza", resp.Scrapers[0].DisplayName)
 				assert.True(t, resp.Scrapers[0].Enabled)
-				assert.Len(t, resp.Scrapers[0].Options, 3)
+				assert.Len(t, resp.Scrapers[0].Options, 4)
 
 				// Verify options exist
 				optionKeys := make(map[string]bool)
@@ -205,6 +206,7 @@ func TestGetAvailableScrapers(t *testing.T) {
 				assert.True(t, optionKeys["scrape_actress"])
 				assert.True(t, optionKeys["enable_browser"])
 				assert.True(t, optionKeys["browser_timeout"])
+				assert.True(t, optionKeys["proxy.enabled"])
 			},
 		},
 		{
@@ -583,7 +585,7 @@ func TestGetAvailableScrapers_OptionsValidation(t *testing.T) {
 
 	require.Len(t, response.Scrapers, 1)
 	scraper := response.Scrapers[0]
-	require.Len(t, scraper.Options, 3)
+	require.Len(t, scraper.Options, 4)
 
 	// Test scrape_actress option
 	var scrapeActressOpt *ScraperOption

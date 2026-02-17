@@ -89,7 +89,14 @@ func getAvailableScrapers(deps *ServerDependencies) gin.HandlerFunc {
 			case "r18dev":
 				displayName = "R18.dev"
 				// R18Dev has no additional options
-				options = []ScraperOption{}
+				options = []ScraperOption{
+					{
+						Key:         "proxy.enabled",
+						Label:       "Use proxy",
+						Description: "Use scraper-specific proxy settings for this scraper (requires global scraper proxy to be enabled)",
+						Type:        "boolean",
+					},
+				}
 			case "dmm":
 				displayName = "DMM/Fanza"
 				// DMM scraper options
@@ -117,6 +124,12 @@ func getAvailableScrapers(deps *ServerDependencies) gin.HandlerFunc {
 						Max:         &maxTimeout,
 						Unit:        "seconds",
 					},
+					{
+						Key:         "proxy.enabled",
+						Label:       "Use proxy",
+						Description: "Use scraper-specific proxy settings for this scraper (requires global scraper proxy to be enabled)",
+						Type:        "boolean",
+					},
 				}
 			case "mgstage":
 				displayName = "MGStage"
@@ -130,6 +143,12 @@ func getAvailableScrapers(deps *ServerDependencies) gin.HandlerFunc {
 						Min:         ptrInt(0),
 						Max:         ptrInt(5000),
 						Unit:        "ms",
+					},
+					{
+						Key:         "proxy.enabled",
+						Label:       "Use proxy",
+						Description: "Use scraper-specific proxy settings for this scraper (requires global scraper proxy to be enabled)",
+						Type:        "boolean",
 					},
 				}
 			case "javlibrary":

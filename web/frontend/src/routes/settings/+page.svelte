@@ -159,6 +159,13 @@
 		return Number.isNaN(parsed) ? undefined : parsed;
 	}
 
+	function isOptionDisabled(optionKey: string): boolean {
+		if (optionKey === 'proxy.enabled') {
+			return !(config?.scrapers?.proxy?.enabled ?? false);
+		}
+		return false;
+	}
+
 	// Helper to set option value in config (using snake_case keys)
 	function setOptionValue(scraperName: string, optionKey: string, value: any) {
 		if (!config?.scrapers) return;
@@ -504,10 +511,11 @@
 																<input
 																	type="checkbox"
 																	checked={getOptionValue(scraper.name, option.key)}
+																	disabled={isOptionDisabled(option.key)}
 																	onchange={(e) => setOptionValue(scraper.name, option.key, e.currentTarget.checked)}
 																	class="rounded"
 																/>
-																<span class="text-sm">{option.label}</span>
+																<span class="text-sm {isOptionDisabled(option.key) ? 'text-muted-foreground' : ''}">{option.label}</span>
 															</label>
 															<p class="text-xs text-muted-foreground ml-6">
 																{option.description}
