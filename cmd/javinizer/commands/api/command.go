@@ -15,6 +15,7 @@ import (
 	"github.com/javinizer/javinizer-go/internal/models"
 	"github.com/javinizer/javinizer-go/internal/scraper/dmm"
 	"github.com/javinizer/javinizer-go/internal/scraper/javdb"
+	"github.com/javinizer/javinizer-go/internal/scraper/javlibrary"
 	"github.com/javinizer/javinizer-go/internal/scraper/mgstage"
 	"github.com/javinizer/javinizer-go/internal/scraper/r18dev"
 	"github.com/javinizer/javinizer-go/internal/worker"
@@ -123,6 +124,13 @@ func Run(cmd *cobra.Command, configFile string, hostFlag string, portFlag int) (
 	registry.Register(dmm.New(cfg, contentIDRepo))
 	registry.Register(mgstage.New(cfg))
 	registry.Register(javdb.New(cfg))
+	javLibraryProxy := config.ResolveScraperProxy(cfg.Scrapers.Proxy, cfg.Scrapers.JavLibrary.Proxy)
+	javlib, err := javlibrary.New(&cfg.Scrapers.JavLibrary, javLibraryProxy)
+	if err != nil {
+		logging.Warnf("Failed to initialize JavLibrary scraper: %v", err)
+	} else {
+		registry.Register(javlib)
+	}
 
 	logging.Infof("Registered %d scrapers", len(registry.GetAll()))
 

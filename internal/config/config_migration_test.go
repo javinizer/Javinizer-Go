@@ -1,0 +1,100 @@
+package config
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func TestLoadOrCreateMigratesLegacyConfigVersion(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfgPath := filepath.Join(tmpDir, "config.yaml")
+
+	legacy := `server:
+  port: 7777
+scrapers:
+  priority:
+    - r18dev
+    - dmm
+`
+
+	err := os.WriteFile(cfgPath, []byte(legacy), 0644)
+	require.NoError(t, err)
+
+	cfg, err := LoadOrCreate(cfgPath)
+	require.NoError(t, err)
+
+	assert.Equal(t, CurrentConfigVersion, cfg.ConfigVersion)
+	assert.Equal(t, 7777, cfg.Server.Port)
+	assert.Equal(t, []string{"r18dev", "dmm", "mgstage", "javlibrary", "javdb"}, cfg.Scrapers.Priority)
+
+	saved, err := os.ReadFile(cfgPath)
+	require.NoError(t, err)
+	assert.Contains(t, string(saved), "config_version: 1")
+	assert.Contains(t, string(saved), "javlibrary")
+	assert.Contains(t, string(saved), "javdb")
+}
+
+func TestLoadOrCreateSkipsMigrationForCurrentVersion(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfgPath := filepath.Join(tmpDir, "config.yaml")
+
+	current := `config_version: 1
+server:
+  port: 9090
+scrapers:
+  priority:
+    - dmm
+`
+
+	err := os.WriteFile(cfgPath, []byte(current), 0644)
+	require.NoError(t, err)
+
+	cfg, err := LoadOrCreate(cfgPath)
+	require.NoError(t, err)
+
+	assert.Equal(t, CurrentConfigVersion, cfg.ConfigVersion)
+	assert.Equal(t, []string{"dmm"}, cfg.Scrapers.Priority)
+	assert.Equal(t, 9090, cfg.Server.Port)
+
+	saved, err := os.ReadFile(cfgPath)
+	require.NoError(t, err)
+	assert.True(t, strings.Contains(string(saved), "config_version: 1"))
+	assert.True(t, strings.Contains(string(saved), "- dmm"))
+}
+
+func TestLoadOrCreatePreservesUnknownKeysAndCommentsOnMigration(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfgPath := filepath.Join(tmpDir, "config.yaml")
+
+	legacy := `# user-managed config
+server:
+  port: 8081
+scrapers:
+  priority:
+    - dmm
+  custom_source:
+    enabled: true
+`
+
+	err := os.WriteFile(cfgPath, []byte(legacy), 0644)
+	require.NoError(t, err)
+
+	cfg, err := LoadOrCreate(cfgPath)
+	require.NoError(t, err)
+	assert.Equal(t, CurrentConfigVersion, cfg.ConfigVersion)
+
+	saved, err := os.ReadFile(cfgPath)
+	require.NoError(t, err)
+	savedText := string(saved)
+
+	assert.Contains(t, savedText, "# user-managed config")
+	assert.Contains(t, savedText, "custom_source:")
+	assert.Contains(t, savedText, "config_version: 1")
+	assert.Contains(t, savedText, "javlibrary")
+	assert.Contains(t, savedText, "javdb")
+}

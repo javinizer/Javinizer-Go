@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"fmt"
 	"net/url"
 	"os"
@@ -18,21 +19,26 @@ const (
 	DirPermTemp = 0700
 	// FilePermConfig is the permission mode for configuration files
 	FilePermConfig = 0644
+
+	// CurrentConfigVersion is the latest configuration schema version.
+	// Increment this when adding migrations for new config fields/structures.
+	CurrentConfigVersion = 1
 )
 
 // Config represents the application configuration
 type Config struct {
-	Server      ServerConfig      `yaml:"server" json:"server"`
-	API         APIConfig         `yaml:"api" json:"api"`
-	System      SystemConfig      `yaml:"system" json:"system"`
-	Scrapers    ScrapersConfig    `yaml:"scrapers" json:"scrapers"`
-	Metadata    MetadataConfig    `yaml:"metadata" json:"metadata"`
-	Matching    MatchingConfig    `yaml:"file_matching" json:"file_matching"`
-	Output      OutputConfig      `yaml:"output" json:"output"`
-	Database    DatabaseConfig    `yaml:"database" json:"database"`
-	Logging     LoggingConfig     `yaml:"logging" json:"logging"`
-	Performance PerformanceConfig `yaml:"performance" json:"performance"`
-	MediaInfo   MediaInfoConfig   `yaml:"mediainfo" json:"mediainfo"`
+	ConfigVersion int               `yaml:"config_version" json:"config_version"`
+	Server        ServerConfig      `yaml:"server" json:"server"`
+	API           APIConfig         `yaml:"api" json:"api"`
+	System        SystemConfig      `yaml:"system" json:"system"`
+	Scrapers      ScrapersConfig    `yaml:"scrapers" json:"scrapers"`
+	Metadata      MetadataConfig    `yaml:"metadata" json:"metadata"`
+	Matching      MatchingConfig    `yaml:"file_matching" json:"file_matching"`
+	Output        OutputConfig      `yaml:"output" json:"output"`
+	Database      DatabaseConfig    `yaml:"database" json:"database"`
+	Logging       LoggingConfig     `yaml:"logging" json:"logging"`
+	Performance   PerformanceConfig `yaml:"performance" json:"performance"`
+	MediaInfo     MediaInfoConfig   `yaml:"mediainfo" json:"mediainfo"`
 }
 
 // ServerConfig holds API server configuration
@@ -293,6 +299,7 @@ type MediaInfoConfig struct {
 // DefaultConfig returns the default configuration
 func DefaultConfig() *Config {
 	return &Config{
+		ConfigVersion: CurrentConfigVersion,
 		Server: ServerConfig{
 			Host: "localhost",
 			Port: 8080,
@@ -456,6 +463,51 @@ func DefaultConfig() *Config {
 	}
 }
 
+// migrateToV1 applies schema updates introduced in config version 1.
+func migrateToV1(cfg *Config) error {
+	// Keep user ordering, append newly introduced scrapers to ensure they are
+	// discoverable in UI priority controls.
+	knownScrapers := []string{"r18dev", "dmm", "mgstage", "javlibrary", "javdb"}
+	existing := cfg.Scrapers.Priority
+	if len(existing) == 0 {
+		cfg.Scrapers.Priority = append([]string{}, knownScrapers...)
+		return nil
+	}
+
+	seen := make(map[string]bool, len(existing))
+	for _, scraper := range existing {
+		seen[scraper] = true
+	}
+	for _, scraper := range knownScrapers {
+		if !seen[scraper] {
+			cfg.Scrapers.Priority = append(cfg.Scrapers.Priority, scraper)
+		}
+	}
+	return nil
+}
+
+// applyMigrations upgrades config to CurrentConfigVersion.
+// Returns true when any migration is applied.
+func applyMigrations(cfg *Config) (bool, error) {
+	migrated := false
+
+	for cfg.ConfigVersion < CurrentConfigVersion {
+		next := cfg.ConfigVersion + 1
+		switch next {
+		case 1:
+			if err := migrateToV1(cfg); err != nil {
+				return false, fmt.Errorf("failed to migrate config to version %d: %w", next, err)
+			}
+		default:
+			return false, fmt.Errorf("no migration available for config version %d", next)
+		}
+		cfg.ConfigVersion = next
+		migrated = true
+	}
+
+	return migrated, nil
+}
+
 // Validate checks configuration values for validity
 func (c *Config) Validate() error {
 	// Validate scraper timeouts
@@ -556,16 +608,19 @@ func validateFlareSolverrConfig(path string, cfg FlareSolverrConfig) error {
 
 // Load reads configuration from a YAML file
 func Load(path string) (*Config, error) {
-	cfg := DefaultConfig()
-
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			// If file doesn't exist, return default config
-			return cfg, nil
+			return DefaultConfig(), nil
 		}
 		return nil, fmt.Errorf("failed to read config file: %w", err)
 	}
+
+	cfg := DefaultConfig()
+	// Treat existing files without config_version as legacy schema (v0) so
+	// LoadOrCreate can apply migrations and persist newly introduced fields.
+	cfg.ConfigVersion = 0
 
 	if err := yaml.Unmarshal(data, cfg); err != nil {
 		return nil, fmt.Errorf("failed to parse config file: %w", err)
@@ -574,16 +629,170 @@ func Load(path string) (*Config, error) {
 	return cfg, nil
 }
 
-// Save writes the configuration to a YAML file
-func Save(cfg *Config, path string) error {
-	data, err := yaml.Marshal(cfg)
-	if err != nil {
-		return fmt.Errorf("failed to marshal config: %w", err)
+func cloneYAMLNode(node *yaml.Node) *yaml.Node {
+	if node == nil {
+		return nil
 	}
 
+	cloned := *node
+	cloned.Content = make([]*yaml.Node, len(node.Content))
+	for i, child := range node.Content {
+		cloned.Content[i] = cloneYAMLNode(child)
+	}
+	return &cloned
+}
+
+func applyNodeMetadataPreservingComments(dst, src *yaml.Node) {
+	if src.HeadComment == "" {
+		src.HeadComment = dst.HeadComment
+	}
+	if src.LineComment == "" {
+		src.LineComment = dst.LineComment
+	}
+	if src.FootComment == "" {
+		src.FootComment = dst.FootComment
+	}
+	if src.Style == 0 {
+		src.Style = dst.Style
+	}
+}
+
+func findMappingValueIndex(node *yaml.Node, key string) int {
+	if node == nil || node.Kind != yaml.MappingNode {
+		return -1
+	}
+	for i := 0; i < len(node.Content)-1; i += 2 {
+		if node.Content[i].Value == key {
+			return i + 1
+		}
+	}
+	return -1
+}
+
+func mergeYAMLNode(dst, src *yaml.Node) {
+	if dst == nil || src == nil {
+		return
+	}
+
+	if dst.Kind == yaml.MappingNode && src.Kind == yaml.MappingNode {
+		for i := 0; i < len(src.Content)-1; i += 2 {
+			srcKey := src.Content[i]
+			srcValue := src.Content[i+1]
+
+			dstValueIdx := findMappingValueIndex(dst, srcKey.Value)
+			if dstValueIdx == -1 {
+				dst.Content = append(dst.Content, cloneYAMLNode(srcKey), cloneYAMLNode(srcValue))
+				continue
+			}
+
+			mergeYAMLNode(dst.Content[dstValueIdx], srcValue)
+		}
+		return
+	}
+
+	if dst.Kind == yaml.DocumentNode && src.Kind == yaml.DocumentNode {
+		if len(dst.Content) == 0 {
+			dst.Content = append(dst.Content, cloneYAMLNode(src.Content[0]))
+			return
+		}
+		if len(src.Content) == 0 {
+			return
+		}
+		mergeYAMLNode(dst.Content[0], src.Content[0])
+		return
+	}
+
+	replacement := cloneYAMLNode(src)
+	applyNodeMetadataPreservingComments(dst, replacement)
+	*dst = *replacement
+}
+
+func configToYAMLDocument(cfg *Config) (*yaml.Node, error) {
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal config: %w", err)
+	}
+
+	var doc yaml.Node
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		return nil, fmt.Errorf("failed to parse marshaled config: %w", err)
+	}
+
+	if doc.Kind != yaml.DocumentNode {
+		return nil, fmt.Errorf("invalid marshaled YAML document")
+	}
+
+	return &doc, nil
+}
+
+func parseYAMLDocument(data []byte) (*yaml.Node, error) {
+	var doc yaml.Node
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		return nil, fmt.Errorf("failed to parse YAML document: %w", err)
+	}
+	if doc.Kind != yaml.DocumentNode {
+		return nil, fmt.Errorf("invalid YAML document")
+	}
+	return &doc, nil
+}
+
+func encodeYAMLDocument(doc *yaml.Node) ([]byte, error) {
+	var buf bytes.Buffer
+	enc := yaml.NewEncoder(&buf)
+	enc.SetIndent(4)
+	if err := enc.Encode(doc); err != nil {
+		_ = enc.Close()
+		return nil, fmt.Errorf("failed to encode YAML document: %w", err)
+	}
+	if err := enc.Close(); err != nil {
+		return nil, fmt.Errorf("failed to finalize YAML encoding: %w", err)
+	}
+	return buf.Bytes(), nil
+}
+
+// Save writes the configuration to a YAML file
+func Save(cfg *Config, path string) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, DirPermConfig); err != nil {
 		return fmt.Errorf("failed to create config directory: %w", err)
+	}
+
+	targetDoc, err := configToYAMLDocument(cfg)
+	if err != nil {
+		return err
+	}
+
+	var data []byte
+	existingData, readErr := os.ReadFile(path)
+	if readErr == nil {
+		existingDoc, parseErr := parseYAMLDocument(existingData)
+		if parseErr == nil {
+			mergedDoc := cloneYAMLNode(existingDoc)
+			mergeYAMLNode(mergedDoc, targetDoc)
+
+			data, err = encodeYAMLDocument(mergedDoc)
+			if err != nil {
+				return err
+			}
+		} else {
+			// Fallback: write canonical YAML from struct if existing YAML is malformed.
+			data, err = encodeYAMLDocument(targetDoc)
+			if err != nil {
+				return err
+			}
+		}
+	} else if os.IsNotExist(readErr) {
+		data, err = encodeYAMLDocument(targetDoc)
+		if err != nil {
+			return err
+		}
+	} else {
+		// If existing file can't be read (e.g., permissions), fall back to
+		// canonical YAML output and let the write path return the final error.
+		data, err = encodeYAMLDocument(targetDoc)
+		if err != nil {
+			return err
+		}
 	}
 
 	if err := os.WriteFile(path, data, FilePermConfig); err != nil {
@@ -600,15 +809,30 @@ func LoadOrCreate(path string) (*Config, error) {
 		return nil, err
 	}
 
+	// Capture whether file existed prior to potential migration/save.
+	_, statErr := os.Stat(path)
+	fileMissing := os.IsNotExist(statErr)
+	if statErr != nil && !fileMissing {
+		return nil, fmt.Errorf("failed to stat config file: %w", statErr)
+	}
+
+	migrated, err := applyMigrations(cfg)
+	if err != nil {
+		return nil, err
+	}
+
 	// Validate configuration
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid configuration: %w", err)
 	}
 
-	// If file didn't exist, save the default config
-	if _, err := os.Stat(path); os.IsNotExist(err) {
+	// Save when created or migrated to keep on-disk config in sync.
+	if fileMissing || migrated {
 		if err := Save(cfg, path); err != nil {
-			return nil, fmt.Errorf("failed to save default config: %w", err)
+			if fileMissing {
+				return nil, fmt.Errorf("failed to save default config: %w", err)
+			}
+			return nil, fmt.Errorf("failed to save migrated config: %w", err)
 		}
 	}
 

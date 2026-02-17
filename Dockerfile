@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.7
 # ==============================================================================
 # Stage 1: Build Frontend
 # ==============================================================================
@@ -7,11 +8,13 @@ WORKDIR /frontend
 
 # Copy package files and install dependencies
 COPY web/frontend/package*.json ./
-RUN npm ci --production=false
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --production=false
 
 # Copy frontend source and build
 COPY web/frontend/ ./
-RUN npm run build
+RUN --mount=type=cache,target=/root/.npm \
+    npm run build
 
 # Output: /frontend/build/ contains production static files (via adapter-static)
 
@@ -31,7 +34,8 @@ RUN apk add --no-cache \
 
 # Copy go module files and download dependencies (cached layer)
 COPY go.mod go.sum ./
-RUN go mod download
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
 
 # Copy application source
 COPY . .
@@ -46,7 +50,9 @@ ARG VERSION=dev
 ARG COMMIT=unknown
 ARG BUILD_DATE=unknown
 
-RUN CGO_ENABLED=1 GOOS=linux \
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=1 GOOS=linux \
     CGO_CFLAGS="-D_LARGEFILE64_SOURCE" \
     go build \
     -tags sqlite_omit_load_extension \

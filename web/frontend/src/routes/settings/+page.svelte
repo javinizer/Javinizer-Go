@@ -36,36 +36,81 @@
 	// Build scraper list from config and API
 	async function buildScraperList() {
 		if (!config) return;
+		if (!config.scrapers) config.scrapers = {};
+		if (!Array.isArray(config.scrapers.priority)) config.scrapers.priority = [];
 
 		try {
 			// Fetch available scrapers from backend
 			const response = await apiClient.getAvailableScrapers();
-			console.log('API Response:', response);
 
 			// Create maps from API data
 			const scraperDisplayNames: Record<string, string> = {};
 			const scraperOptionsMap: Record<string, ScraperOption[]> = {};
+			const scraperEnabledMap: Record<string, boolean> = {};
 
 			response.scrapers.forEach(scraper => {
 				scraperDisplayNames[scraper.name] = scraper.display_name;
 				scraperOptionsMap[scraper.name] = scraper.options || [];
-				console.log(`Scraper ${scraper.name} has ${scraper.options?.length || 0} options:`, scraper.options);
+				scraperEnabledMap[scraper.name] = scraper.enabled;
 			});
 
-			// Build scraper list based on priority order in config
-			scrapers = config.scrapers.priority.map((name: string) => ({
-				name,
-				enabled: config.scrapers[name]?.enabled ?? false,
-				displayName: scraperDisplayNames[name] || name,
-				expanded: false,
-				options: scraperOptionsMap[name] || []
-			}));
+			// Merge configured priority order with all backend-supported scrapers.
+			// This keeps user ordering while ensuring missing scraper sections are still visible.
+			const mergedOrder: string[] = [];
+			const seen = new Set<string>();
 
-			console.log('Built scrapers array:', scrapers);
+			(config.scrapers.priority || []).forEach((name: string) => {
+				if (!seen.has(name)) {
+					mergedOrder.push(name);
+					seen.add(name);
+				}
+			});
+
+			response.scrapers.forEach(scraper => {
+				if (!seen.has(scraper.name)) {
+					mergedOrder.push(scraper.name);
+					seen.add(scraper.name);
+				}
+			});
+
+			scrapers = mergedOrder.map((name: string) => {
+				if (!config.scrapers[name]) {
+					config.scrapers[name] = { enabled: scraperEnabledMap[name] ?? false };
+				} else if (config.scrapers[name].enabled === undefined && scraperEnabledMap[name] !== undefined) {
+					config.scrapers[name].enabled = scraperEnabledMap[name];
+				}
+
+				return {
+					name,
+					enabled: config.scrapers[name]?.enabled ?? false,
+					displayName: scraperDisplayNames[name] || name,
+					expanded: false,
+					options: scraperOptionsMap[name] || []
+				};
+			});
 		} catch (e) {
 			console.error('Failed to fetch scrapers from API:', e);
-			// Fallback to config-based list without display names or options
-			scrapers = config.scrapers.priority.map((name: string) => ({
+			// Fallback to configured order + any scraper sections present in config
+			const mergedOrder: string[] = [];
+			const seen = new Set<string>();
+
+			(config.scrapers.priority || []).forEach((name: string) => {
+				if (!seen.has(name)) {
+					mergedOrder.push(name);
+					seen.add(name);
+				}
+			});
+
+			Object.keys(config.scrapers)
+				.filter((name: string) => name !== 'priority' && name !== 'proxy')
+				.forEach((name: string) => {
+					if (!seen.has(name)) {
+						mergedOrder.push(name);
+						seen.add(name);
+					}
+				});
+
+			scrapers = mergedOrder.map((name: string) => ({
 				name,
 				enabled: config.scrapers[name]?.enabled ?? false,
 				displayName: name,
@@ -77,9 +122,7 @@
 
 	// Check if scraper has options to show
 	function scraperHasOptions(scraper: ScraperItem): boolean {
-		const hasOptions = scraper.options && scraper.options.length > 0;
-		console.log(`scraperHasOptions(${scraper.name}):`, hasOptions, 'options:', scraper.options);
-		return hasOptions;
+		return scraper.options && scraper.options.length > 0;
 	}
 
 	function toggleExpanded(index: number) {
@@ -93,27 +136,25 @@
 
 	// Helper to set option value in config (using snake_case keys)
 	function setOptionValue(scraperName: string, optionKey: string, value: any) {
-		if (config?.scrapers?.[scraperName]) {
-			config.scrapers[scraperName][optionKey] = value;
-			// Trigger reactivity by reassigning the config object with a deep clone
-			config = JSON.parse(JSON.stringify(config));
-			console.log(`Set ${scraperName}.${optionKey} to ${value} in config.scrapers.${scraperName}`);
-			console.log('Updated config:', config.scrapers[scraperName]);
-		}
+		if (!config?.scrapers) return;
+		if (!config.scrapers[scraperName]) config.scrapers[scraperName] = {};
+		config.scrapers[scraperName][optionKey] = value;
+		// Trigger reactivity by reassigning the config object with a deep clone
+		config = JSON.parse(JSON.stringify(config));
 	}
 
 	// Update config from scraper list
 	function updateConfigFromScrapers() {
 		if (!config) return;
+		if (!config.scrapers) config.scrapers = {};
 
 		// Update priority order
 		config.scrapers.priority = scrapers.map(s => s.name);
 
 		// Update enabled status
 		scrapers.forEach(scraper => {
-			if (config.scrapers[scraper.name]) {
-				config.scrapers[scraper.name].enabled = scraper.enabled;
-			}
+			if (!config.scrapers[scraper.name]) config.scrapers[scraper.name] = {};
+			config.scrapers[scraper.name].enabled = scraper.enabled;
 		});
 	}
 

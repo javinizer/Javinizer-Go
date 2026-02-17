@@ -28,6 +28,8 @@ Generate a fresh config file:
 javinizer init
 ```
 
+The config file now includes a `config_version` field. On startup, Javinizer applies incremental schema migrations for older config files and writes the upgraded config back to disk.
+
 ## Server Settings
 
 Configure the REST API server (future feature):
@@ -47,11 +49,16 @@ Javinizer supports multiple metadata scrapers that can be enabled/disabled and p
 ### General Scraper Settings
 
 ```yaml
+config_version: 1
+
 scrapers:
   user_agent: "Javinizer (+https://github.com/javinizer/Javinizer)"
   priority:
-    - r18dev  # Try R18.dev first
-    - dmm     # Fall back to DMM
+    - dmm
+    - r18dev
+    - mgstage
+    - javlibrary
+    - javdb
   proxy:      # Optional global proxy for all scrapers
     enabled: false
     url: ""
@@ -106,6 +113,20 @@ scrapers:
 **Cons**:
 - Slower (HTML parsing)
 - May require more requests
+
+### JavLibrary Scraper
+
+JavLibrary is useful as a supplemental source and often benefits from FlareSolverr.
+
+```yaml
+scrapers:
+  javlibrary:
+    enabled: false
+    language: "en"       # en, ja, cn, tw
+    request_delay: 1000  # milliseconds
+    base_url: "http://www.javlibrary.com"
+    use_flaresolverr: true
+```
 
 ### JavDB Scraper
 

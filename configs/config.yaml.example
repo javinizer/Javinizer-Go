@@ -1,3 +1,5 @@
+config_version: 1
+
 server:
     host: localhost
     port: 8080
@@ -40,9 +42,11 @@ scrapers:
     # Overall request timeout in seconds (default: 60)
     request_timeout_seconds: 60
     priority:
-        - r18dev
         - dmm
+        - r18dev
         - mgstage
+        - javlibrary
+        - javdb
     # HTTP/SOCKS5 proxy for all scraper requests (optional)
     proxy:
         enabled: false
@@ -74,6 +78,10 @@ scrapers:
         #   url: "http://mgstage-proxy.example.com:8080"
     javlibrary:
         enabled: false
+        # Frontend scraper options:
+        # language: en, ja, cn, tw
+        # request_delay: milliseconds between requests
+        # use_flaresolverr: recommended for Cloudflare challenge pages
         language: en
         request_delay: 1000
         base_url: "http://www.javlibrary.com"
@@ -82,6 +90,8 @@ scrapers:
         # proxy:
         #   enabled: true
         #   url: "http://javlibrary-proxy.example.com:8080"
+        #   username: ""
+        #   password: ""
         #   flaresolverr:
         #     enabled: true
         #     url: "http://localhost:8191/v1"

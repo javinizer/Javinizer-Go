@@ -1,5 +1,6 @@
 # Runtime data and databases (contains sensitive content and temp files)
 data/
+.env
 
 # Build artifacts
 bin/
@@ -33,6 +34,8 @@ docs/*.md
 
 # CI/CD files
 .github/
+docker-compose.yml
+docker-compose.yaml
 
 # Node modules (frontend dependencies, will be installed in container)
 web/frontend/node_modules/
