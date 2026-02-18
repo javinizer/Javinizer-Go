@@ -28,7 +28,8 @@
 	let saving = $state(false);
 	let testingProxy = $state(false);
 	let testingFlareSolverr = $state(false);
-	let testingDownloadProxy = $state(false);
+	let testingProfile = $state<Record<string, boolean>>({});
+	let savingProfile = $state<Record<string, boolean>>({});
 	let error = $state<string | null>(null);
 	let showConfirmModal = $state(false);
 	let scrapers = $state<ScraperItem[]>([]);
@@ -91,6 +92,7 @@
 					options: scraperOptionsMap[name] || []
 				};
 			});
+			refreshLocalProxyProfileChoices();
 		} catch (e) {
 			console.error('Failed to fetch scrapers from API:', e);
 			// Fallback to configured order + any scraper sections present in config
@@ -120,6 +122,7 @@
 				expanded: false,
 				options: []
 			}));
+			refreshLocalProxyProfileChoices();
 		}
 	}
 
@@ -132,8 +135,33 @@
 		scrapers[index].expanded = !scrapers[index].expanded;
 	}
 
+	function toggleScraperRow(index: number): void {
+		const scraper = scrapers[index];
+		if (!scraper?.enabled || !scraperHasOptions(scraper)) return;
+		toggleExpanded(index);
+	}
+
+	function onScraperRowKeydown(event: KeyboardEvent, index: number): void {
+		if (event.key !== 'Enter' && event.key !== ' ') return;
+		event.preventDefault();
+		toggleScraperRow(index);
+	}
+
 	// Helper to get option value from config (using snake_case keys)
 	function getOptionValue(scraperName: string, optionKey: string): any {
+		if (optionKey === 'download_proxy.enabled') {
+			const downloadProxy = getNestedValue(config?.scrapers?.[scraperName], 'download_proxy');
+			if (!downloadProxy || typeof downloadProxy !== 'object') return false;
+			if (downloadProxy.enabled !== undefined) return !!downloadProxy.enabled;
+			// Backward compatibility: legacy config may have profile/url without explicit enabled.
+			return !!(
+				downloadProxy.profile ||
+				downloadProxy.url ||
+				downloadProxy.username ||
+				downloadProxy.password ||
+				downloadProxy.use_main_proxy
+			);
+		}
 		return getNestedValue(config?.scrapers?.[scraperName], optionKey);
 	}
 
@@ -160,9 +188,211 @@
 		return Number.isNaN(parsed) ? undefined : parsed;
 	}
 
+	function ensureProxyProfilesInitialized(): void {
+		if (!config?.scrapers) config.scrapers = {};
+		if (!config.scrapers.proxy) config.scrapers.proxy = {};
+		if (!config.scrapers.proxy.profiles || typeof config.scrapers.proxy.profiles !== 'object' || Array.isArray(config.scrapers.proxy.profiles)) {
+			config.scrapers.proxy.profiles = {};
+		}
+
+		const profiles = config.scrapers.proxy.profiles;
+		if (Object.keys(profiles).length === 0) {
+			profiles.main = {
+				url: config.scrapers.proxy?.url ?? '',
+				username: config.scrapers.proxy?.username ?? '',
+				password: config.scrapers.proxy?.password ?? ''
+			};
+		}
+
+		const defaultProfile = config.scrapers.proxy.default_profile;
+		if (!defaultProfile || !profiles[defaultProfile]) {
+			const names = Object.keys(profiles).sort();
+			config.scrapers.proxy.default_profile = names.includes('main') ? 'main' : (names[0] ?? '');
+		}
+	}
+
+	function getProxyProfileNames(): string[] {
+		if (!config?.scrapers?.proxy?.profiles) return [];
+		return Object.keys(config.scrapers.proxy.profiles).sort();
+	}
+
+	function updateScraperProfileRefs(oldName: string, newName: string): void {
+		if (!config?.scrapers) return;
+		Object.keys(config.scrapers)
+			.filter((name: string) => !['priority', 'proxy', 'user_agent', 'referer', 'timeout_seconds', 'request_timeout_seconds'].includes(name))
+			.forEach((scraperName: string) => {
+				const scraperCfg = config.scrapers[scraperName];
+				if (scraperCfg?.proxy?.profile === oldName) scraperCfg.proxy.profile = newName;
+				if (scraperCfg?.download_proxy?.profile === oldName) scraperCfg.download_proxy.profile = newName;
+			});
+	}
+
+	function renameProxyProfile(oldName: string, rawNewName: string): void {
+		if (!config?.scrapers?.proxy?.profiles) return;
+		const newName = rawNewName.trim();
+		if (!newName || oldName === newName) return;
+		if (config.scrapers.proxy.profiles[newName]) {
+			toastStore.error(`Profile "${newName}" already exists`, 4000);
+			return;
+		}
+
+		const profileData = config.scrapers.proxy.profiles[oldName];
+		delete config.scrapers.proxy.profiles[oldName];
+		config.scrapers.proxy.profiles[newName] = profileData;
+
+		if (config.scrapers.proxy.default_profile === oldName) {
+			config.scrapers.proxy.default_profile = newName;
+		}
+		updateScraperProfileRefs(oldName, newName);
+		config.scrapers.proxy.profiles = { ...config.scrapers.proxy.profiles };
+		refreshLocalProxyProfileChoices();
+	}
+
+	function addProxyProfile(): void {
+		ensureProxyProfilesInitialized();
+		let idx = 1;
+		let name = `profile-${idx}`;
+		while (config.scrapers.proxy.profiles[name]) {
+			idx += 1;
+			name = `profile-${idx}`;
+		}
+
+		config.scrapers.proxy.profiles[name] = {
+			url: '',
+			username: '',
+			password: ''
+		};
+
+		if (!config.scrapers.proxy.default_profile) {
+			config.scrapers.proxy.default_profile = name;
+		}
+		config.scrapers.proxy.profiles = { ...config.scrapers.proxy.profiles };
+		refreshLocalProxyProfileChoices();
+	}
+
+	function removeProxyProfile(name: string): void {
+		if (!config?.scrapers?.proxy?.profiles?.[name]) return;
+		delete config.scrapers.proxy.profiles[name];
+		updateScraperProfileRefs(name, '');
+
+		const names = getProxyProfileNames();
+		if (config.scrapers.proxy.default_profile === name) {
+			config.scrapers.proxy.default_profile = names[0] ?? '';
+		}
+		config.scrapers.proxy.profiles = { ...config.scrapers.proxy.profiles };
+		refreshLocalProxyProfileChoices();
+	}
+
+	function setProxyProfileField(name: string, field: 'url' | 'username' | 'password', value: string): void {
+		if (!config?.scrapers?.proxy?.profiles?.[name]) return;
+		config.scrapers.proxy.profiles[name][field] = value;
+	}
+
+	async function saveProxyProfile(profileName: string): Promise<void> {
+		if (!config?.scrapers?.proxy?.profiles?.[profileName]) return;
+		if (savingProfile[profileName]) return;
+
+		savingProfile[profileName] = true;
+		error = null;
+		config.scrapers.proxy.profiles = { ...config.scrapers.proxy.profiles };
+		refreshLocalProxyProfileChoices();
+		try {
+			await apiClient.request('/api/v1/config', {
+				method: 'PUT',
+				body: JSON.stringify(config)
+			});
+			toastStore.success(`Profile "${profileName}" saved successfully.`, 4000);
+		} catch (e) {
+			error = e instanceof Error ? e.message : 'Failed to save profile';
+			toastStore.error(error, 5000);
+		} finally {
+			savingProfile[profileName] = false;
+		}
+	}
+
+	async function runNamedProxyProfileTest(profileName: string) {
+		const profile = config?.scrapers?.proxy?.profiles?.[profileName];
+		if (!profile) {
+			toastStore.error(`Profile "${profileName}" not found`, 5000);
+			return;
+		}
+		if (!profile.url) {
+			toastStore.error(`Profile "${profileName}" needs a proxy URL before testing`, 5000);
+			return;
+		}
+
+		testingProfile[profileName] = true;
+		try {
+			const result = await apiClient.testProxy({
+				mode: 'direct',
+				proxy: {
+					enabled: true,
+					url: profile.url,
+					username: profile.username ?? '',
+					password: profile.password ?? ''
+				}
+			});
+
+			if (result.success) {
+				toastStore.success(`Profile "${profileName}" test passed (${result.duration_ms}ms): ${result.message}`, 7000);
+			} else {
+				toastStore.error(`Profile "${profileName}" test failed (${result.duration_ms}ms): ${result.message}`, 7000);
+			}
+		} catch (e) {
+			const msg = e instanceof Error ? e.message : 'Profile proxy test failed';
+			toastStore.error(msg, 7000);
+		} finally {
+			testingProfile[profileName] = false;
+		}
+	}
+
+	function proxyProfileChoices() {
+		return [{ value: '', label: 'Inherit Default' }, ...getProxyProfileNames().map((name) => ({ value: name, label: name }))];
+	}
+
+	function refreshLocalProxyProfileChoices(): void {
+		const choices = proxyProfileChoices();
+		scrapers = scrapers.map((scraper) => ({
+			...scraper,
+			options: (scraper.options || []).map((option) => {
+				if (option.key === 'proxy.profile' || option.key === 'download_proxy.profile') {
+					return { ...option, choices };
+				}
+				return option;
+			})
+		}));
+	}
+
+	function isZeroFlaresolverrConfig(fs: any): boolean {
+		if (!fs || typeof fs !== 'object') return true;
+		return !fs.enabled && !fs.url && !fs.timeout && !fs.max_retries && !fs.session_ttl;
+	}
+
+	function resolveGlobalProxyForTesting() {
+		if (!config?.scrapers?.proxy) return null;
+		const proxyConfig = JSON.parse(JSON.stringify(config.scrapers.proxy));
+		const profiles = proxyConfig.profiles ?? {};
+		const defaultProfile = proxyConfig.default_profile;
+		if (defaultProfile && profiles[defaultProfile]) {
+			const profile = profiles[defaultProfile];
+			if (profile.url) proxyConfig.url = profile.url;
+			if (profile.username !== undefined) proxyConfig.username = profile.username;
+			if (profile.password !== undefined) proxyConfig.password = profile.password;
+			if (!isZeroFlaresolverrConfig(profile.flaresolverr)) {
+				proxyConfig.flaresolverr = profile.flaresolverr;
+			}
+		}
+		return proxyConfig;
+	}
+
 	function isOptionDisabled(scraperName: string, optionKey: string): boolean {
 		const globalProxyEnabled = config?.scrapers?.proxy?.enabled ?? false;
+		const globalFlareSolverrEnabled = config?.scrapers?.proxy?.flaresolverr?.enabled ?? false;
 		const scraperCfg = config?.scrapers?.[scraperName] ?? {};
+
+		if (optionKey === 'use_flaresolverr') {
+			return !globalProxyEnabled || !globalFlareSolverrEnabled;
+		}
 
 		if (optionKey.startsWith('proxy.')) {
 			if (!globalProxyEnabled) return true;
@@ -170,13 +400,6 @@
 			const scraperProxyEnabled = scraperCfg?.proxy?.enabled ?? false;
 			if (optionKey === 'proxy.enabled') return false;
 			if (!scraperProxyEnabled) return true;
-
-			if (
-				(optionKey === 'proxy.url' || optionKey === 'proxy.username' || optionKey === 'proxy.password') &&
-				(scraperCfg?.proxy?.use_main_proxy ?? false)
-			) {
-				return true;
-			}
 
 			if (optionKey.startsWith('proxy.flaresolverr.')) {
 				if (optionKey === 'proxy.flaresolverr.enabled') return false;
@@ -188,20 +411,9 @@
 
 		if (optionKey.startsWith('download_proxy.')) {
 			if (!globalProxyEnabled) return true;
-
-			const downloadProxyEnabled = scraperCfg?.download_proxy?.enabled ?? false;
 			if (optionKey === 'download_proxy.enabled') return false;
+			const downloadProxyEnabled = !!getOptionValue(scraperName, 'download_proxy.enabled');
 			if (!downloadProxyEnabled) return true;
-
-			if (
-				(optionKey === 'download_proxy.url' ||
-					optionKey === 'download_proxy.username' ||
-					optionKey === 'download_proxy.password') &&
-				(scraperCfg?.download_proxy?.use_main_proxy ?? false)
-			) {
-				return true;
-			}
-
 			return false;
 		}
 
@@ -213,6 +425,21 @@
 		if (!config?.scrapers) return;
 		if (!config.scrapers[scraperName]) config.scrapers[scraperName] = {};
 		setNestedValue(config.scrapers[scraperName], optionKey, value);
+		if (optionKey === 'download_proxy.enabled') {
+			if (!config.scrapers[scraperName].download_proxy) config.scrapers[scraperName].download_proxy = {};
+			if (!value) {
+				// Disable override by clearing legacy fields that would otherwise imply activation.
+				config.scrapers[scraperName].download_proxy.profile = '';
+				config.scrapers[scraperName].download_proxy.use_main_proxy = false;
+				config.scrapers[scraperName].download_proxy.url = '';
+				config.scrapers[scraperName].download_proxy.username = '';
+				config.scrapers[scraperName].download_proxy.password = '';
+			}
+		}
+		if (optionKey === 'download_proxy.profile') {
+			if (!config.scrapers[scraperName].download_proxy) config.scrapers[scraperName].download_proxy = {};
+			config.scrapers[scraperName].download_proxy.enabled = !!(typeof value === 'string' && value.trim().length > 0);
+		}
 		// Trigger reactivity by reassigning the config object with a deep clone
 		config = JSON.parse(JSON.stringify(config));
 	}
@@ -344,6 +571,7 @@
 		error = null;
 		try {
 			config = await apiClient.request('/api/v1/config');
+			ensureProxyProfilesInitialized();
 			buildScraperList();
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to load configuration';
@@ -384,7 +612,11 @@
 			return;
 		}
 
-		const proxyConfig = JSON.parse(JSON.stringify(config.scrapers.proxy));
+		const proxyConfig = resolveGlobalProxyForTesting();
+		if (!proxyConfig) {
+			toastStore.error('Scraper proxy configuration is missing', 5000);
+			return;
+		}
 
 		if (mode === 'direct' && (!proxyConfig.enabled || !proxyConfig.url)) {
 			toastStore.error('Enable scraper proxy and set proxy URL before testing', 5000);
@@ -421,38 +653,6 @@
 			} else {
 				testingFlareSolverr = false;
 			}
-		}
-	}
-
-	async function runDownloadProxyTest() {
-		if (!config?.output?.download_proxy) {
-			toastStore.error('Download proxy configuration is missing', 5000);
-			return;
-		}
-
-		const proxyConfig = JSON.parse(JSON.stringify(config.output.download_proxy));
-		if (!proxyConfig.enabled || !proxyConfig.url) {
-			toastStore.error('Enable download proxy and set proxy URL before testing', 5000);
-			return;
-		}
-
-		testingDownloadProxy = true;
-		try {
-			const result = await apiClient.testProxy({
-				mode: 'direct',
-				proxy: proxyConfig
-			});
-
-			if (result.success) {
-				toastStore.success(`Download proxy test passed (${result.duration_ms}ms): ${result.message}`, 7000);
-			} else {
-				toastStore.error(`Download proxy test failed (${result.duration_ms}ms): ${result.message}`, 7000);
-			}
-		} catch (e) {
-			const msg = e instanceof Error ? e.message : 'Download proxy test failed';
-			toastStore.error(msg, 7000);
-		} finally {
-			testingDownloadProxy = false;
 		}
 	}
 </script>
@@ -532,11 +732,18 @@
 							{#each scrapers as scraper, index}
 								<div class="rounded-lg border {scraper.enabled ? 'bg-background' : 'bg-muted/30'}">
 									<!-- Main scraper row -->
-									<div class="flex items-center gap-3 p-3">
+									<div
+										class="flex items-center gap-3 p-3 {scraper.enabled && scraperHasOptions(scraper) ? 'cursor-pointer hover:bg-muted/30' : ''}"
+										role="button"
+										tabindex="0"
+										onclick={() => toggleScraperRow(index)}
+										onkeydown={(e) => onScraperRowKeydown(e, index)}
+									>
 										<!-- Checkbox -->
 										<input
 											type="checkbox"
 											checked={scraper.enabled}
+											onclick={(e) => e.stopPropagation()}
 											onchange={() => toggleScraper(index)}
 											class="rounded"
 										/>
@@ -559,7 +766,10 @@
 											<Button
 												variant="ghost"
 												size="icon"
-												onclick={() => toggleExpanded(index)}
+												onclick={(e) => {
+													e.stopPropagation();
+													toggleExpanded(index);
+												}}
 												class="h-8 w-8"
 											>
 												{#snippet children()}
@@ -579,30 +789,31 @@
 											<div class="pl-8 py-3 space-y-3">
 												<h4 class="text-sm font-medium">{scraper.displayName} Options</h4>
 												{#each scraper.options as option}
+													{@const optionDisabled = isOptionDisabled(scraper.name, option.key)}
 													<div class="space-y-1">
 														{#if option.type === 'boolean'}
 															<label class="flex items-center gap-2">
 																<input
 																	type="checkbox"
 																	checked={getOptionValue(scraper.name, option.key)}
-																	disabled={isOptionDisabled(scraper.name, option.key)}
+																	disabled={optionDisabled}
 																	onchange={(e) => setOptionValue(scraper.name, option.key, e.currentTarget.checked)}
 																	class="rounded"
 																/>
-																<span class="text-sm {isOptionDisabled(scraper.name, option.key) ? 'text-muted-foreground' : ''}">{option.label}</span>
+																<span class="text-sm {optionDisabled ? 'text-muted-foreground' : ''}">{option.label}</span>
 															</label>
 															<p class="text-xs text-muted-foreground ml-6">
 																{option.description}
 															</p>
 														{:else if option.type === 'select'}
-															<div>
-																<label class="block text-sm font-medium mb-1" for="option-{scraper.name}-{option.key}">{option.label}</label>
+															<div class={optionDisabled ? 'opacity-60' : ''}>
+																<label class="block text-sm font-medium mb-1 {optionDisabled ? 'text-muted-foreground' : ''}" for="option-{scraper.name}-{option.key}">{option.label}</label>
 																<select
 																	id="option-{scraper.name}-{option.key}"
 																	value={getOptionValue(scraper.name, option.key) ?? ''}
-																	disabled={isOptionDisabled(scraper.name, option.key)}
+																	disabled={optionDisabled}
 																	onchange={(e) => setOptionValue(scraper.name, option.key, e.currentTarget.value)}
-																	class="w-48 px-3 py-2 border rounded-md focus:ring-2 focus:ring-primary focus:border-primary transition-all bg-background text-sm"
+																	class="w-48 px-3 py-2 border rounded-md transition-all text-sm {optionDisabled ? 'bg-muted/70 text-muted-foreground border-border/60 cursor-not-allowed' : 'focus:ring-2 focus:ring-primary focus:border-primary bg-background'}"
 																>
 																	{#each option.choices ?? [] as choice}
 																		<option value={choice.value}>{choice.label}</option>
@@ -619,7 +830,7 @@
 																	id="option-{scraper.name}-{option.key}"
 																	type={option.type === 'password' ? 'password' : 'text'}
 																	value={getOptionValue(scraper.name, option.key) ?? ''}
-																	disabled={isOptionDisabled(scraper.name, option.key)}
+																	disabled={optionDisabled}
 																	oninput={(e) => setOptionValue(scraper.name, option.key, e.currentTarget.value)}
 																	class="w-full max-w-md px-3 py-2 border rounded-md focus:ring-2 focus:ring-primary focus:border-primary transition-all bg-background text-sm"
 																/>
@@ -635,7 +846,7 @@
 																		id="option-{scraper.name}-{option.key}"
 																		type="number"
 																		value={getOptionValue(scraper.name, option.key) ?? ''}
-																		disabled={isOptionDisabled(scraper.name, option.key)}
+																		disabled={optionDisabled}
 																		oninput={(e) => setOptionValue(scraper.name, option.key, parseOptionNumber(e.currentTarget.value))}
 																		min={option.min || 0}
 																		max={option.max || 999}
@@ -1235,7 +1446,7 @@
 				<SettingsSubsection title="Scraper Proxy">
 					<FormToggle
 						label="Enable scraper proxy"
-						description="Route all scraper requests through a proxy server"
+						description="Route all scraper requests (and downloads by default) through a proxy server"
 						checked={config.scrapers.proxy?.enabled ?? false}
 						onchange={(val) => {
 							if (!config.scrapers.proxy) config.scrapers.proxy = {};
@@ -1243,40 +1454,110 @@
 						}}
 					/>
 
-					<FormTextInput
-						label="Proxy URL"
-						description="Proxy server URL (e.g., http://proxy.example.com:8080 or socks5://localhost:1080)"
-						value={config.scrapers.proxy?.url ?? ""}
-						placeholder="http://proxy.example.com:8080"
-						disabled={!(config.scrapers.proxy?.enabled ?? false)}
-						onchange={(val) => {
-							if (!config.scrapers.proxy) config.scrapers.proxy = {};
-							config.scrapers.proxy.url = val;
-						}}
-					/>
+					<div class="py-4 border-b border-border">
+						<label class="block text-sm font-medium mb-2" for="default-proxy-profile">Default proxy profile</label>
+						<select
+							id="default-proxy-profile"
+							class={inputClass}
+							value={config.scrapers.proxy?.default_profile ?? ""}
+							onchange={(e) => {
+								if (!config.scrapers.proxy) config.scrapers.proxy = {};
+								config.scrapers.proxy.default_profile = e.currentTarget.value;
+							}}
+						>
+							{#each getProxyProfileNames() as profileName}
+								<option value={profileName}>{profileName}</option>
+							{/each}
+						</select>
+						<p class="text-xs text-muted-foreground mt-1">
+							Global proxy profile used by default for scraper requests and downloads.
+						</p>
+					</div>
 
-					<FormTextInput
-						label="Proxy username"
-						description="Username for authenticated proxy (optional)"
-						value={config.scrapers.proxy?.username ?? ""}
-						placeholder=""
-						disabled={!(config.scrapers.proxy?.enabled ?? false)}
-						onchange={(val) => {
-							if (!config.scrapers.proxy) config.scrapers.proxy = {};
-							config.scrapers.proxy.username = val;
-						}}
-					/>
+					<div class="py-4 border-b border-border">
+						<div class="flex items-center justify-between mb-3">
+							<div>
+								<p class="block text-sm font-medium">Proxy profiles</p>
+								<p class="text-xs text-muted-foreground mt-1">
+									Reusable proxy definitions that scrapers can reference by profile name.
+								</p>
+							</div>
+							<Button variant="outline" size="sm" onclick={addProxyProfile}>
+								{#snippet children()}Add Profile{/snippet}
+							</Button>
+						</div>
 
-					<FormPasswordInput
-						label="Proxy password"
-						description="Password for authenticated proxy (optional)"
-						value={config.scrapers.proxy?.password ?? ""}
-						disabled={!(config.scrapers.proxy?.enabled ?? false)}
-						onchange={(val) => {
-							if (!config.scrapers.proxy) config.scrapers.proxy = {};
-							config.scrapers.proxy.password = val;
-						}}
-					/>
+						<div class="space-y-3">
+							{#each getProxyProfileNames() as profileName}
+								{@const profile = config.scrapers.proxy?.profiles?.[profileName]}
+								<div class="rounded-md border p-3 space-y-2">
+									<div class="flex items-center gap-2">
+										<input
+											type="text"
+											value={profileName}
+											onchange={(e) => renameProxyProfile(profileName, e.currentTarget.value)}
+											class="flex-1 px-3 py-2 border rounded-md focus:ring-2 focus:ring-primary focus:border-primary transition-all bg-background text-sm"
+										/>
+										<Button
+											variant="ghost"
+											size="icon"
+											disabled={getProxyProfileNames().length <= 1}
+											onclick={() => removeProxyProfile(profileName)}
+											class="h-8 w-8"
+										>
+											{#snippet children()}
+												<X class="h-4 w-4" />
+											{/snippet}
+										</Button>
+									</div>
+									<input
+										type="text"
+										value={profile?.url ?? ""}
+										placeholder="http://proxy.example.com:8080"
+										oninput={(e) => setProxyProfileField(profileName, 'url', e.currentTarget.value)}
+										class="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-primary focus:border-primary transition-all bg-background text-sm"
+									/>
+									<div class="grid grid-cols-2 gap-2">
+										<input
+											type="text"
+											value={profile?.username ?? ""}
+											placeholder="Username (optional)"
+											oninput={(e) => setProxyProfileField(profileName, 'username', e.currentTarget.value)}
+											class="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-primary focus:border-primary transition-all bg-background text-sm"
+										/>
+										<input
+											type="password"
+											value={profile?.password ?? ""}
+											placeholder="Password (optional)"
+											oninput={(e) => setProxyProfileField(profileName, 'password', e.currentTarget.value)}
+											class="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-primary focus:border-primary transition-all bg-background text-sm"
+										/>
+									</div>
+									<div class="flex items-center gap-2 pt-1">
+										<Button
+											variant="outline"
+											size="sm"
+											onclick={() => saveProxyProfile(profileName)}
+											disabled={savingProfile[profileName] || loading || saving}
+										>
+											{#snippet children()}{savingProfile[profileName] ? 'Saving...' : 'Save Profile'}{/snippet}
+										</Button>
+										<Button
+											variant="outline"
+											size="sm"
+											onclick={() => runNamedProxyProfileTest(profileName)}
+											disabled={testingProfile[profileName] || savingProfile[profileName] || loading || saving || !(profile?.url ?? '').trim()}
+										>
+											{#snippet children()}
+												<RefreshCw class={`h-4 w-4 mr-2 ${testingProfile[profileName] ? 'animate-spin' : ''}`} />
+												{testingProfile[profileName] ? 'Testing...' : 'Test Profile'}
+											{/snippet}
+										</Button>
+									</div>
+								</div>
+							{/each}
+						</div>
+					</div>
 
 					<div class="pt-2">
 						<Button variant="outline" size="sm" onclick={() => runProxyTest('direct')} disabled={testingProxy || loading || saving || !(config.scrapers.proxy?.enabled ?? false)}>
@@ -1368,61 +1649,6 @@
 					</div>
 				</SettingsSubsection>
 
-				<SettingsSubsection title="Download Proxy">
-					<FormToggle
-						label="Enable download proxy"
-						description="Use a separate proxy for downloading covers, screenshots, and trailers"
-						checked={config.output.download_proxy?.enabled ?? false}
-						onchange={(val) => {
-							if (!config.output.download_proxy) config.output.download_proxy = {};
-							config.output.download_proxy.enabled = val;
-						}}
-					/>
-
-					<FormTextInput
-						label="Download proxy URL"
-						description="Proxy server URL for downloads (leave empty to use no proxy for downloads)"
-						value={config.output.download_proxy?.url ?? ""}
-						placeholder="http://proxy.example.com:8080"
-						disabled={!(config.output.download_proxy?.enabled ?? false)}
-						onchange={(val) => {
-							if (!config.output.download_proxy) config.output.download_proxy = {};
-							config.output.download_proxy.url = val;
-						}}
-					/>
-
-					<FormTextInput
-						label="Download proxy username"
-						description="Username for authenticated download proxy (optional)"
-						value={config.output.download_proxy?.username ?? ""}
-						placeholder=""
-						disabled={!(config.output.download_proxy?.enabled ?? false)}
-						onchange={(val) => {
-							if (!config.output.download_proxy) config.output.download_proxy = {};
-							config.output.download_proxy.username = val;
-						}}
-					/>
-
-					<FormPasswordInput
-						label="Download proxy password"
-						description="Password for authenticated download proxy (optional)"
-						value={config.output.download_proxy?.password ?? ""}
-						disabled={!(config.output.download_proxy?.enabled ?? false)}
-						onchange={(val) => {
-							if (!config.output.download_proxy) config.output.download_proxy = {};
-							config.output.download_proxy.password = val;
-						}}
-					/>
-
-					<div class="pt-2">
-						<Button variant="outline" size="sm" onclick={runDownloadProxyTest} disabled={testingDownloadProxy || loading || saving || !(config.output.download_proxy?.enabled ?? false)}>
-							{#snippet children()}
-								<RefreshCw class={`h-4 w-4 mr-2 ${testingDownloadProxy ? 'animate-spin' : ''}`} />
-								{testingDownloadProxy ? 'Testing Download Proxy...' : 'Test Download Proxy'}
-							{/snippet}
-						</Button>
-					</div>
-				</SettingsSubsection>
 			</SettingsSection>
 
 			<!-- Performance Settings -->

@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -17,7 +18,7 @@ import (
 
 // SanitizeProxyURL removes credentials from proxy URL for safe logging
 func SanitizeProxyURL(proxyURL string) string {
-	u, err := url.Parse(proxyURL)
+	u, err := url.Parse(normalizeProxyURL(proxyURL))
 	if err != nil {
 		return proxyURL // Return as-is if unparseable
 	}
@@ -26,6 +27,18 @@ func SanitizeProxyURL(proxyURL string) string {
 		u.User = url.User("[REDACTED]")
 	}
 	return u.String()
+}
+
+func normalizeProxyURL(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return ""
+	}
+	if strings.Contains(trimmed, "://") {
+		return trimmed
+	}
+	// Allow host:port inputs by defaulting to HTTP proxy scheme.
+	return "http://" + trimmed
 }
 
 // NewTransport creates an http.Transport with optional proxy support
@@ -37,18 +50,18 @@ func NewTransport(proxyConfig *config.ProxyConfig) (*http.Transport, error) {
 	transport.Proxy = nil
 
 	if proxyConfig != nil && proxyConfig.Enabled && proxyConfig.URL != "" {
-		proxyURL, err := url.Parse(proxyConfig.URL)
+		parsedProxyURL, err := url.Parse(normalizeProxyURL(proxyConfig.URL))
 		if err != nil {
 			return nil, fmt.Errorf("invalid proxy URL: %w", err)
 		}
 
 		// Handle authentication
 		if proxyConfig.Username != "" && proxyConfig.Password != "" {
-			proxyURL.User = url.UserPassword(proxyConfig.Username, proxyConfig.Password)
+			parsedProxyURL.User = url.UserPassword(proxyConfig.Username, proxyConfig.Password)
 		}
 
 		// Check if SOCKS5
-		if proxyURL.Scheme == "socks5" {
+		if parsedProxyURL.Scheme == "socks5" {
 			// Use golang.org/x/net/proxy for SOCKS5
 			var auth *proxy.Auth
 			if proxyConfig.Username != "" && proxyConfig.Password != "" {
@@ -57,7 +70,7 @@ func NewTransport(proxyConfig *config.ProxyConfig) (*http.Transport, error) {
 					Password: proxyConfig.Password,
 				}
 			}
-			dialer, err := proxy.SOCKS5("tcp", proxyURL.Host, auth, proxy.Direct)
+			dialer, err := proxy.SOCKS5("tcp", parsedProxyURL.Host, auth, proxy.Direct)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create SOCKS5 dialer: %w", err)
 			}
@@ -75,7 +88,7 @@ func NewTransport(proxyConfig *config.ProxyConfig) (*http.Transport, error) {
 			transport.Proxy = nil
 		} else {
 			// HTTP/HTTPS proxy
-			transport.Proxy = http.ProxyURL(proxyURL)
+			transport.Proxy = http.ProxyURL(parsedProxyURL)
 		}
 	}
 
@@ -380,7 +393,7 @@ func buildFlareSolverrRequestProxy(proxyConfig *config.ProxyConfig) *FlareSolver
 		return nil
 	}
 
-	proxyURL := proxyConfig.URL
+	proxyURL := normalizeProxyURL(proxyConfig.URL)
 	username := proxyConfig.Username
 	password := proxyConfig.Password
 

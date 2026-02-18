@@ -1,4 +1,4 @@
-.PHONY: help build run run-api test test-short test-race test-verbose bench clean clean-all deps install web-dev web-build web-preview web-install web-clean
+.PHONY: help build run run-api run-api-dev test test-short test-race test-verbose bench clean clean-all deps install web-dev web-build web-preview web-install web-clean
 .PHONY: coverage coverage-html coverage-check coverage-func ci simulate-ci
 .PHONY: fmt lint vet swagger docs mocks
 .PHONY: build-cli-linux build-cli-darwin build-cli-windows build-cli-all
@@ -17,6 +17,7 @@ help:
 	@echo "  make build              - Build CLI binary with version info"
 	@echo "  make run                - Run CLI directly (no build)"
 	@echo "  make run-api            - Run API server directly"
+	@echo "  make run-api-dev        - Run API server with hot reload (air)"
 	@echo "  make install            - Install binary to GOPATH/bin"
 	@echo ""
 	@echo "Testing:"
@@ -101,6 +102,15 @@ run:
 # Run the API server using subcommand
 run-api:
 	go run ./cmd/javinizer api
+
+# Run API with hot reload (requires air, falls back to go run air)
+run-api-dev:
+	@if command -v air >/dev/null 2>&1; then \
+		air -c .air.toml; \
+	else \
+		echo "air not found in PATH, running via go run github.com/air-verse/air@latest"; \
+		go run github.com/air-verse/air@latest -c .air.toml; \
+	fi
 
 # Run tests
 test:
@@ -215,7 +225,7 @@ mocks:
 
 # Web frontend targets
 web-dev:
-	cd web/frontend && npm run dev
+	cd web/frontend && npm run dev -- --port 5174
 
 web-build:
 	cd web/frontend && npm run build

@@ -14,7 +14,6 @@ import (
 	"github.com/javinizer/javinizer-go/internal/downloader"
 	"github.com/javinizer/javinizer-go/internal/fsutil"
 	"github.com/javinizer/javinizer-go/internal/history"
-	"github.com/javinizer/javinizer-go/internal/httpclient"
 	"github.com/javinizer/javinizer-go/internal/logging"
 	"github.com/javinizer/javinizer-go/internal/matcher"
 	"github.com/javinizer/javinizer-go/internal/models"
@@ -73,13 +72,8 @@ func processBatchJob(job *worker.BatchJob, registry *models.ScraperRegistry, agg
 	pool := worker.NewPoolWithContext(ctx, maxWorkers, timeout, progressTracker)
 	defer pool.Stop()
 
-	// Create HTTP client for poster downloads with proxy support
-	// Use scraper request timeout from config (default 30s)
-	requestTimeout := time.Duration(cfg.Scrapers.RequestTimeoutSeconds) * time.Second
-	if requestTimeout <= 0 {
-		requestTimeout = 30 * time.Second
-	}
-	httpClient, err := httpclient.NewHTTPClient(&cfg.Scrapers.Proxy, requestTimeout)
+	// Create HTTP client for temp poster downloads with scraper-level download proxy support.
+	httpClient, err := downloader.NewHTTPClientForDownloader(cfg)
 	if err != nil {
 		logging.Warnf("Failed to create HTTP client for poster downloads: %v (will skip poster generation)", err)
 		httpClient = nil // Continue without poster generation

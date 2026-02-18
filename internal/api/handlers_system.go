@@ -3,6 +3,7 @@ package api
 import (
 	"fmt"
 	"net/url"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -73,6 +74,8 @@ func getConfig(deps *ServerDependencies) gin.HandlerFunc {
 func getAvailableScrapers(deps *ServerDependencies) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		scrapers := []ScraperInfo{}
+		cfg := deps.GetConfig()
+		profileChoices := proxyProfileChoices(cfg)
 
 		// Use getter to get current registry (respects config reloads)
 		registry := deps.GetRegistry()
@@ -88,8 +91,8 @@ func getAvailableScrapers(deps *ServerDependencies) gin.HandlerFunc {
 			switch name {
 			case "r18dev":
 				displayName = "R18.dev"
-				options = append(options, scraperProxyOptions(false)...)
-				options = append(options, scraperDownloadProxyOptions()...)
+				options = append(options, scraperProxyOptions(profileChoices)...)
+				options = append(options, scraperDownloadProxyOptions(profileChoices)...)
 			case "dmm":
 				displayName = "DMM/Fanza"
 				// DMM scraper options
@@ -118,8 +121,8 @@ func getAvailableScrapers(deps *ServerDependencies) gin.HandlerFunc {
 						Unit:        "seconds",
 					},
 				}
-				options = append(options, scraperProxyOptions(false)...)
-				options = append(options, scraperDownloadProxyOptions()...)
+				options = append(options, scraperProxyOptions(profileChoices)...)
+				options = append(options, scraperDownloadProxyOptions(profileChoices)...)
 			case "mgstage":
 				displayName = "MGStage"
 				// MGStage scraper options
@@ -134,8 +137,8 @@ func getAvailableScrapers(deps *ServerDependencies) gin.HandlerFunc {
 						Unit:        "ms",
 					},
 				}
-				options = append(options, scraperProxyOptions(false)...)
-				options = append(options, scraperDownloadProxyOptions()...)
+				options = append(options, scraperProxyOptions(profileChoices)...)
+				options = append(options, scraperDownloadProxyOptions(profileChoices)...)
 			case "javlibrary":
 				displayName = "JavLibrary"
 				options = []ScraperOption{
@@ -173,8 +176,8 @@ func getAvailableScrapers(deps *ServerDependencies) gin.HandlerFunc {
 						Type:        "boolean",
 					},
 				}
-				options = append(options, scraperProxyOptions(true)...)
-				options = append(options, scraperDownloadProxyOptions()...)
+				options = append(options, scraperProxyOptions(profileChoices)...)
+				options = append(options, scraperDownloadProxyOptions(profileChoices)...)
 			case "javdb":
 				displayName = "JavDB"
 				options = []ScraperOption{
@@ -200,8 +203,8 @@ func getAvailableScrapers(deps *ServerDependencies) gin.HandlerFunc {
 						Type:        "boolean",
 					},
 				}
-				options = append(options, scraperProxyOptions(true)...)
-				options = append(options, scraperDownloadProxyOptions()...)
+				options = append(options, scraperProxyOptions(profileChoices)...)
+				options = append(options, scraperDownloadProxyOptions(profileChoices)...)
 			}
 
 			scrapers = append(scrapers, ScraperInfo{
@@ -474,120 +477,64 @@ func reloadComponents(deps *ServerDependencies, newCfg *config.Config) error {
 	return nil
 }
 
-func scraperProxyOptions(includeFlareSolverr bool) []ScraperOption {
-	options := []ScraperOption{
+func scraperProxyOptions(profileChoices []ScraperChoice) []ScraperOption {
+	return []ScraperOption{
 		{
 			Key:         "proxy.enabled",
-			Label:       "Proxy override enabled",
-			Description: "Enable scraper-specific proxy usage (requires global Scraper Proxy to be enabled)",
+			Label:       "Enable proxy for this scraper",
+			Description: "Use proxy for this scraper (inherits global proxy profile when no scraper profile is selected)",
 			Type:        "boolean",
 		},
 		{
-			Key:         "proxy.use_main_proxy",
-			Label:       "Reuse main proxy",
-			Description: "Reuse global scrapers.proxy settings for this scraper",
-			Type:        "boolean",
-		},
-		{
-			Key:         "proxy.url",
-			Label:       "Proxy URL override",
-			Description: "Scraper-specific proxy URL (http://... or socks5://...)",
-			Type:        "string",
-		},
-		{
-			Key:         "proxy.username",
-			Label:       "Proxy username override",
-			Description: "Optional username for scraper-specific proxy authentication",
-			Type:        "string",
-		},
-		{
-			Key:         "proxy.password",
-			Label:       "Proxy password override",
-			Description: "Optional password for scraper-specific proxy authentication",
-			Type:        "password",
+			Key:         "proxy.profile",
+			Label:       "Proxy profile",
+			Description: "Optional scraper-specific proxy profile (leave empty to inherit global default profile)",
+			Type:        "select",
+			Choices:     profileChoices,
 		},
 	}
-
-	if !includeFlareSolverr {
-		return options
-	}
-
-	return append(options,
-		ScraperOption{
-			Key:         "proxy.flaresolverr.enabled",
-			Label:       "FlareSolverr override enabled",
-			Description: "Use scraper-specific FlareSolverr settings instead of global scrapers.proxy.flaresolverr",
-			Type:        "boolean",
-		},
-		ScraperOption{
-			Key:         "proxy.flaresolverr.url",
-			Label:       "FlareSolverr URL override",
-			Description: "Scraper-specific FlareSolverr endpoint (e.g., http://flaresolverr:8191/v1)",
-			Type:        "string",
-		},
-		ScraperOption{
-			Key:         "proxy.flaresolverr.timeout",
-			Label:       "FlareSolverr timeout override",
-			Description: "Scraper-specific FlareSolverr timeout",
-			Type:        "number",
-			Min:         ptrInt(1),
-			Max:         ptrInt(300),
-			Unit:        "seconds",
-		},
-		ScraperOption{
-			Key:         "proxy.flaresolverr.max_retries",
-			Label:       "FlareSolverr retries override",
-			Description: "Scraper-specific FlareSolverr retry attempts",
-			Type:        "number",
-			Min:         ptrInt(0),
-			Max:         ptrInt(10),
-			Unit:        "attempts",
-		},
-		ScraperOption{
-			Key:         "proxy.flaresolverr.session_ttl",
-			Label:       "FlareSolverr session TTL override",
-			Description: "Scraper-specific FlareSolverr session lifetime",
-			Type:        "number",
-			Min:         ptrInt(60),
-			Max:         ptrInt(3600),
-			Unit:        "seconds",
-		},
-	)
 }
 
-func scraperDownloadProxyOptions() []ScraperOption {
+func scraperDownloadProxyOptions(profileChoices []ScraperChoice) []ScraperOption {
 	return []ScraperOption{
 		{
 			Key:         "download_proxy.enabled",
 			Label:       "Download proxy enabled",
-			Description: "Enable scraper-specific proxy usage for downloading cover/poster/screenshots/trailer",
+			Description: "Enable scraper-specific download proxy override",
 			Type:        "boolean",
 		},
 		{
-			Key:         "download_proxy.use_main_proxy",
-			Label:       "Download: reuse main proxy",
-			Description: "Reuse this scraper's main proxy settings for downloads",
-			Type:        "boolean",
-		},
-		{
-			Key:         "download_proxy.url",
-			Label:       "Download proxy URL override",
-			Description: "Scraper-specific download proxy URL (http://... or socks5://...)",
-			Type:        "string",
-		},
-		{
-			Key:         "download_proxy.username",
-			Label:       "Download proxy username override",
-			Description: "Optional username for scraper-specific download proxy authentication",
-			Type:        "string",
-		},
-		{
-			Key:         "download_proxy.password",
-			Label:       "Download proxy password override",
-			Description: "Optional password for scraper-specific download proxy authentication",
-			Type:        "password",
+			Key:         "download_proxy.profile",
+			Label:       "Download proxy profile",
+			Description: "Optional scraper-specific download proxy profile (leave empty to inherit scraper/global proxy profile)",
+			Type:        "select",
+			Choices:     profileChoices,
 		},
 	}
+}
+
+func proxyProfileChoices(cfg *config.Config) []ScraperChoice {
+	choices := []ScraperChoice{
+		{Value: "", Label: "Inherit Default"},
+	}
+	if cfg == nil || len(cfg.Scrapers.Proxy.Profiles) == 0 {
+		return choices
+	}
+
+	names := make([]string, 0, len(cfg.Scrapers.Proxy.Profiles))
+	for name := range cfg.Scrapers.Proxy.Profiles {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	for _, name := range names {
+		choices = append(choices, ScraperChoice{
+			Value: name,
+			Label: name,
+		})
+	}
+
+	return choices
 }
 
 // ptrInt returns a pointer to an int value

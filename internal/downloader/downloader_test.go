@@ -1271,6 +1271,102 @@ func TestDownloader_NewHTTPClientForDownloader_CustomTimeout(t *testing.T) {
 	}
 }
 
+func TestDownloader_NewHTTPClientForDownloader_UseMainProxyForAllDownloads(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Scrapers.Proxy = config.ProxyConfig{
+		Enabled: true,
+		URL:     "http://global-proxy.example.com:8080",
+	}
+	cfg.Output.DownloadProxy = config.ProxyConfig{
+		Enabled:      true,
+		UseMainProxy: true,
+	}
+
+	client, err := NewHTTPClientForDownloader(cfg)
+	if err != nil {
+		t.Fatalf("NewHTTPClientForDownloader failed: %v", err)
+	}
+
+	adaptiveClient, ok := client.(*adaptiveDownloaderHTTPClient)
+	if !ok {
+		t.Fatalf("Expected *adaptiveDownloaderHTTPClient, got %T", client)
+	}
+	if adaptiveClient.forceClient == nil {
+		t.Fatal("Expected forceClient to be configured when using main proxy for downloads")
+	}
+}
+
+func TestDownloader_NewHTTPClientForDownloader_UseMainProxyWithoutGlobalProxyFallsBack(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Scrapers.Proxy = config.ProxyConfig{
+		Enabled: false,
+		URL:     "",
+	}
+	cfg.Output.DownloadProxy = config.ProxyConfig{
+		Enabled:      true,
+		UseMainProxy: true,
+	}
+
+	client, err := NewHTTPClientForDownloader(cfg)
+	if err != nil {
+		t.Fatalf("NewHTTPClientForDownloader failed: %v", err)
+	}
+
+	adaptiveClient, ok := client.(*adaptiveDownloaderHTTPClient)
+	if !ok {
+		t.Fatalf("Expected *adaptiveDownloaderHTTPClient, got %T", client)
+	}
+	if adaptiveClient.forceClient != nil {
+		t.Fatal("Expected forceClient to be nil when main proxy reuse is enabled but scrapers.proxy is not configured")
+	}
+}
+
+func TestDownloader_NewHTTPClientForDownloader_GlobalProxyDefaultsToAllDownloads(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Scrapers.Proxy = config.ProxyConfig{
+		Enabled: true,
+		URL:     "http://global-proxy.example.com:8080",
+	}
+
+	client, err := NewHTTPClientForDownloader(cfg)
+	if err != nil {
+		t.Fatalf("NewHTTPClientForDownloader failed: %v", err)
+	}
+
+	adaptiveClient, ok := client.(*adaptiveDownloaderHTTPClient)
+	if !ok {
+		t.Fatalf("Expected *adaptiveDownloaderHTTPClient, got %T", client)
+	}
+	if adaptiveClient.forceClient == nil {
+		t.Fatal("Expected forceClient to be configured when global scraper proxy is enabled")
+	}
+}
+
+func TestDownloader_NewHTTPClientForDownloader_GlobalProxyNotForcedWhenScraperDownloadOverrideExists(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Scrapers.Proxy = config.ProxyConfig{
+		Enabled: true,
+		URL:     "http://global-proxy.example.com:8080",
+	}
+	cfg.Scrapers.JavDB.DownloadProxy = &config.ProxyConfig{
+		Enabled: true,
+		URL:     "http://javdb-download-proxy.example.com:8080",
+	}
+
+	client, err := NewHTTPClientForDownloader(cfg)
+	if err != nil {
+		t.Fatalf("NewHTTPClientForDownloader failed: %v", err)
+	}
+
+	adaptiveClient, ok := client.(*adaptiveDownloaderHTTPClient)
+	if !ok {
+		t.Fatalf("Expected *adaptiveDownloaderHTTPClient, got %T", client)
+	}
+	if adaptiveClient.forceClient != nil {
+		t.Fatal("Expected forceClient to be nil when scraper-level download overrides exist")
+	}
+}
+
 func TestAdaptiveDownloader_SelectProxyForRequest_UsesScraperDownloadOverride(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Scrapers.Proxy = config.ProxyConfig{
@@ -1295,6 +1391,40 @@ func TestAdaptiveDownloader_SelectProxyForRequest_UsesScraperDownloadOverride(t 
 	}
 	if resolved.URL != "http://javdb-download-proxy.example.com:8080" {
 		t.Fatalf("Expected scraper download proxy URL, got %q", resolved.URL)
+	}
+}
+
+func TestAdaptiveDownloader_SelectProxyForRequest_UsesDownloadProxyProfileWithoutEnabledToggle(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Scrapers.Proxy = config.ProxyConfig{
+		Enabled:        true,
+		DefaultProfile: "main",
+		Profiles: map[string]config.ProxyProfile{
+			"main": {
+				URL: "http://global-proxy.example.com:8080",
+			},
+			"download": {
+				URL: "http://javdb-download-proxy.example.com:8080",
+			},
+		},
+	}
+	cfg.Scrapers.JavDB.Proxy = &config.ProxyConfig{
+		Enabled: true,
+		Profile: "main",
+	}
+	cfg.Scrapers.JavDB.DownloadProxy = &config.ProxyConfig{
+		Profile: "download",
+	}
+
+	client := &adaptiveDownloaderHTTPClient{cfg: cfg}
+	req := httptest.NewRequest(http.MethodGet, "https://c0.jdbstatic.com/samples/x.jpg", nil)
+
+	resolved := client.selectProxyForRequest(req)
+	if resolved == nil {
+		t.Fatal("Expected download proxy profile to be selected")
+	}
+	if resolved.URL != "http://javdb-download-proxy.example.com:8080" {
+		t.Fatalf("Expected download profile URL, got %q", resolved.URL)
 	}
 }
 
@@ -1325,7 +1455,7 @@ func TestAdaptiveDownloader_SelectProxyForRequest_ReusesMainProxyWhenRequested(t
 	}
 }
 
-func TestAdaptiveDownloader_SelectProxyForRequest_DisablesProxyWhenDownloadOverrideDisabled(t *testing.T) {
+func TestAdaptiveDownloader_SelectProxyForRequest_EmptyDownloadOverrideInheritsScraperProxy(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Scrapers.Proxy = config.ProxyConfig{
 		Enabled: true,
@@ -1336,15 +1466,18 @@ func TestAdaptiveDownloader_SelectProxyForRequest_DisablesProxyWhenDownloadOverr
 		URL:     "http://javdb-main-proxy.example.com:8080",
 	}
 	cfg.Scrapers.JavDB.DownloadProxy = &config.ProxyConfig{
-		Enabled: false,
+		// Empty override should be treated as inherit scraper/global proxy.
 	}
 
 	client := &adaptiveDownloaderHTTPClient{cfg: cfg}
 	req := httptest.NewRequest(http.MethodGet, "https://c0.jdbstatic.com/samples/x.jpg", nil)
 
 	resolved := client.selectProxyForRequest(req)
-	if resolved != nil {
-		t.Fatalf("Expected no proxy due to explicit disabled download override, got %q", resolved.URL)
+	if resolved == nil {
+		t.Fatal("Expected inherited scraper proxy")
+	}
+	if resolved.URL != "http://javdb-main-proxy.example.com:8080" {
+		t.Fatalf("Expected inherited scraper proxy URL, got %q", resolved.URL)
 	}
 }
 

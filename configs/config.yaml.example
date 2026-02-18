@@ -47,12 +47,23 @@ scrapers:
         - mgstage
         - javlibrary
         - javdb
-    # HTTP/SOCKS5 proxy for all scraper requests (optional)
+    # HTTP/SOCKS5 proxy settings and reusable profiles
     proxy:
         enabled: false
-        url: ""  # Examples: "http://proxy.example.com:8080", "socks5://localhost:1080"
-        username: ""  # Optional authentication
-        password: ""  # Optional authentication
+        default_profile: "main"   # Global default profile when proxy is enabled
+        profiles:
+            main:
+                url: ""           # Examples: "http://proxy.example.com:8080", "socks5://localhost:1080"
+                username: ""      # Optional authentication
+                password: ""      # Optional authentication
+            backup:
+                url: ""
+                username: ""
+                password: ""
+        # Legacy direct fields (still supported as fallback)
+        url: ""
+        username: ""
+        password: ""
     r18dev:
         enabled: true
         request_delay: 1500          # Delay between requests in milliseconds (1.5 seconds to stay under 10 req/15s limit)
@@ -63,33 +74,25 @@ scrapers:
         scrape_actress: false
         enable_browser: true      # Enable browser automation for JavaScript-rendered pages
         browser_timeout: 30       # Timeout in seconds for browser operations
-        # Optional per-scraper proxy override (if omitted, uses scrapers.proxy above)
+        # Optional per-scraper proxy override using profile selection
         # proxy:
         #   enabled: true
-        #   use_main_proxy: false   # true = reuse scrapers.proxy values below
-        #   url: "http://dmm-proxy.example.com:8080"
-        #   username: ""
-        #   password: ""
-        # Optional per-scraper download proxy override (used for covers/posters/screenshots/trailers)
+        #   profile: "backup"
+        # Optional per-scraper download proxy override using profile selection
         # download_proxy:
         #   enabled: true
-        #   use_main_proxy: true    # true = reuse DMM proxy settings above
-        #   url: "http://dmm-download-proxy.example.com:8080"
-        #   username: ""
-        #   password: ""
+        #   profile: "backup"
     mgstage:
         enabled: false            # Opt-in: requires age verification cookie (adc=1)
         request_delay: 500        # Delay between requests in milliseconds
-        # Optional per-scraper proxy override (if omitted, uses scrapers.proxy above)
+        # Optional per-scraper proxy override
         # proxy:
         #   enabled: true
-        #   use_main_proxy: false
-        #   url: "http://mgstage-proxy.example.com:8080"
+        #   profile: "backup"
         # Optional per-scraper download proxy override
         # download_proxy:
         #   enabled: true
-        #   use_main_proxy: true
-        #   url: "http://mgstage-download-proxy.example.com:8080"
+        #   profile: "backup"
     javlibrary:
         enabled: false
         # Frontend scraper options:
@@ -100,49 +103,27 @@ scrapers:
         request_delay: 1000
         base_url: "http://www.javlibrary.com"
         use_flaresolverr: true
-        # Optional per-scraper proxy + FlareSolverr override
+        # Optional per-scraper proxy override (FlareSolverr uses global scrapers.proxy.flaresolverr)
         # proxy:
         #   enabled: true
-        #   use_main_proxy: false
-        #   url: "http://javlibrary-proxy.example.com:8080"
-        #   username: ""
-        #   password: ""
-        #   flaresolverr:
-        #     enabled: true
-        #     url: "http://localhost:8191/v1"
-        #     timeout: 30
-        #     max_retries: 3
-        #     session_ttl: 300
+        #   profile: "backup"
         # Optional per-scraper download proxy override
         # download_proxy:
         #   enabled: true
-        #   use_main_proxy: true
-        #   url: "http://javlibrary-download-proxy.example.com:8080"
-        #   username: ""
-        #   password: ""
+        #   profile: "backup"
     javdb:
         enabled: false
         request_delay: 1000
         base_url: "https://javdb.com"
         use_flaresolverr: true
-        # Optional per-scraper proxy + FlareSolverr override
+        # Optional per-scraper proxy override (FlareSolverr uses global scrapers.proxy.flaresolverr)
         # proxy:
         #   enabled: true
-        #   use_main_proxy: false
-        #   url: "http://javdb-proxy.example.com:8080"
-        #   flaresolverr:
-        #     enabled: true
-        #     url: "http://localhost:8191/v1"
-        #     timeout: 30
-        #     max_retries: 3
-        #     session_ttl: 300
+        #   profile: "backup"
         # Optional per-scraper download proxy override
         # download_proxy:
         #   enabled: true
-        #   use_main_proxy: true
-        #   url: "http://javdb-download-proxy.example.com:8080"
-        #   username: ""
-        #   password: ""
+        #   profile: "backup"
 metadata:
     priority:
         actress:
@@ -303,7 +284,9 @@ output:
     download_trailer: true
     download_actress: true
     download_timeout: 60
-    # Separate proxy for downloads (optional - leave disabled to use no proxy for downloads)
+    # Download proxy override (optional):
+    # - If disabled, downloads use scrapers.proxy automatically when scraper proxy is enabled.
+    # - Enable only when you need a separate proxy just for downloads.
     download_proxy:
         enabled: false
         url: ""  # Leave empty or set to use a different proxy than scrapers

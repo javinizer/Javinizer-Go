@@ -149,14 +149,25 @@ type FlareSolverrConfig struct {
 	SessionTTL int    `yaml:"session_ttl" json:"session_ttl"` // Session TTL in seconds (default: 300)
 }
 
+// ProxyProfile holds reusable proxy connection settings.
+type ProxyProfile struct {
+	URL          string             `yaml:"url" json:"url"`
+	Username     string             `yaml:"username" json:"username"`
+	Password     string             `yaml:"password" json:"password"`
+	FlareSolverr FlareSolverrConfig `yaml:"flaresolverr" json:"flaresolverr"`
+}
+
 // ProxyConfig holds HTTP/SOCKS5 proxy configuration
 type ProxyConfig struct {
-	Enabled      bool               `yaml:"enabled" json:"enabled"`               // Enable proxy for HTTP requests
-	UseMainProxy bool               `yaml:"use_main_proxy" json:"use_main_proxy"` // Reuse global scrapers.proxy settings
-	URL          string             `yaml:"url" json:"url"`                       // Proxy URL (e.g., "http://proxy:8080" or "socks5://proxy:1080")
-	Username     string             `yaml:"username" json:"username"`             // Optional proxy authentication username
-	Password     string             `yaml:"password" json:"password"`             // Optional proxy authentication password
-	FlareSolverr FlareSolverrConfig `yaml:"flaresolverr" json:"flaresolverr"`     // FlareSolverr for Cloudflare bypass
+	Enabled        bool                    `yaml:"enabled" json:"enabled"`                                     // Enable proxy for HTTP requests
+	UseMainProxy   bool                    `yaml:"use_main_proxy" json:"use_main_proxy"`                       // Deprecated: Reuse global scrapers.proxy settings
+	Profile        string                  `yaml:"profile,omitempty" json:"profile,omitempty"`                 // Named profile to use (for scraper-specific overrides)
+	DefaultProfile string                  `yaml:"default_profile,omitempty" json:"default_profile,omitempty"` // Default profile name (for global scrapers.proxy)
+	Profiles       map[string]ProxyProfile `yaml:"profiles,omitempty" json:"profiles,omitempty"`               // Named proxy profiles (global scrapers.proxy)
+	URL            string                  `yaml:"url" json:"url"`                                             // Proxy URL (e.g., "http://proxy:8080" or "socks5://proxy:1080")
+	Username       string                  `yaml:"username" json:"username"`                                   // Optional proxy authentication username
+	Password       string                  `yaml:"password" json:"password"`                                   // Optional proxy authentication password
+	FlareSolverr   FlareSolverrConfig      `yaml:"flaresolverr" json:"flaresolverr"`                           // FlareSolverr for Cloudflare bypass
 }
 
 // MetadataConfig holds metadata aggregation settings
@@ -324,8 +335,9 @@ func DefaultConfig() *Config {
 			RequestTimeoutSeconds: 60,                        // Overall request timeout
 			Priority:              []string{"r18dev", "dmm"}, // Global scraper execution order
 			Proxy: ProxyConfig{
-				Enabled: false,
-				URL:     "",
+				Enabled:  false,
+				URL:      "",
+				Profiles: map[string]ProxyProfile{},
 				FlareSolverr: FlareSolverrConfig{
 					Enabled:    false,
 					URL:        "http://localhost:8191/v1",
@@ -527,6 +539,10 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("scrapers.dmm.browser_timeout must be between 1 and 300")
 	}
 
+	if err := validateProxyProfileConfig(c); err != nil {
+		return err
+	}
+
 	// Validate FlareSolverr config (global + scraper-specific overrides)
 	if err := validateFlareSolverrConfig("scrapers.proxy.flaresolverr", c.Scrapers.Proxy.FlareSolverr); err != nil {
 		return err
@@ -583,27 +599,131 @@ func (c *Config) Validate() error {
 	return nil
 }
 
+func validateProxyProfileConfig(c *Config) error {
+	if c == nil {
+		return nil
+	}
+
+	profiles := c.Scrapers.Proxy.Profiles
+	if c.Scrapers.Proxy.DefaultProfile != "" {
+		if _, ok := profiles[c.Scrapers.Proxy.DefaultProfile]; !ok {
+			return fmt.Errorf("scrapers.proxy.default_profile references unknown profile %q", c.Scrapers.Proxy.DefaultProfile)
+		}
+	}
+
+	if err := validateProxyProfileRef("scrapers.r18dev.proxy", c.Scrapers.R18Dev.Proxy, profiles); err != nil {
+		return err
+	}
+	if err := validateProxyProfileRef("scrapers.dmm.proxy", c.Scrapers.DMM.Proxy, profiles); err != nil {
+		return err
+	}
+	if err := validateProxyProfileRef("scrapers.mgstage.proxy", c.Scrapers.MGStage.Proxy, profiles); err != nil {
+		return err
+	}
+	if err := validateProxyProfileRef("scrapers.javlibrary.proxy", c.Scrapers.JavLibrary.Proxy, profiles); err != nil {
+		return err
+	}
+	if err := validateProxyProfileRef("scrapers.javdb.proxy", c.Scrapers.JavDB.Proxy, profiles); err != nil {
+		return err
+	}
+	if err := validateProxyProfileRef("output.download_proxy", &c.Output.DownloadProxy, profiles); err != nil {
+		return err
+	}
+	if err := validateProxyProfileRef("scrapers.r18dev.download_proxy", c.Scrapers.R18Dev.DownloadProxy, profiles); err != nil {
+		return err
+	}
+	if err := validateProxyProfileRef("scrapers.dmm.download_proxy", c.Scrapers.DMM.DownloadProxy, profiles); err != nil {
+		return err
+	}
+	if err := validateProxyProfileRef("scrapers.mgstage.download_proxy", c.Scrapers.MGStage.DownloadProxy, profiles); err != nil {
+		return err
+	}
+	if err := validateProxyProfileRef("scrapers.javlibrary.download_proxy", c.Scrapers.JavLibrary.DownloadProxy, profiles); err != nil {
+		return err
+	}
+	if err := validateProxyProfileRef("scrapers.javdb.download_proxy", c.Scrapers.JavDB.DownloadProxy, profiles); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func validateProxyProfileRef(path string, proxyCfg *ProxyConfig, profiles map[string]ProxyProfile) error {
+	if proxyCfg == nil || proxyCfg.Profile == "" {
+		return nil
+	}
+	if _, ok := profiles[proxyCfg.Profile]; !ok {
+		return fmt.Errorf("%s.profile references unknown profile %q", path, proxyCfg.Profile)
+	}
+	return nil
+}
+
 // ResolveScraperProxy returns the effective proxy config for a scraper.
 // If scraperOverride is nil, the global proxy config is used.
 func ResolveScraperProxy(global ProxyConfig, scraperOverride *ProxyConfig) *ProxyConfig {
-	resolved := global
+	globalResolved := resolveGlobalProxy(global)
+	resolved := globalResolved
 	if scraperOverride != nil {
 		if scraperOverride.UseMainProxy {
 			// Reuse global proxy settings but allow scraper-level FlareSolverr override.
-			resolved = global
+			resolved = globalResolved
+			if scraperOverride.Profile != "" {
+				applyNamedProxyProfile(&resolved, global.Profiles, scraperOverride.Profile)
+			}
 			if !isZeroFlareSolverrConfig(scraperOverride.FlareSolverr) {
 				resolved.FlareSolverr = scraperOverride.FlareSolverr
 			}
 		} else {
 			resolved = *scraperOverride
+			if resolved.Profile != "" {
+				applyNamedProxyProfile(&resolved, global.Profiles, resolved.Profile)
+			}
+			// If proxy is enabled but URL is omitted, inherit global proxy
+			// credentials so users can toggle per-scraper proxy usage without
+			// duplicating global proxy values.
+			if resolved.Enabled && resolved.URL == "" {
+				resolved.URL = globalResolved.URL
+				if resolved.Username == "" {
+					resolved.Username = globalResolved.Username
+				}
+				if resolved.Password == "" {
+					resolved.Password = globalResolved.Password
+				}
+			}
 			// If scraper-specific proxy override omits FlareSolverr settings entirely,
 			// inherit the global FlareSolverr config so URL/timeout are not lost.
 			if isZeroFlareSolverrConfig(scraperOverride.FlareSolverr) {
-				resolved.FlareSolverr = global.FlareSolverr
+				resolved.FlareSolverr = globalResolved.FlareSolverr
 			}
 		}
 	}
 	return &resolved
+}
+
+func resolveGlobalProxy(global ProxyConfig) ProxyConfig {
+	resolved := global
+	if resolved.DefaultProfile != "" {
+		applyNamedProxyProfile(&resolved, global.Profiles, resolved.DefaultProfile)
+	}
+	return resolved
+}
+
+func applyNamedProxyProfile(target *ProxyConfig, profiles map[string]ProxyProfile, profileName string) {
+	if target == nil || profileName == "" || len(profiles) == 0 {
+		return
+	}
+	profile, ok := profiles[profileName]
+	if !ok {
+		return
+	}
+	if profile.URL != "" {
+		target.URL = profile.URL
+	}
+	target.Username = profile.Username
+	target.Password = profile.Password
+	if !isZeroFlareSolverrConfig(profile.FlareSolverr) {
+		target.FlareSolverr = profile.FlareSolverr
+	}
 }
 
 func isZeroFlareSolverrConfig(cfg FlareSolverrConfig) bool {

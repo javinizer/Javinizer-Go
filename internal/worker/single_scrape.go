@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,6 +13,7 @@ import (
 	"github.com/javinizer/javinizer-go/internal/aggregator"
 	"github.com/javinizer/javinizer-go/internal/config"
 	"github.com/javinizer/javinizer-go/internal/database"
+	httpclientiface "github.com/javinizer/javinizer-go/internal/httpclient"
 	"github.com/javinizer/javinizer-go/internal/logging"
 	"github.com/javinizer/javinizer-go/internal/matcher"
 	"github.com/javinizer/javinizer-go/internal/models"
@@ -94,7 +94,7 @@ func RunBatchScrapeOnce(
 	agg *aggregator.Aggregator,
 	movieRepo *database.MovieRepository,
 	fileMatcher *matcher.Matcher,
-	httpClient *http.Client,
+	httpClient httpclientiface.HTTPClient,
 	userAgent string,
 	referer string,
 	force bool,

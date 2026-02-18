@@ -1,6 +1,7 @@
 package httpclient
 
 import (
+	"net/http"
 	"testing"
 	"time"
 
@@ -60,6 +61,39 @@ func TestNewTransport_HTTPProxy(t *testing.T) {
 
 	if transport.Proxy == nil {
 		t.Error("Expected proxy to be configured")
+	}
+}
+
+func TestNewTransport_HTTPProxyWithoutScheme(t *testing.T) {
+	proxyConfig := &config.ProxyConfig{
+		Enabled: true,
+		URL:     "proxy.example.com:8080",
+	}
+
+	transport, err := NewTransport(proxyConfig)
+	if err != nil {
+		t.Fatalf("NewTransport failed: %v", err)
+	}
+	if transport.Proxy == nil {
+		t.Fatal("Expected proxy to be configured")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, "https://example.com", nil)
+	if err != nil {
+		t.Fatalf("http.NewRequest failed: %v", err)
+	}
+	proxyURL, err := transport.Proxy(req)
+	if err != nil {
+		t.Fatalf("transport.Proxy failed: %v", err)
+	}
+	if proxyURL == nil {
+		t.Fatal("Expected resolved proxy URL")
+	}
+	if proxyURL.Scheme != "http" {
+		t.Errorf("Expected normalized proxy scheme http, got %q", proxyURL.Scheme)
+	}
+	if proxyURL.Host != "proxy.example.com:8080" {
+		t.Errorf("Expected normalized proxy host proxy.example.com:8080, got %q", proxyURL.Host)
 	}
 }
 
@@ -307,6 +341,11 @@ func TestSanitizeProxyURL_WithCredentials(t *testing.T) {
 		{
 			name:     "No credentials",
 			input:    "http://proxy.example.com:8080",
+			expected: "http://proxy.example.com:8080",
+		},
+		{
+			name:     "No scheme host only",
+			input:    "proxy.example.com:8080",
 			expected: "http://proxy.example.com:8080",
 		},
 		{

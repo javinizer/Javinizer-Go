@@ -75,13 +75,30 @@ func NewHTTPClientForDownloader(cfg *config.Config) (httpclient.HTTPClient, erro
 		clients: make(map[string]httpclient.HTTPClient),
 	}
 
-	// If download_proxy is explicitly configured, always use it.
-	if outputCfg.DownloadProxy.Enabled && outputCfg.DownloadProxy.URL != "" {
-		client, err := httpclient.NewHTTPClient(&outputCfg.DownloadProxy, timeoutDuration)
+	// Explicit download proxy override still takes precedence when configured.
+	if outputCfg.DownloadProxy.Enabled {
+		resolvedDownloadProxy := config.ResolveScraperProxy(cfg.Scrapers.Proxy, &outputCfg.DownloadProxy)
+		if resolvedDownloadProxy != nil && resolvedDownloadProxy.URL != "" {
+			client, err := httpclient.NewHTTPClient(resolvedDownloadProxy, timeoutDuration)
+			if err != nil {
+				logging.Errorf("Downloader: Failed to create download proxy client: %v, using adaptive routing", err)
+			} else {
+				logging.Infof("Downloader: Using download proxy %s", httpclient.SanitizeProxyURL(resolvedDownloadProxy.URL))
+				adaptiveClient.forceClient = client
+				return adaptiveClient, nil
+			}
+		}
+	}
+
+	// Default behavior: when global scraper proxy is enabled, use it for all downloads.
+	// Keep adaptive routing only when scraper-level download overrides are configured.
+	resolvedGlobalProxy := config.ResolveScraperProxy(cfg.Scrapers.Proxy, nil)
+	if resolvedGlobalProxy != nil && resolvedGlobalProxy.Enabled && resolvedGlobalProxy.URL != "" && !hasScraperDownloadProxyOverrides(cfg) {
+		client, err := httpclient.NewHTTPClient(resolvedGlobalProxy, timeoutDuration)
 		if err != nil {
-			logging.Errorf("Downloader: Failed to create download proxy client: %v, using direct client", err)
+			logging.Errorf("Downloader: Failed to create global download proxy client: %v, using adaptive routing", err)
 		} else {
-			logging.Infof("Downloader: Using download proxy %s", httpclient.SanitizeProxyURL(outputCfg.DownloadProxy.URL))
+			logging.Infof("Downloader: Using scrapers.proxy for all downloads via %s", httpclient.SanitizeProxyURL(resolvedGlobalProxy.URL))
 			adaptiveClient.forceClient = client
 			return adaptiveClient, nil
 		}
@@ -106,18 +123,30 @@ func NewHTTPClientForDownloader(cfg *config.Config) (httpclient.HTTPClient, erro
 	return adaptiveClient, nil
 }
 
+func hasScraperDownloadProxyOverrides(cfg *config.Config) bool {
+	if cfg == nil {
+		return false
+	}
+
+	return cfg.Scrapers.R18Dev.DownloadProxy != nil ||
+		cfg.Scrapers.DMM.DownloadProxy != nil ||
+		cfg.Scrapers.MGStage.DownloadProxy != nil ||
+		cfg.Scrapers.JavLibrary.DownloadProxy != nil ||
+		cfg.Scrapers.JavDB.DownloadProxy != nil
+}
+
 // adaptiveDownloaderHTTPClient routes media downloads through per-scraper proxies when needed.
 type adaptiveDownloaderHTTPClient struct {
 	timeout      time.Duration
 	cfg          *config.Config
-	forceClient  httpclient.HTTPClient // output.download_proxy, if configured
+	forceClient  httpclient.HTTPClient // forced proxy client for all downloads
 	directClient httpclient.HTTPClient
 	mu           sync.Mutex
 	clients      map[string]httpclient.HTTPClient // keyed by proxy fingerprint
 }
 
 func (c *adaptiveDownloaderHTTPClient) Do(req *http.Request) (*http.Response, error) {
-	// If explicit download_proxy is configured, always use it.
+	// If a force client is configured, always use it.
 	if c.forceClient != nil {
 		return c.forceClient.Do(req)
 	}
@@ -167,16 +196,13 @@ func (c *adaptiveDownloaderHTTPClient) selectProxyForRequest(req *http.Request) 
 }
 
 func (c *adaptiveDownloaderHTTPClient) resolveScraperDownloadProxy(downloadOverride, scraperProxy *config.ProxyConfig) *config.ProxyConfig {
-	// Explicit scraper-level download proxy configuration:
-	// - enabled=false => disable download proxy for this scraper
-	// - enabled=true + use_main_proxy=true => reuse scraper main proxy settings
-	// - enabled=true + explicit URL => use dedicated download proxy settings
-	if downloadOverride != nil {
-		if !downloadOverride.Enabled {
-			return nil
-		}
-
-		if downloadOverride.UseMainProxy {
+	// Scraper-level download proxy configuration:
+	// - When download_proxy.enabled=true, apply configured override.
+	// - Legacy compatibility: profile/url/use_main_proxy without enabled=true is still treated as override.
+	// - Otherwise, inherit scraper request proxy for downloads.
+	if hasConfiguredDownloadOverride(downloadOverride) {
+		overrideEnabled := downloadOverride.Enabled || hasLegacyDownloadOverrideFields(downloadOverride)
+		if !overrideEnabled {
 			resolved := config.ResolveScraperProxy(c.cfg.Scrapers.Proxy, scraperProxy)
 			if resolved != nil && resolved.Enabled && resolved.URL != "" {
 				return resolved
@@ -184,7 +210,18 @@ func (c *adaptiveDownloaderHTTPClient) resolveScraperDownloadProxy(downloadOverr
 			return nil
 		}
 
-		resolved := config.ResolveScraperProxy(c.cfg.Scrapers.Proxy, downloadOverride)
+		override := *downloadOverride
+		override.Enabled = true
+
+		if override.UseMainProxy {
+			resolved := config.ResolveScraperProxy(c.cfg.Scrapers.Proxy, scraperProxy)
+			if resolved != nil && resolved.Enabled && resolved.URL != "" {
+				return resolved
+			}
+			return nil
+		}
+
+		resolved := config.ResolveScraperProxy(c.cfg.Scrapers.Proxy, &override)
 		if resolved != nil && resolved.Enabled && resolved.URL != "" {
 			return resolved
 		}
@@ -197,6 +234,29 @@ func (c *adaptiveDownloaderHTTPClient) resolveScraperDownloadProxy(downloadOverr
 		return resolved
 	}
 	return nil
+}
+
+func hasConfiguredDownloadOverride(downloadOverride *config.ProxyConfig) bool {
+	if downloadOverride == nil {
+		return false
+	}
+	return downloadOverride.UseMainProxy ||
+		downloadOverride.Profile != "" ||
+		downloadOverride.URL != "" ||
+		downloadOverride.Username != "" ||
+		downloadOverride.Password != "" ||
+		downloadOverride.Enabled
+}
+
+func hasLegacyDownloadOverrideFields(downloadOverride *config.ProxyConfig) bool {
+	if downloadOverride == nil {
+		return false
+	}
+	return downloadOverride.UseMainProxy ||
+		downloadOverride.Profile != "" ||
+		downloadOverride.URL != "" ||
+		downloadOverride.Username != "" ||
+		downloadOverride.Password != ""
 }
 
 func (c *adaptiveDownloaderHTTPClient) getOrCreateProxyClient(proxyCfg *config.ProxyConfig) (httpclient.HTTPClient, error) {

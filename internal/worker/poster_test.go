@@ -11,6 +11,55 @@ import (
 	"github.com/javinizer/javinizer-go/internal/models"
 )
 
+func TestResolvePosterReferer(t *testing.T) {
+	tests := []struct {
+		name       string
+		url        string
+		configured string
+		expected   string
+	}{
+		{
+			name:       "javdb static host overrides configured referer",
+			url:        "https://c0.jdbstatic.com/samples/abc.jpg",
+			configured: "https://www.dmm.co.jp/",
+			expected:   "https://javdb.com/",
+		},
+		{
+			name:       "javdb host overrides configured referer",
+			url:        "https://javdb.com/covers/abc.jpg",
+			configured: "https://www.dmm.co.jp/",
+			expected:   "https://javdb.com/",
+		},
+		{
+			name:       "configured referer used for other hosts",
+			url:        "https://example.com/cover.jpg",
+			configured: "https://www.dmm.co.jp/",
+			expected:   "https://www.dmm.co.jp/",
+		},
+		{
+			name:       "origin fallback when configured referer empty",
+			url:        "https://images.example.com/cover.jpg",
+			configured: "",
+			expected:   "https://images.example.com/",
+		},
+		{
+			name:       "invalid URL falls back to configured referer",
+			url:        "://invalid",
+			configured: "https://www.dmm.co.jp/",
+			expected:   "https://www.dmm.co.jp/",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			referer := resolvePosterReferer(tt.url, tt.configured)
+			if referer != tt.expected {
+				t.Fatalf("resolvePosterReferer(%q, %q) = %q, want %q", tt.url, tt.configured, referer, tt.expected)
+			}
+		})
+	}
+}
+
 // TestGenerateCroppedPoster_Success tests successful poster generation
 func TestGenerateCroppedPoster_Success(t *testing.T) {
 	if testing.Short() {

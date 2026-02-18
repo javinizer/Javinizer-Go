@@ -3,13 +3,13 @@ package worker
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"path/filepath"
 	"time"
 
 	"github.com/javinizer/javinizer-go/internal/aggregator"
 	"github.com/javinizer/javinizer-go/internal/config"
 	"github.com/javinizer/javinizer-go/internal/database"
+	httpclientiface "github.com/javinizer/javinizer-go/internal/httpclient"
 	"github.com/javinizer/javinizer-go/internal/logging"
 	"github.com/javinizer/javinizer-go/internal/matcher"
 	"github.com/javinizer/javinizer-go/internal/models"
@@ -30,7 +30,7 @@ type BatchScrapeTask struct {
 	force             bool
 	updateMode        bool     // If true, merge with existing NFO data
 	selectedScrapers  []string // empty = use default
-	httpClient        *http.Client
+	httpClient        httpclientiface.HTTPClient
 	userAgent         string
 	referer           string
 	processedMovieIDs map[string]bool // Thread-safe tracking of processed movie IDs for poster deduplication
@@ -53,7 +53,7 @@ func NewBatchScrapeTask(
 	force bool,
 	updateMode bool,
 	selectedScrapers []string,
-	httpClient *http.Client,
+	httpClient httpclientiface.HTTPClient,
 	userAgent string,
 	referer string,
 	processedMovieIDs map[string]bool,

@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/javinizer/javinizer-go/internal/httpclient"
+	"github.com/javinizer/javinizer-go/internal/downloader"
 	"github.com/javinizer/javinizer-go/internal/logging"
 	"github.com/javinizer/javinizer-go/internal/nfo"
 	"github.com/javinizer/javinizer-go/internal/worker"
@@ -90,12 +90,8 @@ func rescrapeBatchMovie(deps *ServerDependencies) gin.HandlerFunc {
 		// Get configuration
 		cfg := deps.GetConfig()
 
-		// Create HTTP client for poster downloads
-		requestTimeout := time.Duration(cfg.Scrapers.RequestTimeoutSeconds) * time.Second
-		if requestTimeout <= 0 {
-			requestTimeout = 30 * time.Second
-		}
-		httpClient, err := httpclient.NewHTTPClient(&cfg.Scrapers.Proxy, requestTimeout)
+		// Create HTTP client for poster downloads with scraper-level download proxy support.
+		httpClient, err := downloader.NewHTTPClientForDownloader(cfg)
 		if err != nil {
 			logging.Warnf("Failed to create HTTP client for poster downloads: %v", err)
 			httpClient = nil // Continue without poster generation

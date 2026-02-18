@@ -5,12 +5,15 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/afero"
 
 	"github.com/javinizer/javinizer-go/internal/config"
+	httpclientiface "github.com/javinizer/javinizer-go/internal/httpclient"
 	imageutil "github.com/javinizer/javinizer-go/internal/image"
 	"github.com/javinizer/javinizer-go/internal/logging"
 	"github.com/javinizer/javinizer-go/internal/models"
@@ -35,7 +38,7 @@ func GenerateTempPoster(
 	ctx context.Context,
 	jobID string,
 	movie *models.Movie,
-	httpClient *http.Client,
+	httpClient httpclientiface.HTTPClient,
 	userAgent string,
 	referer string,
 ) (tempRelativeURL string, err error) {
@@ -69,9 +72,10 @@ func GenerateTempPoster(
 	if userAgent != "" {
 		req.Header.Set("User-Agent", userAgent)
 	}
-	// Set Referer header for CDN compatibility (DMM/R18 require it)
-	if referer != "" {
-		req.Header.Set("Referer", referer)
+	// Set Referer header for CDN compatibility.
+	// Some CDNs (e.g., JavDB static assets) require site-specific referers.
+	if effectiveReferer := resolvePosterReferer(originalPosterURL, referer); effectiveReferer != "" {
+		req.Header.Set("Referer", effectiveReferer)
 	}
 
 	resp, err := httpClient.Do(req)
@@ -156,7 +160,7 @@ func GenerateTempPoster(
 func GenerateCroppedPoster(
 	ctx context.Context,
 	movie *models.Movie,
-	httpClient *http.Client,
+	httpClient httpclientiface.HTTPClient,
 	userAgent string,
 	referer string,
 ) (croppedURL string, err error) {
@@ -189,8 +193,8 @@ func GenerateCroppedPoster(
 	if userAgent != "" {
 		req.Header.Set("User-Agent", userAgent)
 	}
-	if referer != "" {
-		req.Header.Set("Referer", referer)
+	if effectiveReferer := resolvePosterReferer(originalPosterURL, referer); effectiveReferer != "" {
+		req.Header.Set("Referer", effectiveReferer)
 	}
 
 	resp, err := httpClient.Do(req)
@@ -268,4 +272,32 @@ func GenerateCroppedPoster(
 		movie.ID, croppedPath, originalPosterURL)
 
 	return croppedURL, nil
+}
+
+// resolvePosterReferer chooses the most compatible Referer for poster downloads.
+// Priority:
+// 1) Known host overrides (e.g., JavDB static hosts require javdb referer)
+// 2) Configured referer
+// 3) URL origin fallback
+func resolvePosterReferer(downloadURL, configuredReferer string) string {
+	parsedURL, err := url.Parse(downloadURL)
+	if err != nil {
+		return configuredReferer
+	}
+
+	host := strings.ToLower(parsedURL.Hostname())
+	switch {
+	case strings.HasSuffix(host, "jdbstatic.com"), strings.HasSuffix(host, "javdb.com"):
+		return "https://javdb.com/"
+	}
+
+	if configuredReferer != "" {
+		return configuredReferer
+	}
+
+	if (parsedURL.Scheme == "http" || parsedURL.Scheme == "https") && parsedURL.Host != "" {
+		return parsedURL.Scheme + "://" + parsedURL.Host + "/"
+	}
+
+	return ""
 }
