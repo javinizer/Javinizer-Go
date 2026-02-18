@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { flip } from 'svelte/animate';
+	import { cubicOut } from 'svelte/easing';
 	import { apiClient } from '$lib/api/client';
 	import { formatBytes } from '$lib/utils';
 	import type { FileInfo, BrowseResponse } from '$lib/api/types';
@@ -480,12 +482,13 @@
 				</button>
 			</div>
 		{:else}
-			{#each sortedAndFilteredItems() as item}
-				{#if item.is_dir}
+			{#each sortedAndFilteredItems() as item (item.path)}
+				<div animate:flip={{ duration: 220, easing: cubicOut }}>
+					{#if item.is_dir}
 					<!-- Directories are always clickable -->
 					<button
 						onclick={() => handleItemClick(item)}
-						class="w-full flex items-center gap-3 p-3 rounded-lg transition-all duration-200 cursor-pointer
+						class="group w-full flex items-center gap-3 p-3 rounded-lg transition-all duration-200 cursor-pointer
 							border-2 border-transparent hover:border-accent hover:bg-accent/50 hover:shadow-md"
 					>
 						<Folder class="h-5 w-5 text-blue-500 transition-transform group-hover:scale-110" />
@@ -516,11 +519,11 @@
 							</div>
 						</div>
 					</div>
-				{:else}
+					{:else}
 					<!-- Files in normal mode: selectable -->
 					<button
 						onclick={() => handleItemClick(item)}
-						class="w-full flex items-center gap-3 p-3 rounded-lg transition-all duration-200 cursor-pointer
+						class="group w-full flex items-center gap-3 p-3 rounded-lg transition-all duration-200 cursor-pointer
 							{selectedFilesSet.has(item.path)
 								? 'bg-primary/10 border-2 border-primary shadow-sm'
 								: 'border-2 border-transparent hover:border-accent hover:bg-accent/50 hover:shadow-md'}"
@@ -547,7 +550,8 @@
 							</div>
 						</div>
 					</button>
-				{/if}
+					{/if}
+				</div>
 			{/each}
 		{/if}
 	</div>

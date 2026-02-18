@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
+	import { cubicOut } from 'svelte/easing';
+	import { fly, slide } from 'svelte/transition';
 	import { apiClient } from '$lib/api/client';
 	import type { BatchJobResponse } from '$lib/api/types';
 	import { Loader2, X, ChevronUp, ChevronDown } from 'lucide-svelte';
@@ -53,7 +55,11 @@
 </script>
 
 {#if job}
-	<div class="fixed bottom-4 right-4 z-40 bg-primary text-primary-foreground rounded-lg shadow-lg hover:shadow-xl transition-all animate-slide-up">
+	<div
+		class="fixed bottom-4 right-4 z-40 bg-primary text-primary-foreground rounded-lg shadow-lg hover:shadow-xl transition-all"
+		in:fly|local={{ y: 24, duration: 240, easing: cubicOut }}
+		out:fly|local={{ y: 24, duration: 180, easing: cubicOut }}
+	>
 		<button
 			onclick={onReopen}
 			class="flex items-center gap-3 px-4 py-3 w-full text-left hover:bg-white/5 rounded-t-lg transition-colors"
@@ -107,7 +113,7 @@
 		</div>
 
 		{#if expanded}
-			<div class="border-t border-white/20 px-4 py-3 text-left">
+			<div class="border-t border-white/20 px-4 py-3 text-left" transition:slide|local={{ duration: 180, easing: cubicOut }}>
 				<div class="space-y-2">
 					<div class="flex items-center justify-between text-xs">
 						<span class="opacity-75">Progress</span>
@@ -129,20 +135,3 @@
 		{/if}
 	</div>
 {/if}
-
-<style>
-	@keyframes slide-up {
-		from {
-			transform: translateY(100%);
-			opacity: 0;
-		}
-		to {
-			transform: translateY(0);
-			opacity: 1;
-		}
-	}
-
-	.animate-slide-up {
-		animation: slide-up 0.3s ease-out;
-	}
-</style>

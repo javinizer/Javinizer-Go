@@ -1,5 +1,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { flip } from 'svelte/animate';
+	import { quintOut } from 'svelte/easing';
+	import { fade, slide } from 'svelte/transition';
 	import { apiClient } from '$lib/api/client';
 	import type { ScraperOption } from '$lib/api/types';
 	import { Save, RefreshCw, AlertCircle, ArrowLeft, CheckCircle2, X, GripVertical, ChevronUp, ChevronDown, ChevronRight } from 'lucide-svelte';
@@ -144,6 +147,16 @@
 	function onScraperRowKeydown(event: KeyboardEvent, index: number): void {
 		if (event.key !== 'Enter' && event.key !== ' ') return;
 		event.preventDefault();
+		toggleScraperRow(index);
+	}
+
+	function isInteractiveRowTarget(target: EventTarget | null): boolean {
+		if (!(target instanceof Element)) return false;
+		return !!target.closest('button, input, select, textarea, a, label');
+	}
+
+	function onScraperRowClick(event: MouseEvent, index: number): void {
+		if (isInteractiveRowTarget(event.target)) return;
 		toggleScraperRow(index);
 	}
 
@@ -729,14 +742,17 @@
 					<div>
 						<span class="block text-sm font-medium mb-2">Available Scrapers</span>
 						<div class="space-y-2">
-							{#each scrapers as scraper, index}
-								<div class="rounded-lg border {scraper.enabled ? 'bg-background' : 'bg-muted/30'}">
+							{#each scrapers as scraper, index (scraper.name)}
+								<div
+									class="rounded-lg border {scraper.enabled ? 'bg-background' : 'bg-muted/30'}"
+									animate:flip={{ duration: 250, easing: quintOut }}
+								>
 									<!-- Main scraper row -->
 									<div
 										class="flex items-center gap-3 p-3 {scraper.enabled && scraperHasOptions(scraper) ? 'cursor-pointer hover:bg-muted/30' : ''}"
 										role="button"
 										tabindex="0"
-										onclick={() => toggleScraperRow(index)}
+										onclick={(event) => onScraperRowClick(event, index)}
 										onkeydown={(e) => onScraperRowKeydown(e, index)}
 									>
 										<!-- Checkbox -->
@@ -766,10 +782,7 @@
 											<Button
 												variant="ghost"
 												size="icon"
-												onclick={(e) => {
-													e.stopPropagation();
-													toggleExpanded(index);
-												}}
+												onclick={() => toggleExpanded(index)}
 												class="h-8 w-8"
 											>
 												{#snippet children()}
@@ -785,8 +798,8 @@
 
 									<!-- Collapsible options section - dynamically rendered -->
 									{#if scraper.enabled && scraper.expanded && scraper.options.length > 0}
-										<div class="px-3 pb-3 pt-0 border-t bg-muted/20">
-											<div class="pl-8 py-3 space-y-3">
+										<div class="px-3 pb-3 pt-0 border-t bg-muted/20" transition:slide|local={{ duration: 220, easing: quintOut }}>
+											<div class="pl-8 py-3 space-y-3" in:fade|local={{ duration: 170 }}>
 												<h4 class="text-sm font-medium">{scraper.displayName} Options</h4>
 												{#each scraper.options as option}
 													{@const optionDisabled = isOptionDisabled(scraper.name, option.key)}

@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/stores';
+	import { cubicOut } from 'svelte/easing';
+	import { fly } from 'svelte/transition';
 	import { Home, FolderOpen, Settings, History, Film } from 'lucide-svelte';
 
 	const navItems = [
@@ -12,7 +14,10 @@
 	const currentPath = $derived($page.url.pathname);
 </script>
 
-<nav class="sticky top-0 z-50 border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80">
+<nav
+	class="sticky top-0 z-50 border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80"
+	in:fly|local={{ y: -10, duration: 220, easing: cubicOut }}
+>
 	<div class="container mx-auto px-4">
 		<div class="flex items-center justify-between h-16">
 			<!-- Logo -->
@@ -27,10 +32,10 @@
 					{@const Icon = item.icon}
 					<a
 						href={item.href}
-						class="flex items-center gap-2 px-4 py-2 rounded-md transition-colors {currentPath ===
+						class="flex items-center gap-2 px-4 py-2 rounded-md transition-all duration-200 {currentPath ===
 						item.href
-							? 'bg-primary text-primary-foreground'
-							: 'hover:bg-accent'}"
+							? 'bg-primary text-primary-foreground shadow-sm -translate-y-0.5'
+							: 'hover:bg-accent hover:-translate-y-px'}"
 					>
 						<Icon class="h-4 w-4" />
 						<span class="hidden md:inline">{item.label}</span>

@@ -1,5 +1,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { flip } from 'svelte/animate';
+	import { quintOut } from 'svelte/easing';
+	import { fade, fly } from 'svelte/transition';
 	import {
 		Calendar,
 		CheckCircle,
@@ -175,22 +178,30 @@
 		<!-- Stats Cards -->
 		{#if stats}
 			<div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-				<Card class="p-4">
-					<div class="text-2xl font-bold">{stats.total}</div>
-					<div class="text-sm text-muted-foreground">Total Operations</div>
-				</Card>
-				<Card class="p-4">
-					<div class="text-2xl font-bold text-green-600">{stats.success}</div>
-					<div class="text-sm text-muted-foreground">Successful</div>
-				</Card>
-				<Card class="p-4">
-					<div class="text-2xl font-bold text-red-600">{stats.failed}</div>
-					<div class="text-sm text-muted-foreground">Failed</div>
-				</Card>
-				<Card class="p-4">
-					<div class="text-2xl font-bold text-yellow-600">{stats.reverted}</div>
-					<div class="text-sm text-muted-foreground">Reverted</div>
-				</Card>
+				<div in:fly|local={{ y: 8, duration: 200, easing: quintOut }}>
+					<Card class="p-4">
+						<div class="text-2xl font-bold">{stats.total}</div>
+						<div class="text-sm text-muted-foreground">Total Operations</div>
+					</Card>
+				</div>
+				<div in:fly|local={{ y: 8, duration: 220, easing: quintOut }}>
+					<Card class="p-4">
+						<div class="text-2xl font-bold text-green-600">{stats.success}</div>
+						<div class="text-sm text-muted-foreground">Successful</div>
+					</Card>
+				</div>
+				<div in:fly|local={{ y: 8, duration: 240, easing: quintOut }}>
+					<Card class="p-4">
+						<div class="text-2xl font-bold text-red-600">{stats.failed}</div>
+						<div class="text-sm text-muted-foreground">Failed</div>
+					</Card>
+				</div>
+				<div in:fly|local={{ y: 8, duration: 260, easing: quintOut }}>
+					<Card class="p-4">
+						<div class="text-2xl font-bold text-yellow-600">{stats.reverted}</div>
+						<div class="text-sm text-muted-foreground">Reverted</div>
+					</Card>
+				</div>
 			</div>
 
 			<!-- Operation breakdown -->
@@ -294,7 +305,8 @@
 		{:else}
 			<div class="space-y-3">
 				{#each history as item (item.id)}
-					<Card class="p-4 hover:shadow-md transition-shadow">
+					<div animate:flip={{ duration: 240, easing: quintOut }} in:fade|local={{ duration: 170 }} out:fade|local={{ duration: 120 }}>
+						<Card class="p-4 hover:shadow-md transition-shadow">
 						<div class="flex items-start justify-between">
 							<div class="flex-1">
 								<div class="flex items-center gap-3 mb-2">
@@ -398,7 +410,8 @@
 								{/if}
 							</div>
 						</div>
-					</Card>
+						</Card>
+					</div>
 				{/each}
 			</div>
 

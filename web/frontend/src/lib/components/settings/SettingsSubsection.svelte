@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { cubicOut } from 'svelte/easing';
+	import { fade, fly } from 'svelte/transition';
 	import type { Snippet } from 'svelte';
 
 	interface Props {
@@ -14,7 +16,11 @@
 	}: Props = $props();
 </script>
 
-<div class="settings-subsection mt-6 first:mt-0">
+<div
+	class="settings-subsection mt-6 first:mt-0"
+	in:fly|local={{ y: 6, duration: 220, easing: cubicOut }}
+	out:fade|local={{ duration: 140 }}
+>
 	<div class="subsection-header mb-4">
 		<h4 class="text-base font-semibold text-foreground">{title}</h4>
 		{#if description}

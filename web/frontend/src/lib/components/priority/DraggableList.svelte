@@ -1,5 +1,8 @@
 <script lang="ts">
+	import { flip } from 'svelte/animate';
+	import { cubicOut } from 'svelte/easing';
 	import { GripVertical } from 'lucide-svelte';
+	import { fade, fly } from 'svelte/transition';
 	import type { Snippet } from 'svelte';
 
 	interface Props {
@@ -70,10 +73,13 @@
 <div class="space-y-2">
 	{#each items as item, index (item)}
 		<div
+			animate:flip={{ duration: 240, easing: cubicOut }}
+			in:fly|local={{ y: 8, duration: 180, easing: cubicOut }}
+			out:fade|local={{ duration: 120 }}
 			class="flex items-center gap-2 p-3 bg-background border rounded-lg transition-all {draggedIndex ===
 			index
-				? 'opacity-50'
-				: ''} {dragOverIndex === index ? 'border-primary' : ''} {disabled
+				? 'opacity-45 scale-[0.99]'
+				: ''} {dragOverIndex === index ? 'border-primary bg-primary/5 shadow-sm scale-[1.01]' : ''} {disabled
 				? 'cursor-not-allowed opacity-60'
 				: 'hover:border-primary/50'}"
 			draggable={!disabled}

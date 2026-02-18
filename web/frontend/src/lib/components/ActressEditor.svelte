@@ -1,4 +1,7 @@
 <script lang="ts">
+	import { flip } from 'svelte/animate';
+	import { quintOut } from 'svelte/easing';
+	import { fade, scale } from 'svelte/transition';
 	import type { Movie, Actress } from '$lib/api/types';
 	import Button from './ui/Button.svelte';
 	import Card from './ui/Card.svelte';
@@ -166,8 +169,9 @@
 		</div>
 	{:else}
 		<div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-			{#each actresses as actress, index}
-				<Card class="p-3 hover:shadow-md transition-shadow">
+			{#each actresses as actress, index (actress.id || `${actress.first_name}-${actress.last_name}-${actress.japanese_name}-${index}`)}
+				<div animate:flip={{ duration: 220, easing: quintOut }}>
+					<Card class="p-3 hover:shadow-md transition-shadow">
 					<div class="space-y-2">
 						{#if actress.thumb_url}
 							<img
@@ -216,7 +220,8 @@
 							</Button>
 						</div>
 					</div>
-				</Card>
+					</Card>
+				</div>
 			{/each}
 		</div>
 	{/if}
@@ -224,8 +229,9 @@
 
 <!-- Edit/Add Actress Modal -->
 {#if showEditModal}
-	<div class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-		<Card class="w-full max-w-2xl flex flex-col max-h-[90vh]">
+	<div class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" in:fade|local={{ duration: 140 }} out:fade|local={{ duration: 120 }}>
+		<div in:scale|local={{ start: 0.97, duration: 180, easing: quintOut }} out:scale|local={{ start: 1, opacity: 0.75, duration: 130, easing: quintOut }} class="w-full max-w-2xl">
+			<Card class="w-full flex flex-col max-h-[90vh]">
 			<!-- Header -->
 			<div class="p-6 border-b flex items-center justify-between">
 				<h2 class="text-xl font-bold">
@@ -407,6 +413,7 @@
 					{/snippet}
 				</Button>
 			</div>
-		</Card>
+			</Card>
+		</div>
 	</div>
 {/if}

@@ -1,5 +1,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { flip } from 'svelte/animate';
+	import { quintOut } from 'svelte/easing';
+	import { fade, scale, slide } from 'svelte/transition';
 	import FileBrowser from '$lib/components/FileBrowser.svelte';
 	import ProgressModal from '$lib/components/ProgressModal.svelte';
 	import BackgroundJobIndicator from '$lib/components/BackgroundJobIndicator.svelte';
@@ -298,6 +301,7 @@
 
 	<!-- Merge Strategy Selection (only shown in update mode) -->
 	{#if operationMode === 'update'}
+		<div transition:slide|local={{ duration: 220, easing: quintOut }}>
 		<Card class="p-4">
 			<div class="space-y-4">
 				<div>
@@ -400,10 +404,12 @@
 				</div>
 			</div>
 		</Card>
+		</div>
 	{/if}
-		<!-- Destination Folder (only shown in scrape mode) -->
-		{#if operationMode === 'scrape'}
-			<Card class="p-4">
+	<!-- Destination Folder (only shown in scrape mode) -->
+	{#if operationMode === 'scrape'}
+		<div transition:slide|local={{ duration: 220, easing: quintOut }}>
+		<Card class="p-4">
 				<div class="space-y-3">
 					<div class="flex items-center gap-2">
 						<FolderOutput class="h-5 w-5 text-primary" />
@@ -432,11 +438,13 @@
 					</p>
 				</div>
 			</Card>
+		</div>
 		{/if}
 
-		<!-- Selected Files List -->
-		{#if selectedFiles.length > 0}
-			<Card class="p-4">
+	<!-- Selected Files List -->
+	{#if selectedFiles.length > 0}
+		<div transition:fade|local={{ duration: 180 }}>
+		<Card class="p-4">
 				<div class="space-y-3">
 					<div class="flex items-center justify-between">
 						<div class="flex items-center gap-2">
@@ -461,33 +469,36 @@
 
 					<!-- Files List -->
 					<div class="max-h-60 overflow-y-auto space-y-1 border rounded-md p-2 bg-accent/20">
-						{#each selectedFiles as filePath}
+						{#each selectedFiles as filePath (filePath)}
 							{@const fileName = filePath.split('/').pop()}
 							{@const dirPath = filePath.substring(0, filePath.lastIndexOf('/'))}
-							<div
-								class="flex items-center justify-between bg-background px-3 py-2 rounded border hover:border-primary transition-colors group"
-							>
-								<div class="flex-1 min-w-0">
-									<div class="font-medium text-sm truncate" title={fileName}>{fileName}</div>
-									<div class="text-xs text-muted-foreground truncate" title={dirPath}>
-										{dirPath}
-									</div>
-								</div>
-								<button
-									onclick={(e) => {
-										e.stopPropagation();
-										selectedFiles = selectedFiles.filter((f) => f !== filePath);
-									}}
-									class="ml-2 px-2 py-1 text-destructive hover:bg-destructive/10 rounded transition-colors opacity-0 group-hover:opacity-100"
-									title="Remove"
+							<div animate:flip={{ duration: 220, easing: quintOut }}>
+								<div
+									class="flex items-center justify-between bg-background px-3 py-2 rounded border hover:border-primary transition-colors group"
 								>
-									×
-								</button>
+									<div class="flex-1 min-w-0">
+										<div class="font-medium text-sm truncate" title={fileName}>{fileName}</div>
+										<div class="text-xs text-muted-foreground truncate" title={dirPath}>
+											{dirPath}
+										</div>
+									</div>
+									<button
+										onclick={(e) => {
+											e.stopPropagation();
+											selectedFiles = selectedFiles.filter((f) => f !== filePath);
+										}}
+										class="ml-2 px-2 py-1 text-destructive hover:bg-destructive/10 rounded transition-colors opacity-0 group-hover:opacity-100"
+										title="Remove"
+									>
+										×
+									</button>
+								</div>
 							</div>
 						{/each}
 					</div>
 				</div>
 			</Card>
+		</div>
 		{/if}
 
 		<!-- File Browser -->
@@ -522,7 +533,7 @@
 <div class="fixed bottom-0 left-0 right-0 bg-background border-t shadow-lg z-40">
 	<!-- Expandable Options Panel -->
 	{#if showOptionsPanel}
-		<div class="border-b bg-accent/20">
+		<div class="border-b bg-accent/20" transition:slide|local={{ duration: 180, easing: quintOut }}>
 			<div class="container mx-auto px-4 py-4 max-w-7xl">
 				<div class="flex items-center justify-between mb-3">
 					<h3 class="text-sm font-semibold">Options</h3>
@@ -565,7 +576,7 @@
 
 				<!-- Scraper Selector (if enabled) -->
 				{#if showScraperSelector}
-					<div class="mt-4 pt-4 border-t">
+					<div class="mt-4 pt-4 border-t" transition:fade|local={{ duration: 160 }}>
 						<ScraperSelector scrapers={availableScrapers} bind:selected={selectedScrapers} />
 					</div>
 				{/if}
@@ -663,8 +674,8 @@
 
 <!-- Destination Browser Modal -->
 {#if showDestinationBrowser}
-	<div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-		<div class="bg-background rounded-lg shadow-xl max-w-4xl w-full max-h-[80vh] flex flex-col">
+	<div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" in:fade|local={{ duration: 140 }} out:fade|local={{ duration: 120 }}>
+		<div class="bg-background rounded-lg shadow-xl max-w-4xl w-full max-h-[80vh] flex flex-col" in:scale|local={{ start: 0.97, duration: 180, easing: quintOut }} out:scale|local={{ start: 1, opacity: 0.7, duration: 140, easing: quintOut }}>
 			<!-- Modal Header -->
 			<div class="p-6 border-b flex items-center justify-between">
 				<div>

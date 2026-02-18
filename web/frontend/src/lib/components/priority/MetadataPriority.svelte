@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { cubicOut } from 'svelte/easing';
+	import { fade, fly, slide } from 'svelte/transition';
 	import { X, Info } from 'lucide-svelte';
 	import Card from '../ui/Card.svelte';
 	import Button from '../ui/Button.svelte';
@@ -274,7 +276,7 @@
 
 		<!-- Advanced Mode: Per-Field Overrides -->
 		{#if mode === 'advanced'}
-			<div class="space-y-4">
+			<div class="space-y-4" transition:slide|local={{ duration: 220, easing: cubicOut }}>
 				<div class="flex items-center justify-between">
 					<h3 class="text-sm font-medium">Per-Field Overrides</h3>
 					<label class="flex items-center gap-2 text-sm">
@@ -283,22 +285,24 @@
 					</label>
 				</div>
 
-				{#each Object.entries(groupedFields()) as [category, fields]}
-					<div class="space-y-2">
+				{#each Object.entries(groupedFields()) as [category, fields] (category)}
+					<div class="space-y-2" in:fly|local={{ y: 6, duration: 180, easing: cubicOut }} out:fade|local={{ duration: 120 }}>
 						<h4 class="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
 							{category}
 						</h4>
 						<div class="space-y-2">
-							{#each fields as field}
-								<FieldRow
-									fieldName={field.key}
-									fieldLabel={field.label}
-									priority={getFieldPriority(field.key)}
-									globalPriority={getGlobalPriority()}
-									isOverridden={isFieldOverridden(field.key)}
-									onEdit={() => openFieldEditor(field.key)}
-									onReset={() => resetFieldToGlobal(field.key)}
-								/>
+							{#each fields as field (field.key)}
+								<div in:fade|local={{ duration: 160 }} out:fade|local={{ duration: 110 }}>
+									<FieldRow
+										fieldName={field.key}
+										fieldLabel={field.label}
+										priority={getFieldPriority(field.key)}
+										globalPriority={getGlobalPriority()}
+										isOverridden={isFieldOverridden(field.key)}
+										onEdit={() => openFieldEditor(field.key)}
+										onReset={() => resetFieldToGlobal(field.key)}
+									/>
+								</div>
 							{/each}
 						</div>
 					</div>

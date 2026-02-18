@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { flip } from 'svelte/animate';
+	import { quintOut } from 'svelte/easing';
 	import type { Movie } from '$lib/api/types';
 	import Button from './ui/Button.svelte';
 	import Card from './ui/Card.svelte';
@@ -252,8 +254,9 @@
 			</div>
 		{:else}
 			<div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-				{#each screenshots as url, index}
-					<Card class="p-2 group relative">
+				{#each screenshots as url, index (`${url}-${index}`)}
+					<div animate:flip={{ duration: 220, easing: quintOut }}>
+						<Card class="p-2 group relative">
 						<button
 							onclick={() => openViewer(index)}
 							class="w-full cursor-pointer hover:opacity-80 transition-opacity"
@@ -282,7 +285,8 @@
 								{/snippet}
 							</Button>
 						</div>
-					</Card>
+						</Card>
+					</div>
 				{/each}
 			</div>
 		{/if}

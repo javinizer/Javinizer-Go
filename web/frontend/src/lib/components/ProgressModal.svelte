@@ -1,5 +1,8 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
+	import { flip } from 'svelte/animate';
+	import { cubicOut } from 'svelte/easing';
+	import { fade, scale, slide } from 'svelte/transition';
 	import { goto } from '$app/navigation';
 	import { apiClient } from '$lib/api/client';
 	import { websocketStore } from '$lib/stores/websocket';
@@ -156,8 +159,9 @@
 </script>
 
 <!-- Modal Overlay -->
-<div class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 animate-fade-in">
-	<Card class="w-full max-w-3xl max-h-[85vh] overflow-hidden flex flex-col animate-scale-in">
+<div class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" in:fade|local={{ duration: 150 }} out:fade|local={{ duration: 120 }}>
+	<div in:scale|local={{ start: 0.97, duration: 190, easing: cubicOut }} out:scale|local={{ start: 1, opacity: 0.75, duration: 140, easing: cubicOut }} class="w-full max-w-3xl">
+	<Card class="w-full max-h-[85vh] overflow-hidden flex flex-col">
 		<!-- Header -->
 		<div class="flex items-center justify-between p-6 border-b">
 			<div class="flex items-center gap-3">
@@ -248,8 +252,8 @@
 							Processing ({activeFiles.length})
 						</h3>
 						<div class="space-y-2">
-							{#each activeFiles as result, index}
-								<div class="active-file border-2 rounded-lg p-3 bg-blue-50/50" style="animation-delay: {index * 0.2}s">
+							{#each activeFiles as result, index (result.file_path)}
+								<div animate:flip={{ duration: 220, easing: cubicOut }} class="active-file border-2 rounded-lg p-3 bg-blue-50/50" style="animation-delay: {index * 0.2}s">
 									<div class="flex items-start gap-3">
 										<Loader2 class="h-5 w-5 text-blue-600 animate-spin mt-0.5 flex-shrink-0" />
 										<div class="flex-1 min-w-0">
@@ -282,8 +286,8 @@
 							Queued ({queuedFiles.length})
 						</h3>
 						<div class="space-y-1">
-							{#each queuedFiles.slice(0, 5) as filePath}
-								<div class="flex items-center gap-2 p-2 rounded bg-gray-50 text-sm">
+							{#each queuedFiles.slice(0, 5) as filePath (filePath)}
+								<div animate:flip={{ duration: 180, easing: cubicOut }} class="flex items-center gap-2 p-2 rounded bg-gray-50 text-sm">
 									<div class="h-2 w-2 rounded-full bg-gray-400 flex-shrink-0"></div>
 									<div class="text-gray-700 truncate">
 										{getFileDisplayName(filePath)}
@@ -319,9 +323,9 @@
 							{/if}
 						</button>
 						{#if showCompleted}
-							<div class="space-y-1 pl-4 max-h-60 overflow-y-auto">
-								{#each completedFiles as result}
-									<div class="flex items-start gap-2 p-2 rounded bg-green-50/50 text-sm">
+							<div class="space-y-1 pl-4 max-h-60 overflow-y-auto" transition:slide|local={{ duration: 180, easing: cubicOut }}>
+								{#each completedFiles as result (result.file_path)}
+									<div animate:flip={{ duration: 180, easing: cubicOut }} class="flex items-start gap-2 p-2 rounded bg-green-50/50 text-sm">
 										<CheckCircle class="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
 										<div class="flex-1 min-w-0">
 											<div class="font-medium text-green-900 truncate">
@@ -358,9 +362,9 @@
 							{/if}
 						</button>
 						{#if showFailed}
-							<div class="space-y-1 pl-4 max-h-60 overflow-y-auto">
-								{#each failedFiles as result}
-									<div class="flex items-start gap-2 p-2 rounded bg-red-50/50 text-sm">
+							<div class="space-y-1 pl-4 max-h-60 overflow-y-auto" transition:slide|local={{ duration: 180, easing: cubicOut }}>
+								{#each failedFiles as result (result.file_path)}
+									<div animate:flip={{ duration: 180, easing: cubicOut }} class="flex items-start gap-2 p-2 rounded bg-red-50/50 text-sm">
 										<XCircle class="h-4 w-4 text-red-600 mt-0.5 flex-shrink-0" />
 										<div class="flex-1 min-w-0">
 											<div class="font-medium text-red-900 truncate">
@@ -438,29 +442,10 @@
 			{/if}
 		</div>
 	</Card>
+	</div>
 </div>
 
 <style>
-	@keyframes fade-in {
-		from {
-			opacity: 0;
-		}
-		to {
-			opacity: 1;
-		}
-	}
-
-	@keyframes scale-in {
-		from {
-			transform: scale(0.95);
-			opacity: 0;
-		}
-		to {
-			transform: scale(1);
-			opacity: 1;
-		}
-	}
-
 	@keyframes pulse-border {
 		0%, 100% {
 			border-color: rgb(37 99 235);
@@ -470,14 +455,6 @@
 			border-color: rgb(96 165 250);
 			box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.1);
 		}
-	}
-
-	.animate-fade-in {
-		animation: fade-in 0.2s ease-out;
-	}
-
-	:global(.animate-scale-in) {
-		animation: scale-in 0.3s ease-out;
 	}
 
 	.active-file {

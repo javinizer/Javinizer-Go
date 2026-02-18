@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { ChevronDown, ChevronRight } from 'lucide-svelte';
+	import { cubicOut } from 'svelte/easing';
+	import { fade, fly, slide } from 'svelte/transition';
 	import type { Snippet } from 'svelte';
 
 	interface Props {
@@ -32,7 +34,10 @@
 	}
 </script>
 
-<section class="settings-section mb-6 border border-border rounded-lg bg-card overflow-hidden">
+<section
+	class="settings-section mb-6 border border-border rounded-lg bg-card overflow-hidden"
+	in:fly|local={{ y: 10, duration: 240, easing: cubicOut }}
+>
 	<button
 		type="button"
 		class="section-header w-full flex items-start gap-3 p-4 hover:bg-accent/50 transition-colors cursor-pointer text-left {expanded ? 'border-b border-border' : ''}"
@@ -55,8 +60,10 @@
 	</button>
 
 	{#if expanded}
-		<div class="section-content p-4">
-			{@render children()}
+		<div class="section-collapse" transition:slide|local={{ duration: 220, easing: cubicOut }}>
+			<div class="section-content p-4" in:fade|local={{ duration: 180 }}>
+				{@render children()}
+			</div>
 		</div>
 	{/if}
 </section>

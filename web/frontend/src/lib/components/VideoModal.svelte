@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { cubicOut } from 'svelte/easing';
+	import { fade, scale } from 'svelte/transition';
 	import { X } from 'lucide-svelte';
 
 	interface Props {
@@ -37,10 +39,19 @@
 			onclick={close}
 			class="absolute inset-0 bg-black/90 cursor-default"
 			aria-label="Close video modal"
+			in:fade|local={{ duration: 140 }}
+			out:fade|local={{ duration: 120 }}
 		></button>
 
 		<!-- Modal content -->
-		<div class="relative w-full max-w-4xl z-10" role="dialog" aria-modal="true" tabindex="-1">
+		<div
+			class="relative w-full max-w-4xl z-10"
+			role="dialog"
+			aria-modal="true"
+			tabindex="-1"
+			in:scale|local={{ start: 0.97, duration: 180, easing: cubicOut }}
+			out:scale|local={{ start: 1, opacity: 0.6, duration: 130, easing: cubicOut }}
+		>
 			<!-- Close Button -->
 			<button
 				onclick={close}

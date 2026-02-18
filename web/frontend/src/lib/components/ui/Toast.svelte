@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { cubicOut } from 'svelte/easing';
+	import { fly } from 'svelte/transition';
 	import { CheckCircle, X, AlertCircle, Info, XCircle } from 'lucide-svelte';
 
 	interface Props {
@@ -62,7 +64,9 @@
 </script>
 
 <div
-	class="flex items-start gap-3 p-4 rounded-lg border shadow-lg min-w-[300px] max-w-md animate-slide-in {styles[
+	in:fly|local={{ x: 32, duration: 260, easing: cubicOut }}
+	out:fly|local={{ x: 32, duration: 180, easing: cubicOut }}
+	class="flex items-start gap-3 p-4 rounded-lg border shadow-lg min-w-[300px] max-w-md {styles[
 		type
 	]}"
 	role="alert"
@@ -87,20 +91,3 @@
 		<X class="h-4 w-4" />
 	</button>
 </div>
-
-<style>
-	@keyframes slide-in {
-		from {
-			transform: translateX(100%);
-			opacity: 0;
-		}
-		to {
-			transform: translateX(0);
-			opacity: 1;
-		}
-	}
-
-	.animate-slide-in {
-		animation: slide-in 0.3s ease-out;
-	}
-</style>

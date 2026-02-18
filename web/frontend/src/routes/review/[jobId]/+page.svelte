@@ -1,5 +1,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { flip } from 'svelte/animate';
+	import { quintOut } from 'svelte/easing';
+	import { fade, scale, slide } from 'svelte/transition';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 	import { apiClient } from '$lib/api/client';
@@ -705,8 +708,8 @@
 					<!-- File statuses -->
 					{#if fileStatuses.size > 0}
 						<div class="space-y-2 max-h-64 overflow-y-auto">
-							{#each Array.from(fileStatuses.entries()) as [filePath, status]}
-								<div class="flex items-start gap-2 text-sm p-2 rounded {status.status === 'failed' ? 'bg-red-50' : 'bg-green-50'}">
+							{#each Array.from(fileStatuses.entries()) as [filePath, status] (filePath)}
+								<div animate:flip={{ duration: 220, easing: quintOut }} class="flex items-start gap-2 text-sm p-2 rounded {status.status === 'failed' ? 'bg-red-50' : 'bg-green-50'}">
 									{#if status.status === 'failed'}
 										<AlertCircle class="h-4 w-4 text-red-600 shrink-0 mt-0.5" />
 									{:else}
@@ -794,7 +797,8 @@
 				{/if}
 			{/if}
 
-			<div class="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-6">
+			{#key currentResult.file_path}
+				<div class="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-6" in:fade|local={{ duration: 180 }}>
 				<!-- Left Sidebar: Media Preview -->
 				<div class="space-y-4 lg:sticky lg:top-6 lg:self-start lg:max-h-[calc(100vh-8rem)] lg:overflow-y-auto">
 					<!-- Poster Image -->
@@ -1196,11 +1200,13 @@
 
 								<!-- Collapsible content -->
 								{#if showImagePanelContent}
-									<ScreenshotManager
-										movie={currentMovie!}
-										displayPosterUrl={displayPosterUrl}
-										onUpdate={updateCurrentMovie}
-									/>
+									<div transition:slide|local={{ duration: 200, easing: quintOut }}>
+										<ScreenshotManager
+											movie={currentMovie!}
+											displayPosterUrl={displayPosterUrl}
+											onUpdate={updateCurrentMovie}
+										/>
+									</div>
 								{/if}
 							</div>
 						</Card>
@@ -1230,7 +1236,8 @@
 						</Card>
 					{/if}
 				</div>
-			</div>
+				</div>
+			{/key}
 {/if}
 	</div>
 </div>
@@ -1254,8 +1261,9 @@
 
 <!-- Rescrape Modal -->
 {#if showRescrapeModal}
-	<div class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-		<Card class="w-full max-w-lg flex flex-col max-h-[90vh]">
+	<div class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" in:fade|local={{ duration: 140 }} out:fade|local={{ duration: 120 }}>
+		<div class="w-full max-w-lg" in:scale|local={{ start: 0.97, duration: 180, easing: quintOut }} out:scale|local={{ start: 1, opacity: 0.7, duration: 130, easing: quintOut }}>
+		<Card class="w-full flex flex-col max-h-[90vh]">
 			<!-- Header -->
 			<div class="p-6 border-b flex items-center justify-between">
 				<h2 class="text-xl font-bold">{manualSearchMode ? 'Manual Search' : `Rescrape ${rescrapeMovieId}`}</h2>
@@ -1462,13 +1470,14 @@
 				</Button>
 			</div>
 		</Card>
+		</div>
 	</div>
 {/if}
 
 <!-- Destination Browser Modal -->
 {#if showDestinationBrowser}
-	<div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-		<div class="bg-background rounded-lg shadow-xl max-w-4xl w-full max-h-[80vh] flex flex-col">
+	<div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" in:fade|local={{ duration: 140 }} out:fade|local={{ duration: 120 }}>
+		<div class="bg-background rounded-lg shadow-xl max-w-4xl w-full max-h-[80vh] flex flex-col" in:scale|local={{ start: 0.97, duration: 180, easing: quintOut }} out:scale|local={{ start: 1, opacity: 0.7, duration: 130, easing: quintOut }}>
 			<!-- Modal Header -->
 			<div class="p-6 border-b flex items-center justify-between">
 				<div>

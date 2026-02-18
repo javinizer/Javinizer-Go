@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { quintOut } from 'svelte/easing';
+	import { fade, fly } from 'svelte/transition';
 	import { browser } from '$app/environment';
 	import { apiClient } from '$lib/api/client';
 	import { websocketStore } from '$lib/stores/websocket';
@@ -29,7 +31,7 @@
 
 		<div class="grid gap-6">
 			<!-- API Status Card -->
-			<div class="border rounded-lg p-6 shadow-sm">
+			<div class="border rounded-lg p-6 shadow-sm" in:fly|local={{ y: 10, duration: 220, easing: quintOut }}>
 				<h2 class="text-2xl font-semibold mb-4">API Status</h2>
 				{#if loading}
 					<p class="text-muted-foreground">Connecting to API...</p>
@@ -48,7 +50,7 @@
 							<span class="text-sm text-muted-foreground">Available scrapers:</span>
 							<div class="flex gap-2 mt-1">
 								{#each health.scrapers as scraper}
-									<span class="px-2 py-1 bg-primary/10 text-primary rounded text-sm">
+									<span class="px-2 py-1 bg-primary/10 text-primary rounded text-sm" in:fade|local={{ duration: 140 }}>
 										{scraper}
 									</span>
 								{/each}
@@ -59,7 +61,7 @@
 			</div>
 
 			<!-- WebSocket Status Card -->
-			<div class="border rounded-lg p-6 shadow-sm">
+			<div class="border rounded-lg p-6 shadow-sm" in:fly|local={{ y: 10, duration: 250, easing: quintOut }}>
 				<h2 class="text-2xl font-semibold mb-4">WebSocket Status</h2>
 				<div class="flex items-center gap-2">
 					<div class="w-2 h-2 {wsState.connected ? 'bg-green-500' : 'bg-red-500'} rounded-full"></div>
@@ -74,7 +76,7 @@
 			</div>
 
 			<!-- Navigation -->
-			<div class="border rounded-lg p-6 shadow-sm">
+			<div class="border rounded-lg p-6 shadow-sm" in:fly|local={{ y: 10, duration: 280, easing: quintOut }}>
 				<h2 class="text-2xl font-semibold mb-4">Quick Start</h2>
 				<p class="text-muted-foreground mb-4">
 					Welcome to Javinizer! This web interface allows you to scrape JAV metadata and organize

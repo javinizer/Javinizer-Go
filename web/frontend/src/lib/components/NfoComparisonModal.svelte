@@ -1,4 +1,7 @@
 <script lang="ts">
+	import { flip } from 'svelte/animate';
+	import { quintOut } from 'svelte/easing';
+	import { fade, scale } from 'svelte/transition';
 	import { X, AlertCircle, Check, ChevronRight, Info } from 'lucide-svelte';
 	import type {
 		NFOComparisonResponse,
@@ -47,9 +50,9 @@
 
 {#if isOpen && comparison}
 	<!-- Modal overlay -->
-	<div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+	<div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" in:fade|local={{ duration: 140 }} out:fade|local={{ duration: 120 }}>
 		<!-- Modal content -->
-		<div class="relative max-h-[90vh] w-full max-w-5xl overflow-hidden rounded-lg bg-white dark:bg-gray-900 shadow-xl">
+		<div class="relative max-h-[90vh] w-full max-w-5xl overflow-hidden rounded-lg bg-white dark:bg-gray-900 shadow-xl" in:scale|local={{ start: 0.97, duration: 180, easing: quintOut }} out:scale|local={{ start: 1, opacity: 0.7, duration: 130, easing: quintOut }}>
 			<!-- Header -->
 			<div class="flex items-center justify-between border-b border-gray-200 dark:border-gray-700 px-6 py-4">
 				<div class="flex items-center gap-3">
@@ -127,8 +130,9 @@
 				{#if activeTab === 'differences'}
 					{#if comparison.differences && comparison.differences.length > 0}
 						<div class="space-y-4">
-							{#each comparison.differences as diff}
-								<Card>
+							{#each comparison.differences as diff (diff.field)}
+								<div animate:flip={{ duration: 220, easing: quintOut }}>
+									<Card>
 									<div class="space-y-3">
 										<!-- Field header -->
 										<div class="flex items-center justify-between">
@@ -201,7 +205,8 @@
 											</div>
 										{/if}
 									</div>
-								</Card>
+									</Card>
+								</div>
 							{/each}
 						</div>
 					{:else}

@@ -1,7 +1,10 @@
 <script lang="ts">
+	import { flip } from 'svelte/animate';
+	import { cubicOut } from 'svelte/easing';
 	import type { Scraper } from '$lib/api/types';
 	import Button from './ui/Button.svelte';
 	import { GripVertical, ChevronUp, ChevronDown, X } from 'lucide-svelte';
+	import { fade, fly } from 'svelte/transition';
 
 	let { scrapers = [], selected = $bindable([]), disabled = false }: {
 		scrapers?: Scraper[];
@@ -121,8 +124,11 @@
 				Priority Order (drag to reorder, higher = more priority)
 			</div>
 			<div class="space-y-2">
-				{#each selectedScrapers as scraper, index}
+				{#each selectedScrapers as scraper, index (scraper.name)}
 					<div
+						animate:flip={{ duration: 220, easing: cubicOut }}
+						in:fly|local={{ y: 8, duration: 170, easing: cubicOut }}
+						out:fade|local={{ duration: 120 }}
 						role="listitem"
 						draggable={!disabled}
 						ondragstart={() => handleDragStart(index)}
@@ -131,8 +137,8 @@
 						ondragend={handleDragEnd}
 						class="flex items-center gap-2 p-2 bg-background border rounded-lg transition-all {draggedIndex ===
 						index
-							? 'opacity-50'
-							: ''} {dragOverIndex === index ? 'border-primary' : ''} {disabled
+							? 'opacity-45 scale-[0.99]'
+							: ''} {dragOverIndex === index ? 'border-primary bg-primary/5 shadow-sm scale-[1.01]' : ''} {disabled
 							? 'cursor-not-allowed opacity-50'
 							: 'cursor-move hover:border-primary/50'}"
 					>
@@ -200,6 +206,8 @@
 			<div class="space-y-1">
 				{#each unselectedScrapers as scraper}
 					<button
+						in:fade|local={{ duration: 150 }}
+						out:fade|local={{ duration: 110 }}
 						onclick={() => addScraper(scraper.name)}
 						disabled={disabled}
 						class="w-full flex items-center p-2 rounded-md hover:bg-accent cursor-pointer transition-colors text-left {disabled

@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { cubicOut } from 'svelte/easing';
+	import { fade, scale } from 'svelte/transition';
 	import { ChevronLeft, ChevronRight, X, ZoomIn, ZoomOut } from 'lucide-svelte';
 
 	interface Props {
@@ -246,6 +248,8 @@
 			onclick={close}
 			class="absolute inset-0 bg-black/90 cursor-default"
 			aria-label="Close viewer"
+			in:fade|local={{ duration: 140 }}
+			out:fade|local={{ duration: 120 }}
 		></button>
 
 		<!-- Modal content -->
@@ -254,6 +258,8 @@
 			role="dialog"
 			aria-modal="true"
 			tabindex="-1"
+			in:scale|local={{ start: 0.98, duration: 180, easing: cubicOut }}
+			out:scale|local={{ start: 1, opacity: 0.7, duration: 140, easing: cubicOut }}
 		>
 			<!-- Close Button -->
 			<button
@@ -342,17 +348,21 @@
 				<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 				<!-- svelte-ignore a11y_click_events_have_key_events -->
 				<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-				<img
-					src={currentImage}
-					alt={title || `Image ${currentIndex + 1}`}
-					tabindex="0"
-					onclick={handleImageClick}
-					onkeydown={handleImageKeyDown}
-					style="transform: scale({zoom}) translate({panX}px, {panY}px); transition: {isDragging ? 'none' : 'transform 0.1s ease-out'}; user-select: none; cursor: {imageCursor};"
-					class="max-w-full max-h-full object-contain"
-					draggable="false"
-					aria-label={zoom === 1 ? 'Click to zoom in' : 'Click to zoom out or drag to pan'}
-				/>
+				{#key currentImage}
+					<img
+						src={currentImage}
+						alt={title || `Image ${currentIndex + 1}`}
+						tabindex="0"
+						onclick={handleImageClick}
+						onkeydown={handleImageKeyDown}
+						style="transform: scale({zoom}) translate({panX}px, {panY}px); transition: {isDragging ? 'none' : 'transform 0.1s ease-out'}; user-select: none; cursor: {imageCursor};"
+						class="max-w-full max-h-full object-contain"
+						draggable="false"
+						aria-label={zoom === 1 ? 'Click to zoom in' : 'Click to zoom out or drag to pan'}
+						in:fade|local={{ duration: 160 }}
+						out:fade|local={{ duration: 120 }}
+					/>
+				{/key}
 			</div>
 		</div>
 	</div>
