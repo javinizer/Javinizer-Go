@@ -2,6 +2,7 @@
 	import { flip } from 'svelte/animate';
 	import { quintOut } from 'svelte/easing';
 	import { fade, scale } from 'svelte/transition';
+	import { portalToBody } from '$lib/actions/portal';
 	import type { Movie, Actress } from '$lib/api/types';
 	import Button from './ui/Button.svelte';
 	import Card from './ui/Card.svelte';
@@ -229,7 +230,7 @@
 
 <!-- Edit/Add Actress Modal -->
 {#if showEditModal}
-	<div class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" in:fade|local={{ duration: 140 }} out:fade|local={{ duration: 120 }}>
+	<div class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" use:portalToBody in:fade|local={{ duration: 140 }} out:fade|local={{ duration: 120 }}>
 		<div in:scale|local={{ start: 0.97, duration: 180, easing: quintOut }} out:scale|local={{ start: 1, opacity: 0.75, duration: 130, easing: quintOut }} class="w-full max-w-2xl">
 			<Card class="w-full flex flex-col max-h-[90vh]">
 			<!-- Header -->

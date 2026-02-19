@@ -3,6 +3,7 @@
 	import { flip } from 'svelte/animate';
 	import { quintOut } from 'svelte/easing';
 	import { fade, scale, slide } from 'svelte/transition';
+	import { portalToBody } from '$lib/actions/portal';
 	import FileBrowser from '$lib/components/FileBrowser.svelte';
 	import ProgressModal from '$lib/components/ProgressModal.svelte';
 	import BackgroundJobIndicator from '$lib/components/BackgroundJobIndicator.svelte';
@@ -674,7 +675,7 @@
 
 <!-- Destination Browser Modal -->
 {#if showDestinationBrowser}
-	<div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" in:fade|local={{ duration: 140 }} out:fade|local={{ duration: 120 }}>
+	<div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" use:portalToBody in:fade|local={{ duration: 140 }} out:fade|local={{ duration: 120 }}>
 		<div class="bg-background rounded-lg shadow-xl max-w-4xl w-full max-h-[80vh] flex flex-col" in:scale|local={{ start: 0.97, duration: 180, easing: quintOut }} out:scale|local={{ start: 1, opacity: 0.7, duration: 140, easing: quintOut }}>
 			<!-- Modal Header -->
 			<div class="p-6 border-b flex items-center justify-between">

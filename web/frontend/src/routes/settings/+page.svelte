@@ -3,6 +3,7 @@
 	import { flip } from 'svelte/animate';
 	import { quintOut } from 'svelte/easing';
 	import { fade, slide } from 'svelte/transition';
+	import { portalToBody } from '$lib/actions/portal';
 	import { apiClient } from '$lib/api/client';
 	import type { ScraperOption } from '$lib/api/types';
 	import { Save, RefreshCw, AlertCircle, ArrowLeft, CheckCircle2, X, GripVertical, ChevronUp, ChevronDown, ChevronRight } from 'lucide-svelte';
@@ -1891,7 +1892,7 @@
 
 <!-- Confirmation Modal -->
 {#if showConfirmModal}
-	<div class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 animate-fade-in">
+	<div class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 animate-fade-in" use:portalToBody>
 		<Card class="w-full max-w-md animate-scale-in">
 			<div class="p-6 space-y-4">
 				<!-- Header -->

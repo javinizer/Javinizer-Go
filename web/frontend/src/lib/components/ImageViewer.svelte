@@ -2,6 +2,7 @@
 	import { cubicOut } from 'svelte/easing';
 	import { fade, scale } from 'svelte/transition';
 	import { ChevronLeft, ChevronRight, X, ZoomIn, ZoomOut } from 'lucide-svelte';
+	import { portalToBody } from '$lib/actions/portal';
 
 	interface Props {
 		show: boolean;
@@ -242,7 +243,7 @@
 </script>
 
 {#if show && currentImage}
-	<div class="fixed inset-0 z-50 flex items-center justify-center">
+	<div class="fixed inset-0 z-50 flex items-center justify-center" use:portalToBody>
 		<!-- Backdrop button -->
 		<button
 			onclick={close}

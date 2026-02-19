@@ -2,6 +2,7 @@
 	import { cubicOut } from 'svelte/easing';
 	import { fade, scale } from 'svelte/transition';
 	import { X } from 'lucide-svelte';
+	import { portalToBody } from '$lib/actions/portal';
 
 	interface Props {
 		show: boolean;
@@ -33,7 +34,7 @@
 </script>
 
 {#if show && videoUrl}
-	<div class="fixed inset-0 z-50 flex items-center justify-center p-4">
+	<div class="fixed inset-0 z-50 flex items-center justify-center p-4" use:portalToBody>
 		<!-- Backdrop button -->
 		<button
 			onclick={close}

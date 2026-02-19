@@ -4,6 +4,7 @@
 	import { cubicOut } from 'svelte/easing';
 	import { fade, scale, slide } from 'svelte/transition';
 	import { goto } from '$app/navigation';
+	import { portalToBody } from '$lib/actions/portal';
 	import { apiClient } from '$lib/api/client';
 	import { websocketStore } from '$lib/stores/websocket';
 	import type { BatchJobResponse, ProgressMessage, FileResult } from '$lib/api/types';
@@ -159,7 +160,7 @@
 </script>
 
 <!-- Modal Overlay -->
-<div class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" in:fade|local={{ duration: 150 }} out:fade|local={{ duration: 120 }}>
+<div class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" use:portalToBody in:fade|local={{ duration: 150 }} out:fade|local={{ duration: 120 }}>
 	<div in:scale|local={{ start: 0.97, duration: 190, easing: cubicOut }} out:scale|local={{ start: 1, opacity: 0.75, duration: 140, easing: cubicOut }} class="w-full max-w-3xl">
 	<Card class="w-full max-h-[85vh] overflow-hidden flex flex-col">
 		<!-- Header -->

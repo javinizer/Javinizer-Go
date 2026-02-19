@@ -2,6 +2,7 @@
 	import { cubicOut } from 'svelte/easing';
 	import { fade, fly, slide } from 'svelte/transition';
 	import { X, Info } from 'lucide-svelte';
+	import { portalToBody } from '$lib/actions/portal';
 	import Card from '../ui/Card.svelte';
 	import Button from '../ui/Button.svelte';
 	import DraggableList from './DraggableList.svelte';
@@ -320,7 +321,7 @@
 
 <!-- Field Editor Modal -->
 {#if editingField}
-	<div class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 animate-fade-in">
+	<div class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 animate-fade-in" use:portalToBody>
 		<Card class="w-full max-w-md animate-scale-in">
 			<div class="p-6 space-y-4">
 				<!-- Header -->

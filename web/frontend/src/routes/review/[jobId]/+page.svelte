@@ -9,6 +9,7 @@
 	import type { BatchJobResponse, FileResult, Movie, OrganizePreviewResponse, Scraper } from '$lib/api/types';
 	import { toastStore } from '$lib/stores/toast';
 	import { websocketStore } from '$lib/stores/websocket';
+	import { portalToBody } from '$lib/actions/portal';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Card from '$lib/components/ui/Card.svelte';
 	import FileBrowser from '$lib/components/FileBrowser.svelte';
@@ -1261,7 +1262,7 @@
 
 <!-- Rescrape Modal -->
 {#if showRescrapeModal}
-	<div class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" in:fade|local={{ duration: 140 }} out:fade|local={{ duration: 120 }}>
+	<div class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" use:portalToBody in:fade|local={{ duration: 140 }} out:fade|local={{ duration: 120 }}>
 		<div class="w-full max-w-lg" in:scale|local={{ start: 0.97, duration: 180, easing: quintOut }} out:scale|local={{ start: 1, opacity: 0.7, duration: 130, easing: quintOut }}>
 		<Card class="w-full flex flex-col max-h-[90vh]">
 			<!-- Header -->
@@ -1476,7 +1477,7 @@
 
 <!-- Destination Browser Modal -->
 {#if showDestinationBrowser}
-	<div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" in:fade|local={{ duration: 140 }} out:fade|local={{ duration: 120 }}>
+	<div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" use:portalToBody in:fade|local={{ duration: 140 }} out:fade|local={{ duration: 120 }}>
 		<div class="bg-background rounded-lg shadow-xl max-w-4xl w-full max-h-[80vh] flex flex-col" in:scale|local={{ start: 0.97, duration: 180, easing: quintOut }} out:scale|local={{ start: 1, opacity: 0.7, duration: 130, easing: quintOut }}>
 			<!-- Modal Header -->
 			<div class="p-6 border-b flex items-center justify-between">

@@ -3,6 +3,7 @@
 	import { quintOut } from 'svelte/easing';
 	import { fade, scale } from 'svelte/transition';
 	import { X, AlertCircle, Check, ChevronRight, Info } from 'lucide-svelte';
+	import { portalToBody } from '$lib/actions/portal';
 	import type {
 		NFOComparisonResponse,
 		FieldDifference,
@@ -50,7 +51,7 @@
 
 {#if isOpen && comparison}
 	<!-- Modal overlay -->
-	<div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" in:fade|local={{ duration: 140 }} out:fade|local={{ duration: 120 }}>
+	<div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" use:portalToBody in:fade|local={{ duration: 140 }} out:fade|local={{ duration: 120 }}>
 		<!-- Modal content -->
 		<div class="relative max-h-[90vh] w-full max-w-5xl overflow-hidden rounded-lg bg-white dark:bg-gray-900 shadow-xl" in:scale|local={{ start: 0.97, duration: 180, easing: quintOut }} out:scale|local={{ start: 1, opacity: 0.7, duration: 130, easing: quintOut }}>
 			<!-- Header -->
