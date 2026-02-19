@@ -129,7 +129,7 @@ func (s *Scraper) Search(id string) (*models.ScraperResult, error) {
 	// Otherwise, look for a movie link in search results
 	detailPath := s.extractMovieURLFromHTML(html)
 	if detailPath == "" {
-		return nil, fmt.Errorf("movie %s not found on JavLibrary", id)
+		return nil, models.NewScraperNotFoundError("JavLibrary", fmt.Sprintf("movie %s not found on JavLibrary", id))
 	}
 
 	// Build full detail URL
@@ -154,6 +154,12 @@ func (s *Scraper) fetchPage(url string) (string, error) {
 		logging.Infof("JavLibrary: Using FlareSolverr for %s", url)
 		html, cookies, err := s.flaresolverr.ResolveURL(url)
 		if err == nil {
+			if models.IsCloudflareChallengePage(html) {
+				return "", models.NewScraperChallengeError(
+					"JavLibrary",
+					"JavLibrary returned a Cloudflare challenge page (request blocked; check FlareSolverr/proxy configuration)",
+				)
+			}
 			// Apply cookies to client for subsequent requests
 			for _, c := range cookies {
 				s.client.SetCookie(&c)
@@ -168,7 +174,23 @@ func (s *Scraper) fetchPage(url string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return string(resp.Body()), nil
+	if resp.StatusCode() != 200 {
+		return "", models.NewScraperStatusError(
+			"JavLibrary",
+			resp.StatusCode(),
+			fmt.Sprintf("JavLibrary returned status code %d", resp.StatusCode()),
+		)
+	}
+
+	html := string(resp.Body())
+	if models.IsCloudflareChallengePage(html) {
+		return "", models.NewScraperChallengeError(
+			"JavLibrary",
+			"JavLibrary returned a Cloudflare challenge page (request blocked; enable FlareSolverr or adjust proxy/IP)",
+		)
+	}
+
+	return html, nil
 }
 
 // parseDetailPage parses a JavLibrary detail page HTML

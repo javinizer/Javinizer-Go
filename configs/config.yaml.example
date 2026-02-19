@@ -161,9 +161,7 @@ scrapers:
         base_url: "https://www.javbus.com"
         use_fake_user_agent: true
         fake_user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"
-        # Optional: session cookie after passing JavBus verification challenge.
-        # age=verified, dv=1, existmag=mag are applied automatically by scraper.
-        cookie_phpsessid: ""
+        # age=verified, dv=1, existmag=mag cookies are applied automatically by scraper.
         # Optional per-scraper proxy override
         # proxy:
         #   enabled: true

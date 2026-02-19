@@ -151,7 +151,7 @@ func (s *Scraper) GetURL(id string) (string, error) {
 	}
 
 	if len(candidateOrder) == 0 {
-		return "", fmt.Errorf("movie %s not found on AVEntertainment", id)
+		return "", models.NewScraperNotFoundError("AVEntertainment", fmt.Sprintf("movie %s not found on AVEntertainment", id))
 	}
 
 	target := normalizeComparableID(id)
@@ -196,7 +196,7 @@ func (s *Scraper) Search(id string) (*models.ScraperResult, error) {
 		return nil, fmt.Errorf("failed to fetch AVEntertainment detail page: %w", err)
 	}
 	if status != 200 {
-		return nil, fmt.Errorf("AVEntertainment returned status code %d", status)
+		return nil, models.NewScraperStatusError("AVEntertainment", status, fmt.Sprintf("AVEntertainment returned status code %d", status))
 	}
 
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(html))
@@ -757,7 +757,14 @@ func (s *Scraper) fetchPage(targetURL string) (string, int, error) {
 	if err != nil {
 		return "", 0, err
 	}
-	return resp.String(), resp.StatusCode(), nil
+	html := resp.String()
+	if resp.StatusCode() == 200 && models.IsCloudflareChallengePage(html) {
+		return "", resp.StatusCode(), models.NewScraperChallengeError(
+			"AVEntertainment",
+			"AVEntertainment returned a Cloudflare challenge page (request blocked; adjust proxy/IP)",
+		)
+	}
+	return html, resp.StatusCode(), nil
 }
 
 func (s *Scraper) waitForRateLimit() {

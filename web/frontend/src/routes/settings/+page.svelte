@@ -3,7 +3,7 @@
 	import { portalToBody } from '$lib/actions/portal';
 	import { apiClient } from '$lib/api/client';
 	import type { ScraperOption } from '$lib/api/types';
-	import { Save, RefreshCw, AlertCircle, ArrowLeft, X } from 'lucide-svelte';
+	import { Save, RefreshCw, CircleAlert, ArrowLeft, X } from 'lucide-svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Card from '$lib/components/ui/Card.svelte';
 	import { toastStore } from '$lib/stores/toast';
@@ -835,7 +835,7 @@
 			<div
 				class="bg-destructive/10 border-2 border-destructive text-destructive px-4 py-3 rounded-lg flex items-start gap-2"
 			>
-				<AlertCircle class="h-5 w-5 mt-0.5 flex-shrink-0" />
+				<CircleAlert class="h-5 w-5 mt-0.5 flex-shrink-0" />
 				<p>{error}</p>
 			</div>
 		{/if}
@@ -919,7 +919,7 @@
 				<div class="flex items-start justify-between">
 					<div class="flex items-center gap-3">
 						<div class="h-10 w-10 bg-primary/10 rounded-full flex items-center justify-center">
-							<AlertCircle class="h-5 w-5 text-primary" />
+							<CircleAlert class="h-5 w-5 text-primary" />
 						</div>
 						<div>
 							<h3 class="text-lg font-semibold">Save Configuration?</h3>

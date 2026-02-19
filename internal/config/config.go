@@ -180,7 +180,6 @@ type JavBusConfig struct {
 	Language         string       `yaml:"language" json:"language"`                                 // Language code: en, ja, zh (default: zh)
 	RequestDelay     int          `yaml:"request_delay" json:"request_delay"`                       // Delay between requests in milliseconds (0 = no delay)
 	BaseURL          string       `yaml:"base_url" json:"base_url"`                                 // Base URL for JavBus
-	CookiePHPSESSID  string       `yaml:"cookie_phpsessid" json:"cookie_phpsessid"`                 // JavBus session cookie value (cookie key: PHPSESSID)
 	UseFakeUserAgent bool         `yaml:"use_fake_user_agent" json:"use_fake_user_agent"`           // Use browser-like User-Agent header for this scraper
 	FakeUserAgent    string       `yaml:"fake_user_agent" json:"fake_user_agent"`                   // Optional custom fake User-Agent (defaults to built-in browser UA)
 	Proxy            *ProxyConfig `yaml:"proxy,omitempty" json:"proxy,omitempty"`                   // Optional scraper-specific proxy override
@@ -521,11 +520,10 @@ func DefaultConfig() *Config {
 				UseFlareSolverr: false,
 			},
 			JavBus: JavBusConfig{
-				Enabled:         false,
-				Language:        "ja",
-				RequestDelay:    1000,
-				BaseURL:         "https://www.javbus.com",
-				CookiePHPSESSID: "",
+				Enabled:      false,
+				Language:     "ja",
+				RequestDelay: 1000,
+				BaseURL:      "https://www.javbus.com",
 			},
 			Jav321: Jav321Config{
 				Enabled:      false,

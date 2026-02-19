@@ -107,7 +107,11 @@ func (s *Scraper) GetURL(id string) (string, error) {
 		return "", fmt.Errorf("failed to search Jav321: %w", err)
 	}
 	if resp.StatusCode() < 200 || resp.StatusCode() >= 400 {
-		return "", fmt.Errorf("Jav321 search returned status code %d", resp.StatusCode())
+		return "", models.NewScraperStatusError(
+			"Jav321",
+			resp.StatusCode(),
+			fmt.Sprintf("Jav321 search returned status code %d", resp.StatusCode()),
+		)
 	}
 
 	if raw := resp.RawResponse; raw != nil && raw.Request != nil && raw.Request.URL != nil {
@@ -157,7 +161,7 @@ func (s *Scraper) GetURL(id string) (string, error) {
 		return candidates[0], nil
 	}
 
-	return "", fmt.Errorf("movie %s not found on Jav321", id)
+	return "", models.NewScraperNotFoundError("Jav321", fmt.Sprintf("movie %s not found on Jav321", id))
 }
 
 // Search searches and extracts metadata.
@@ -176,7 +180,7 @@ func (s *Scraper) Search(id string) (*models.ScraperResult, error) {
 		return nil, fmt.Errorf("failed to fetch Jav321 detail page: %w", err)
 	}
 	if status != 200 {
-		return nil, fmt.Errorf("Jav321 returned status code %d", status)
+		return nil, models.NewScraperStatusError("Jav321", status, fmt.Sprintf("Jav321 returned status code %d", status))
 	}
 
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(html))
@@ -493,7 +497,14 @@ func (s *Scraper) fetchPage(targetURL string) (string, int, error) {
 	if err != nil {
 		return "", 0, err
 	}
-	return resp.String(), resp.StatusCode(), nil
+	html := resp.String()
+	if resp.StatusCode() == 200 && models.IsCloudflareChallengePage(html) {
+		return "", resp.StatusCode(), models.NewScraperChallengeError(
+			"Jav321",
+			"Jav321 returned a Cloudflare challenge page (request blocked; adjust proxy/IP)",
+		)
+	}
+	return html, resp.StatusCode(), nil
 }
 
 func (s *Scraper) waitForRateLimit() {

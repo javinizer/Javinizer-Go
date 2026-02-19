@@ -185,6 +185,32 @@ func TestSearchProcessingTimeout(t *testing.T) {
 	assert.Contains(t, err.Error(), "still processing")
 }
 
+func TestSearchHostUnavailable502(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/search":
+			http.Redirect(w, r, "/movies/ABW-102.json", http.StatusFound)
+		case r.URL.Path == "/movies/ABW-102.json":
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadGateway)
+			fmt.Fprint(w, `{"err":"bad gateway"}`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	cfg := testConfig(server.URL)
+	scraper := New(cfg)
+
+	result, err := scraper.Search("ABW-102")
+	require.Error(t, err)
+	assert.Nil(t, result)
+	assert.Contains(t, err.Error(), "temporarily unavailable")
+	assert.Contains(t, err.Error(), "host may be down")
+	assert.Contains(t, err.Error(), "502")
+}
+
 func TestResolveSearchQuery(t *testing.T) {
 	cfg := testConfig("https://www.libredmm.com")
 	scraper := New(cfg)

@@ -190,16 +190,38 @@ func (s *Scraper) Search(id string) (*models.ScraperResult, error) {
 			}
 			time.Sleep(s.pollInterval)
 		case 404:
-			return nil, fmt.Errorf("movie %s not found on LibreDMM", id)
+			return nil, models.NewScraperNotFoundError("LibreDMM", fmt.Sprintf("movie %s not found on LibreDMM", id))
+		case 502:
+			msg := cleanString(payload.Err)
+			if msg != "" {
+				return nil, models.NewScraperStatusError(
+					"LibreDMM",
+					502,
+					fmt.Sprintf("LibreDMM is temporarily unavailable (HTTP 502 Bad Gateway; host may be down): %s", msg),
+				)
+			}
+			return nil, models.NewScraperStatusError(
+				"LibreDMM",
+				502,
+				"LibreDMM is temporarily unavailable (HTTP 502 Bad Gateway; host may be down)",
+			)
 		default:
 			if msg := cleanString(payload.Err); msg != "" {
-				return nil, fmt.Errorf("LibreDMM returned status code %d: %s", status, msg)
+				return nil, models.NewScraperStatusError(
+					"LibreDMM",
+					status,
+					fmt.Sprintf("LibreDMM returned status code %d: %s", status, msg),
+				)
 			}
-			return nil, fmt.Errorf("LibreDMM returned status code %d", status)
+			return nil, models.NewScraperStatusError(
+				"LibreDMM",
+				status,
+				fmt.Sprintf("LibreDMM returned status code %d", status),
+			)
 		}
 	}
 
-	return nil, fmt.Errorf("movie %s not found on LibreDMM", id)
+	return nil, models.NewScraperNotFoundError("LibreDMM", fmt.Sprintf("movie %s not found on LibreDMM", id))
 }
 
 func (s *Scraper) fetchMovieJSON(targetURL string) (*moviePayload, string, int, error) {

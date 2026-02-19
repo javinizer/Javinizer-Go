@@ -1,7 +1,6 @@
 package mgstage
 
 import (
-	"errors"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -177,7 +176,7 @@ func (s *Scraper) GetURL(id string) (string, error) {
 		return directURL, nil
 	}
 
-	return "", fmt.Errorf("movie not found on MGStage")
+	return "", models.NewScraperNotFoundError("MGStage", "movie not found on MGStage")
 }
 
 // Search searches for and scrapes metadata for a given movie ID
@@ -328,7 +327,7 @@ func (s *Scraper) httpStatusError(stage string, statusCode int) error {
 			msg += " (access blocked by MGStage)"
 		}
 	}
-	return errors.New(msg)
+	return models.NewScraperStatusError("MGStage", statusCode, msg)
 }
 
 // normalizeIDForSearch normalizes ID for MGStage search

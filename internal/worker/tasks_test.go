@@ -545,7 +545,7 @@ func TestScrapeTask_Execute_DryRun(t *testing.T) {
 
 	// Should error because no scrapers available
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "no results found")
+	assert.Contains(t, err.Error(), "Movie lookup failed")
 
 	// Verify nothing was saved to database (dry-run mode)
 	_, err = movieRepo.FindByID("IPX-001")

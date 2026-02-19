@@ -140,11 +140,19 @@ func (s *Scraper) ResolveContentID(id string) (string, error) {
 
 	// Check for explicit geo-blocking or access denial
 	if resp.StatusCode() == 403 || resp.StatusCode() == 451 {
-		return "", fmt.Errorf("DMM access blocked (status %d, likely geo-restriction)", resp.StatusCode())
+		return "", models.NewScraperStatusError(
+			"DMM",
+			resp.StatusCode(),
+			fmt.Sprintf("DMM access blocked (status %d, likely geo-restriction)", resp.StatusCode()),
+		)
 	}
 
 	if resp.StatusCode() != 200 {
-		return "", fmt.Errorf("DMM search returned status code %d", resp.StatusCode())
+		return "", models.NewScraperStatusError(
+			"DMM",
+			resp.StatusCode(),
+			fmt.Sprintf("DMM search returned status code %d", resp.StatusCode()),
+		)
 	}
 
 	// 3. Parse search results to extract actual content-id
@@ -228,7 +236,7 @@ func (s *Scraper) ResolveContentID(id string) (string, error) {
 	})
 
 	if len(candidates) == 0 {
-		return "", fmt.Errorf("no matching content-id found in DMM search results")
+		return "", models.NewScraperNotFoundError("DMM", "no matching content-id found in DMM search results")
 	}
 
 	// Select best candidate: prefer shorter content IDs (e.g., "abp071" over "abp071dod")
@@ -542,7 +550,11 @@ func (s *Scraper) Search(id string) (*models.ScraperResult, error) {
 		}
 
 		if resp.StatusCode() != 200 {
-			return nil, fmt.Errorf("DMM returned status code %d", resp.StatusCode())
+			return nil, models.NewScraperStatusError(
+				"DMM",
+				resp.StatusCode(),
+				fmt.Sprintf("DMM returned status code %d", resp.StatusCode()),
+			)
 		}
 
 		doc, err = goquery.NewDocumentFromReader(strings.NewReader(resp.String()))

@@ -442,7 +442,7 @@ func RunBatchScrapeOnce(
 
 	// Step 4: Query scrapers (use selectedScrapers if provided, otherwise use registry defaults)
 	results := make([]*models.ScraperResult, 0)
-	scraperErrors := make([]string, 0)
+	scraperFailures := make([]scraperFailure, 0)
 
 	// Normalize empty slice to nil for explicit GetByPriority semantics
 	var scraperNames []string
@@ -555,11 +555,17 @@ func RunBatchScrapeOnce(
 
 					logging.Debugf("[Batch %s] File %d: Scraper %s failed with original ID: %v",
 						job.ID, fileIndex, scraper.Name(), err)
-					scraperErrors = append(scraperErrors, fmt.Sprintf("%s: %v", scraper.Name(), err))
+					scraperFailures = append(scraperFailures, scraperFailure{
+						Scraper: scraper.Name(),
+						Err:     err,
+					})
 					continue
 				}
 			} else {
-				scraperErrors = append(scraperErrors, fmt.Sprintf("%s: %v", scraper.Name(), err))
+				scraperFailures = append(scraperFailures, scraperFailure{
+					Scraper: scraper.Name(),
+					Err:     err,
+				})
 				continue
 			}
 		}
@@ -572,7 +578,7 @@ func RunBatchScrapeOnce(
 
 	// Step 5: Check if any scrapers succeeded
 	if len(results) == 0 {
-		errMsg := fmt.Sprintf("Movie not found: %s", strings.Join(scraperErrors, "; "))
+		errMsg := buildScraperNoResultsError(scraperFailures)
 		logging.Debugf("[Batch %s] File %d: No results from any scraper for %s", job.ID, fileIndex, movieID)
 
 		now := time.Now()

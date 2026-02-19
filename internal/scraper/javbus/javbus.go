@@ -66,7 +66,7 @@ func New(cfg *config.Config) *Scraper {
 	client.SetHeader("Accept-Language", "ja,en-US;q=0.8,en;q=0.6,zh;q=0.5")
 	client.SetHeader("Connection", "keep-alive")
 	client.SetHeader("Upgrade-Insecure-Requests", "1")
-	if cookieHeader := buildCookieHeader(scraperCfg); cookieHeader != "" {
+	if cookieHeader := buildCookieHeader(); cookieHeader != "" {
 		client.SetHeader("Cookie", cookieHeader)
 	}
 
@@ -129,7 +129,13 @@ func (s *Scraper) GetURL(id string) (string, error) {
 		for _, p := range searchPaths {
 			target := strings.TrimRight(host, "/") + p
 			html, status, err := s.fetchPage(target)
-			if err != nil || status != 200 {
+			if err != nil {
+				if scraperErr, ok := models.AsScraperError(err); ok && scraperErr.Kind == models.ScraperErrorKindBlocked {
+					return "", err
+				}
+				continue
+			}
+			if status != 200 {
 				continue
 			}
 
@@ -139,7 +145,7 @@ func (s *Scraper) GetURL(id string) (string, error) {
 		}
 	}
 
-	return "", fmt.Errorf("movie %s not found on JavBus", id)
+	return "", models.NewScraperNotFoundError("JavBus", fmt.Sprintf("movie %s not found on JavBus", id))
 }
 
 // Search searches JavBus for a movie and extracts metadata.
@@ -158,7 +164,7 @@ func (s *Scraper) Search(id string) (*models.ScraperResult, error) {
 		return nil, fmt.Errorf("failed to fetch JavBus detail page: %w", err)
 	}
 	if status != 200 {
-		return nil, fmt.Errorf("JavBus returned status code %d", status)
+		return nil, models.NewScraperStatusError("JavBus", status, fmt.Sprintf("JavBus returned status code %d", status))
 	}
 
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(html))
@@ -240,7 +246,28 @@ func (s *Scraper) fetchPage(targetURL string) (string, int, error) {
 	if err != nil {
 		return "", 0, err
 	}
-	return resp.String(), resp.StatusCode(), nil
+	html := resp.String()
+	if raw := resp.RawResponse; raw != nil && raw.Request != nil && raw.Request.URL != nil {
+		if strings.Contains(strings.ToLower(raw.Request.URL.Path), "/doc/driver-verify") {
+			return "", resp.StatusCode(), models.NewScraperChallengeError(
+				"JavBus",
+				"JavBus returned a driver verification challenge page (request blocked; adjust proxy/IP)",
+			)
+		}
+	}
+	if resp.StatusCode() == 200 && isJavbusChallengePage(html) {
+		return "", resp.StatusCode(), models.NewScraperChallengeError(
+			"JavBus",
+			"JavBus returned a driver verification challenge page (request blocked; adjust proxy/IP)",
+		)
+	}
+	if resp.StatusCode() == 200 && models.IsCloudflareChallengePage(html) {
+		return "", resp.StatusCode(), models.NewScraperChallengeError(
+			"JavBus",
+			"JavBus returned a Cloudflare challenge page (request blocked; adjust proxy/IP or cookies)",
+		)
+	}
+	return html, resp.StatusCode(), nil
 }
 
 func (s *Scraper) findDetailURL(html, base, id string) string {
@@ -681,6 +708,27 @@ func isLikelyImageURL(raw string) bool {
 	}
 }
 
+func isJavbusChallengePage(html string) bool {
+	lower := strings.ToLower(strings.TrimSpace(html))
+	if lower == "" {
+		return false
+	}
+
+	markers := []string{
+		"/doc/driver-verify",
+		"age verification javbus",
+		"driver verification",
+		"driver-verify?referer=",
+	}
+	for _, marker := range markers {
+		if strings.Contains(lower, marker) {
+			return true
+		}
+	}
+
+	return false
+}
+
 // normalizeJavbusImageURL normalizes extracted image URLs (especially DMM-hosted URLs)
 // to improve compatibility with downloader logic.
 func normalizeJavbusImageURL(raw string) string {
@@ -777,7 +825,7 @@ func canonicalizeDMMPrefixedContentID(seg string) string {
 	return seg + suffix + ext
 }
 
-func buildCookieHeader(cfg config.JavBusConfig) string {
+func buildCookieHeader() string {
 	parts := make([]string, 0, 4)
 	appendCookie := func(name, value string) {
 		value = sanitizeCookieValue(value)
@@ -790,7 +838,6 @@ func buildCookieHeader(cfg config.JavBusConfig) string {
 	appendCookie("age", defaultAge)
 	appendCookie("dv", defaultDV)
 	appendCookie("existmag", defaultExistMag)
-	appendCookie("PHPSESSID", cfg.CookiePHPSESSID)
 
 	return strings.Join(parts, "; ")
 }

@@ -126,7 +126,10 @@ func (s *Scraper) GetURL(id string) (string, error) {
 		}
 	}
 
-	return "", fmt.Errorf("movie %s not found on DLgetchu (this scraper may require a direct DLgetchu URL)", id)
+	return "", models.NewScraperNotFoundError(
+		"DLgetchu",
+		fmt.Sprintf("movie %s not found on DLgetchu (this scraper may require a direct DLgetchu URL)", id),
+	)
 }
 
 // Search scrapes metadata from DLgetchu.
@@ -145,7 +148,7 @@ func (s *Scraper) Search(id string) (*models.ScraperResult, error) {
 		return nil, fmt.Errorf("failed to fetch DLgetchu detail page: %w", err)
 	}
 	if status != 200 {
-		return nil, fmt.Errorf("DLgetchu returned status code %d", status)
+		return nil, models.NewScraperStatusError("DLgetchu", status, fmt.Sprintf("DLgetchu returned status code %d", status))
 	}
 
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(html))
@@ -302,7 +305,20 @@ func (s *Scraper) fetchPage(targetURL string) (string, int, error) {
 
 	decoded, err := decodeBody(resp)
 	if err != nil {
-		return resp.String(), resp.StatusCode(), nil
+		html := resp.String()
+		if resp.StatusCode() == 200 && models.IsCloudflareChallengePage(html) {
+			return "", resp.StatusCode(), models.NewScraperChallengeError(
+				"DLgetchu",
+				"DLgetchu returned a Cloudflare challenge page (request blocked; adjust proxy/IP)",
+			)
+		}
+		return html, resp.StatusCode(), nil
+	}
+	if resp.StatusCode() == 200 && models.IsCloudflareChallengePage(decoded) {
+		return "", resp.StatusCode(), models.NewScraperChallengeError(
+			"DLgetchu",
+			"DLgetchu returned a Cloudflare challenge page (request blocked; adjust proxy/IP)",
+		)
 	}
 	return decoded, resp.StatusCode(), nil
 }

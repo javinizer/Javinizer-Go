@@ -107,7 +107,7 @@ func (s *Scraper) GetURL(id string) (string, error) {
 		return "", fmt.Errorf("failed to search TokyoHot: %w", err)
 	}
 	if status != 200 {
-		return "", fmt.Errorf("TokyoHot search returned status code %d", status)
+		return "", models.NewScraperStatusError("TokyoHot", status, fmt.Sprintf("TokyoHot search returned status code %d", status))
 	}
 
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(html))
@@ -152,7 +152,7 @@ func (s *Scraper) GetURL(id string) (string, error) {
 	}
 
 	if found == "" {
-		return "", fmt.Errorf("movie %s not found on TokyoHot", id)
+		return "", models.NewScraperNotFoundError("TokyoHot", fmt.Sprintf("movie %s not found on TokyoHot", id))
 	}
 
 	return s.applyLanguage(found), nil
@@ -174,7 +174,7 @@ func (s *Scraper) Search(id string) (*models.ScraperResult, error) {
 		return nil, fmt.Errorf("failed to fetch TokyoHot detail page: %w", err)
 	}
 	if status != 200 {
-		return nil, fmt.Errorf("TokyoHot returned status code %d", status)
+		return nil, models.NewScraperStatusError("TokyoHot", status, fmt.Sprintf("TokyoHot returned status code %d", status))
 	}
 
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(html))
@@ -502,7 +502,14 @@ func (s *Scraper) fetchPage(targetURL string) (string, int, error) {
 	if err != nil {
 		return "", 0, err
 	}
-	return resp.String(), resp.StatusCode(), nil
+	html := resp.String()
+	if resp.StatusCode() == 200 && models.IsCloudflareChallengePage(html) {
+		return "", resp.StatusCode(), models.NewScraperChallengeError(
+			"TokyoHot",
+			"TokyoHot returned a Cloudflare challenge page (request blocked; adjust proxy/IP)",
+		)
+	}
+	return html, resp.StatusCode(), nil
 }
 
 func (s *Scraper) waitForRateLimit() {

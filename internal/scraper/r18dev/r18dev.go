@@ -282,13 +282,17 @@ func (s *Scraper) Search(id string) (*models.ScraperResult, error) {
 	}
 
 	if resp.StatusCode() != 200 {
-		return nil, fmt.Errorf("R18.dev returned status code %d", resp.StatusCode())
+		return nil, models.NewScraperStatusError(
+			"R18.dev",
+			resp.StatusCode(),
+			fmt.Sprintf("R18.dev returned status code %d", resp.StatusCode()),
+		)
 	}
 
 	// Check if response is HTML (404 or error page)
 	contentType := resp.Header().Get("Content-Type")
 	if strings.Contains(contentType, "text/html") {
-		return nil, fmt.Errorf("movie not found on R18.dev (returned HTML)")
+		return nil, models.NewScraperNotFoundError("R18.dev", "movie not found on R18.dev (returned HTML)")
 	}
 
 	var data R18Response

@@ -223,7 +223,7 @@ func (s *Scraper) findDetailURL(id string) (string, error) {
 		return detailLinks[0], nil
 	}
 
-	return "", fmt.Errorf("movie %s not found on JavDB", id)
+	return "", models.NewScraperNotFoundError("JavDB", fmt.Sprintf("movie %s not found on JavDB", id))
 }
 
 func (s *Scraper) fetchPage(targetURL string) (string, error) {
@@ -259,10 +259,22 @@ func (s *Scraper) fetchPageDirectResponse(resp *resty.Response, err error) (stri
 		return "", err
 	}
 	if resp.StatusCode() != 200 {
-		return "", fmt.Errorf("JavDB returned status code %d", resp.StatusCode())
+		return "", models.NewScraperStatusError(
+			"JavDB",
+			resp.StatusCode(),
+			fmt.Sprintf("JavDB returned status code %d", resp.StatusCode()),
+		)
 	}
 
-	return resp.String(), nil
+	html := resp.String()
+	if models.IsCloudflareChallengePage(html) {
+		return "", models.NewScraperChallengeError(
+			"JavDB",
+			"JavDB returned a Cloudflare challenge page (request blocked; enable FlareSolverr or adjust proxy/IP)",
+		)
+	}
+
+	return html, nil
 }
 
 func hasDetailMetadata(result *models.ScraperResult, fallbackID string) bool {

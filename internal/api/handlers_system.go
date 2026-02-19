@@ -304,12 +304,6 @@ func getAvailableScrapers(deps *ServerDependencies) gin.HandlerFunc {
 						Description: "JavBus base URL (leave default unless you need a mirror/domain override)",
 						Type:        "string",
 					},
-					{
-						Key:         "cookie_phpsessid",
-						Label:       "PHPSESSID cookie",
-						Description: "Optional JavBus session cookie value after passing site verification/challenge",
-						Type:        "password",
-					},
 				}
 				options = append(options, scraperFakeUserAgentOptions()...)
 				options = append(options, scraperProxyOptions(profileChoices)...)

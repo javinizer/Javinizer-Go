@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/PuerkitoBio/goquery"
+	"github.com/javinizer/javinizer-go/internal/models"
 )
 
 func TestExtractCoverURL_PrefersBigImageHref(t *testing.T) {
@@ -226,5 +227,51 @@ func TestExtractActresses_ParsesValidStarNames(t *testing.T) {
 	}
 	if got[0].ThumbURL != "https://img.example/star.jpg" {
 		t.Fatalf("expected actress thumbnail url, got %#v", got[0])
+	}
+}
+
+func TestIsJavbusChallengePage(t *testing.T) {
+	tests := []struct {
+		name string
+		html string
+		want bool
+	}{
+		{
+			name: "driver verify canonical url",
+			html: `<html><head><title>Age Verification JavBus - JavBus</title><link rel="canonical" href="https://www.javbus.com/doc/driver-verify?referer=https%3A%2F%2Fwww.javbus.com%2F"></head></html>`,
+			want: true,
+		},
+		{
+			name: "regular search page",
+			html: `<html><head><title>IPX-535 - 搜尋 - 影片 - JavBus</title></head><body><a class="movie-box" href="/ABP-001"></a></body></html>`,
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isJavbusChallengePage(tt.html)
+			if got != tt.want {
+				t.Fatalf("isJavbusChallengePage() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestBuildCookieHeader_UsesBuiltInVerificationCookiesOnly(t *testing.T) {
+	got := buildCookieHeader()
+	want := "age=verified; dv=1; existmag=mag"
+	if got != want {
+		t.Fatalf("buildCookieHeader() = %q, want %q", got, want)
+	}
+	if strings.Contains(strings.ToLower(got), "phpsessid=") {
+		t.Fatalf("buildCookieHeader() should not include PHPSESSID, got %q", got)
+	}
+}
+
+func TestJavbusChallengeErrorType(t *testing.T) {
+	err := models.NewScraperChallengeError("JavBus", "JavBus returned a driver verification challenge page")
+	if scraperErr, ok := models.AsScraperError(err); !ok || scraperErr.Kind != models.ScraperErrorKindBlocked {
+		t.Fatalf("expected blocked scraper error kind, got %#v (ok=%v)", scraperErr, ok)
 	}
 }

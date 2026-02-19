@@ -115,6 +115,7 @@ func (t *ScrapeTask) Execute(ctx context.Context) error {
 		scrapers = t.registry.GetByPriorityForInput([]string{"r18dev", "dmm"}, t.javID)
 		logging.Debugf("[%s] Using default scraper priority (%d scrapers)", t.javID, len(scrapers))
 	}
+	scraperFailures := make([]scraperFailure, 0, len(scrapers))
 
 	for i, scraper := range scrapers {
 		select {
@@ -138,6 +139,10 @@ func (t *ScrapeTask) Execute(ctx context.Context) error {
 		result, err := scraper.Search(scraperQuery)
 		if err != nil {
 			logging.Debugf("[%s] Scraper %s failed: %v", t.javID, scraper.Name(), err)
+			scraperFailures = append(scraperFailures, scraperFailure{
+				Scraper: scraper.Name(),
+				Err:     err,
+			})
 			continue
 		}
 		logging.Debugf("[%s] Scraper %s returned: Title=%s, Language=%s, Actresses=%d, Genres=%d",
@@ -146,8 +151,9 @@ func (t *ScrapeTask) Execute(ctx context.Context) error {
 	}
 
 	if len(results) == 0 {
-		logging.Debugf("[%s] No results from any scraper", t.javID)
-		return fmt.Errorf("no results found from any scraper")
+		errMsg := buildScraperNoResultsError(scraperFailures)
+		logging.Debugf("[%s] No results from any scraper: %s", t.javID, errMsg)
+		return fmt.Errorf("%s", errMsg)
 	}
 
 	logging.Debugf("[%s] Collected %d results from scrapers", t.javID, len(results))
