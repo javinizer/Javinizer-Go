@@ -99,7 +99,7 @@
 					Preview{movie.should_crop_poster ? ' (Cropped)' : ''}
 				</div>
 				{#if displayPosterUrl || posterUrl}
-					<div class="w-full max-w-xs aspect-[2/3] overflow-hidden rounded border relative">
+					<div class="w-full max-w-xs aspect-2/3 overflow-hidden rounded border relative">
 						{#if movie.should_crop_poster && !displayPosterUrl}
 							<!-- Crop to show only right 47.2% of image (removes promotional text on left) -->
 							<!-- Only apply cropping if displayPosterUrl is not available (displayPosterUrl is already cropped if temp_poster_url) -->
@@ -126,7 +126,7 @@
 					</div>
 				{:else}
 					<div
-						class="w-full max-w-xs aspect-[2/3] bg-accent rounded border flex items-center justify-center text-muted-foreground"
+						class="w-full max-w-xs aspect-2/3 bg-accent rounded border flex items-center justify-center text-muted-foreground"
 					>
 						<div class="text-center">
 							<ImageIcon class="h-12 w-12 mx-auto mb-2 opacity-50" />

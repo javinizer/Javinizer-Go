@@ -15,7 +15,7 @@
 </script>
 
 <nav
-	class="sticky top-0 z-50 border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80"
+	class="sticky top-0 z-50 border-b bg-card/95 backdrop-blur supports-backdrop-filter:bg-card/80"
 	in:fly|local={{ y: -10, duration: 220, easing: cubicOut }}
 >
 	<div class="container mx-auto px-4">

@@ -178,7 +178,7 @@
 							<img
 								src={actress.thumb_url}
 								alt={getFullName(actress)}
-								class="w-full aspect-[2/3] object-cover rounded"
+								class="w-full aspect-2/3 object-cover rounded"
 								onerror={(e) => {
 									(e.currentTarget as HTMLImageElement).src =
 										'https://via.placeholder.com/200x300?text=No+Image';
@@ -186,7 +186,7 @@
 							/>
 						{:else}
 							<div
-								class="w-full aspect-[2/3] bg-accent rounded flex items-center justify-center text-xs text-muted-foreground"
+								class="w-full aspect-2/3 bg-accent rounded flex items-center justify-center text-xs text-muted-foreground"
 							>
 								No Image
 							</div>
@@ -249,7 +249,7 @@
 			<div class="flex-1 overflow-auto p-6 space-y-4">
 				<!-- Search Section -->
 				<div class="space-y-2">
-					<label class="text-sm font-medium block flex items-center gap-2">
+					<label class="text-sm font-medium flex items-center gap-2">
 						<Search class="h-4 w-4" />
 						Select or Search Actress
 					</label>
@@ -377,14 +377,14 @@
 								<img
 									src={editingActress.thumb_url}
 									alt={getFullName(editingActress) || 'Preview'}
-									class="w-full aspect-[2/3] object-cover rounded mb-2"
+									class="w-full aspect-2/3 object-cover rounded mb-2"
 									onerror={(e) => {
 										const target = e.currentTarget as HTMLImageElement; target.style.display = 'none';
 									}}
 								/>
 							{:else}
 								<div
-									class="w-full aspect-[2/3] bg-accent rounded flex items-center justify-center text-sm text-muted-foreground mb-2"
+									class="w-full aspect-2/3 bg-accent rounded flex items-center justify-center text-sm text-muted-foreground mb-2"
 								>
 									No Thumbnail
 								</div>

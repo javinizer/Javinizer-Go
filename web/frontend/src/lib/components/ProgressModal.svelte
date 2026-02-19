@@ -256,7 +256,7 @@
 							{#each activeFiles as result, index (result.file_path)}
 								<div animate:flip={{ duration: 220, easing: cubicOut }} class="active-file border-2 rounded-lg p-3 bg-blue-50/50" style="animation-delay: {index * 0.2}s">
 									<div class="flex items-start gap-3">
-										<Loader2 class="h-5 w-5 text-blue-600 animate-spin mt-0.5 flex-shrink-0" />
+										<Loader2 class="h-5 w-5 text-blue-600 animate-spin mt-0.5 shrink-0" />
 										<div class="flex-1 min-w-0">
 											<div class="font-medium text-blue-900 truncate">
 												{result.movie_id || 'Processing...'}
@@ -289,7 +289,7 @@
 						<div class="space-y-1">
 							{#each queuedFiles.slice(0, 5) as filePath (filePath)}
 								<div animate:flip={{ duration: 180, easing: cubicOut }} class="flex items-center gap-2 p-2 rounded bg-gray-50 text-sm">
-									<div class="h-2 w-2 rounded-full bg-gray-400 flex-shrink-0"></div>
+									<div class="h-2 w-2 rounded-full bg-gray-400 shrink-0"></div>
 									<div class="text-gray-700 truncate">
 										{getFileDisplayName(filePath)}
 									</div>
@@ -327,7 +327,7 @@
 							<div class="space-y-1 pl-4 max-h-60 overflow-y-auto" transition:slide|local={{ duration: 180, easing: cubicOut }}>
 								{#each completedFiles as result (result.file_path)}
 									<div animate:flip={{ duration: 180, easing: cubicOut }} class="flex items-start gap-2 p-2 rounded bg-green-50/50 text-sm">
-										<CheckCircle class="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
+										<CheckCircle class="h-4 w-4 text-green-600 mt-0.5 shrink-0" />
 										<div class="flex-1 min-w-0">
 											<div class="font-medium text-green-900 truncate">
 												{result.movie_id || 'Unknown'}
@@ -366,7 +366,7 @@
 							<div class="space-y-1 pl-4 max-h-60 overflow-y-auto" transition:slide|local={{ duration: 180, easing: cubicOut }}>
 								{#each failedFiles as result (result.file_path)}
 									<div animate:flip={{ duration: 180, easing: cubicOut }} class="flex items-start gap-2 p-2 rounded bg-red-50/50 text-sm">
-										<XCircle class="h-4 w-4 text-red-600 mt-0.5 flex-shrink-0" />
+										<XCircle class="h-4 w-4 text-red-600 mt-0.5 shrink-0" />
 										<div class="flex-1 min-w-0">
 											<div class="font-medium text-red-900 truncate">
 												{result.movie_id || 'Unknown'}
@@ -375,7 +375,7 @@
 												{getFileDisplayName(result.file_path)}
 											</div>
 											{#if result.error}
-												<div class="text-xs text-red-600 mt-1 break-words">
+												<div class="text-xs text-red-600 mt-1 wrap-break-word">
 													{result.error}
 												</div>
 											{/if}

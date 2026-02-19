@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Movie, Genre } from '$lib/api/types';
-	import { AlertCircle, X, Plus } from 'lucide-svelte';
+	import { CircleAlert, X, Plus } from 'lucide-svelte';
 
 	interface Props {
 		movie: Movie;
@@ -83,7 +83,7 @@
 			<label class="flex items-center gap-2 text-sm font-medium mb-1">
 				Movie ID
 				{#if isModified('id')}
-					<AlertCircle class="h-3 w-3 text-orange-600" />
+					<CircleAlert class="h-3 w-3 text-orange-600" />
 				{/if}
 			</label>
 			<input
@@ -99,7 +99,7 @@
 			<label class="flex items-center gap-2 text-sm font-medium mb-1">
 				Content ID
 				{#if isModified('content_id')}
-					<AlertCircle class="h-3 w-3 text-orange-600" />
+					<CircleAlert class="h-3 w-3 text-orange-600" />
 				{/if}
 			</label>
 			<input
@@ -115,7 +115,7 @@
 			<label class="flex items-center gap-2 text-sm font-medium mb-1">
 				Title
 				{#if isModified('title')}
-					<AlertCircle class="h-3 w-3 text-orange-600" />
+					<CircleAlert class="h-3 w-3 text-orange-600" />
 				{/if}
 			</label>
 			<input
@@ -134,7 +134,7 @@
 			<label class="flex items-center gap-2 text-sm font-medium mb-1">
 				Original Title (Japanese)
 				{#if isModified('original_title')}
-					<AlertCircle class="h-3 w-3 text-orange-600" />
+					<CircleAlert class="h-3 w-3 text-orange-600" />
 				{/if}
 			</label>
 			<input
@@ -150,7 +150,7 @@
 			<label class="flex items-center gap-2 text-sm font-medium mb-1">
 				Description
 				{#if isModified('description')}
-					<AlertCircle class="h-3 w-3 text-orange-600" />
+					<CircleAlert class="h-3 w-3 text-orange-600" />
 				{/if}
 			</label>
 			<textarea
@@ -166,7 +166,7 @@
 			<label class="flex items-center gap-2 text-sm font-medium mb-1">
 				Release Date
 				{#if isModified('release_date')}
-					<AlertCircle class="h-3 w-3 text-orange-600" />
+					<CircleAlert class="h-3 w-3 text-orange-600" />
 				{/if}
 			</label>
 			<input
@@ -182,7 +182,7 @@
 			<label class="flex items-center gap-2 text-sm font-medium mb-1">
 				Runtime (minutes)
 				{#if isModified('runtime')}
-					<AlertCircle class="h-3 w-3 text-orange-600" />
+					<CircleAlert class="h-3 w-3 text-orange-600" />
 				{/if}
 			</label>
 			<input
@@ -199,7 +199,7 @@
 			<label class="flex items-center gap-2 text-sm font-medium mb-1">
 				Director
 				{#if isModified('director')}
-					<AlertCircle class="h-3 w-3 text-orange-600" />
+					<CircleAlert class="h-3 w-3 text-orange-600" />
 				{/if}
 			</label>
 			<input
@@ -215,7 +215,7 @@
 			<label class="flex items-center gap-2 text-sm font-medium mb-1">
 				Studio / Maker
 				{#if isModified('maker')}
-					<AlertCircle class="h-3 w-3 text-orange-600" />
+					<CircleAlert class="h-3 w-3 text-orange-600" />
 				{/if}
 			</label>
 			<input
@@ -231,7 +231,7 @@
 			<label class="flex items-center gap-2 text-sm font-medium mb-1">
 				Label
 				{#if isModified('label')}
-					<AlertCircle class="h-3 w-3 text-orange-600" />
+					<CircleAlert class="h-3 w-3 text-orange-600" />
 				{/if}
 			</label>
 			<input
@@ -247,7 +247,7 @@
 			<label class="flex items-center gap-2 text-sm font-medium mb-1">
 				Series
 				{#if isModified('series')}
-					<AlertCircle class="h-3 w-3 text-orange-600" />
+					<CircleAlert class="h-3 w-3 text-orange-600" />
 				{/if}
 			</label>
 			<input
@@ -263,7 +263,7 @@
 			<label class="flex items-center gap-2 text-sm font-medium mb-1">
 				Rating Score (0-10)
 				{#if isModified('rating_score')}
-					<AlertCircle class="h-3 w-3 text-orange-600" />
+					<CircleAlert class="h-3 w-3 text-orange-600" />
 				{/if}
 			</label>
 			<input
@@ -291,7 +291,7 @@
 			<label class="flex items-center gap-2 text-sm font-medium mb-1">
 				Rating Votes
 				{#if isModified('rating_votes')}
-					<AlertCircle class="h-3 w-3 text-orange-600" />
+					<CircleAlert class="h-3 w-3 text-orange-600" />
 				{/if}
 			</label>
 			<input
@@ -310,15 +310,15 @@
 			<label class="flex items-center gap-2 text-sm font-medium mb-1">
 				Genres
 				{#if isModified('genres')}
-					<AlertCircle class="h-3 w-3 text-orange-600" />
+					<CircleAlert class="h-3 w-3 text-orange-600" />
 				{/if}
 			</label>
 
 			<!-- Cloud tags display -->
-			<div class="w-full px-3 py-2.5 border rounded-lg min-h-[46px] flex flex-wrap gap-2 items-center bg-white focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary transition-all">
+			<div class="w-full px-3 py-2.5 border rounded-lg min-h-11.5 flex flex-wrap gap-2 items-center bg-white focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary transition-all">
 				{#if editedMovie.genres && editedMovie.genres.length > 0}
 					{#each editedMovie.genres as genre}
-						<span class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-br from-primary/10 to-primary/5 text-primary rounded-full text-sm font-medium hover:from-primary/15 hover:to-primary/10 transition-all shadow-sm border border-primary/10">
+						<span class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-linear-to-br from-primary/10 to-primary/5 text-primary rounded-full text-sm font-medium hover:from-primary/15 hover:to-primary/10 transition-all shadow-sm border border-primary/10">
 							<span class="leading-none">{genre.name}</span>
 							<button
 								type="button"
@@ -333,7 +333,7 @@
 				{/if}
 
 				<!-- Input for adding new genre -->
-				<div class="flex-1 min-w-[140px] inline-flex items-center gap-2">
+				<div class="flex-1 min-w-35 inline-flex items-center gap-2">
 					<input
 						type="text"
 						bind:value={newGenreInput}
