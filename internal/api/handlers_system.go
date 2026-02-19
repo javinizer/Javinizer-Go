@@ -23,6 +23,7 @@ import (
 	"github.com/javinizer/javinizer-go/internal/scraper/javbus"
 	"github.com/javinizer/javinizer-go/internal/scraper/javdb"
 	"github.com/javinizer/javinizer-go/internal/scraper/javlibrary"
+	"github.com/javinizer/javinizer-go/internal/scraper/libredmm"
 	"github.com/javinizer/javinizer-go/internal/scraper/mgstage"
 	"github.com/javinizer/javinizer-go/internal/scraper/r18dev"
 	"github.com/javinizer/javinizer-go/internal/scraper/tokyohot"
@@ -158,6 +159,28 @@ func getAvailableScrapers(deps *ServerDependencies) gin.HandlerFunc {
 						Min:         &minTimeout,
 						Max:         &maxTimeout,
 						Unit:        "seconds",
+					},
+				}
+				options = append(options, scraperFakeUserAgentOptions()...)
+				options = append(options, scraperProxyOptions(profileChoices)...)
+				options = append(options, scraperDownloadProxyOptions(profileChoices)...)
+			case "libredmm":
+				displayName = "LibreDMM"
+				options = []ScraperOption{
+					{
+						Key:         "request_delay",
+						Label:       "Request delay",
+						Description: "Delay between requests to avoid rate limiting",
+						Type:        "number",
+						Min:         ptrInt(0),
+						Max:         ptrInt(5000),
+						Unit:        "ms",
+					},
+					{
+						Key:         "base_url",
+						Label:       "Base URL",
+						Description: "LibreDMM base URL",
+						Type:        "string",
 					},
 				}
 				options = append(options, scraperFakeUserAgentOptions()...)
@@ -620,6 +643,7 @@ func reloadComponents(deps *ServerDependencies, newCfg *config.Config) error {
 	// Register scrapers with new config
 	newRegistry.Register(r18dev.New(newCfg))
 	newRegistry.Register(dmm.New(newCfg, contentIDRepo))
+	newRegistry.Register(libredmm.New(newCfg))
 	newRegistry.Register(mgstage.New(newCfg))
 	newRegistry.Register(javdb.New(newCfg))
 	newRegistry.Register(javbus.New(newCfg))

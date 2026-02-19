@@ -20,6 +20,7 @@ import (
 	"github.com/javinizer/javinizer-go/internal/scraper/javbus"
 	"github.com/javinizer/javinizer-go/internal/scraper/javdb"
 	"github.com/javinizer/javinizer-go/internal/scraper/javlibrary"
+	"github.com/javinizer/javinizer-go/internal/scraper/libredmm"
 	"github.com/javinizer/javinizer-go/internal/scraper/mgstage"
 	"github.com/javinizer/javinizer-go/internal/scraper/r18dev"
 	"github.com/javinizer/javinizer-go/internal/scraper/tokyohot"
@@ -127,6 +128,7 @@ func Run(cmd *cobra.Command, configFile string, hostFlag string, portFlag int) (
 	registry := models.NewScraperRegistry()
 	registry.Register(r18dev.New(cfg))
 	registry.Register(dmm.New(cfg, contentIDRepo))
+	registry.Register(libredmm.New(cfg))
 	registry.Register(mgstage.New(cfg))
 	registry.Register(javdb.New(cfg))
 	registry.Register(javbus.New(cfg))

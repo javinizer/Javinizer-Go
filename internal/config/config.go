@@ -90,6 +90,7 @@ type ScrapersConfig struct {
 	Proxy                 ProxyConfig           `yaml:"proxy" json:"proxy"`                                     // Default HTTP/SOCKS5 proxy for scraper requests
 	R18Dev                R18DevConfig          `yaml:"r18dev" json:"r18dev"`
 	DMM                   DMMConfig             `yaml:"dmm" json:"dmm"`
+	LibreDMM              LibreDMMConfig        `yaml:"libredmm" json:"libredmm"`
 	MGStage               MGStageConfig         `yaml:"mgstage" json:"mgstage"`
 	JavLibrary            JavLibraryConfig      `yaml:"javlibrary" json:"javlibrary"`
 	JavDB                 JavDBConfig           `yaml:"javdb" json:"javdb"`
@@ -118,6 +119,17 @@ type DMMConfig struct {
 	ScrapeActress    bool         `yaml:"scrape_actress" json:"scrape_actress"`
 	EnableBrowser    bool         `yaml:"enable_browser" json:"enable_browser"`                     // Enable browser mode for video.dmm.co.jp (JavaScript rendering)
 	BrowserTimeout   int          `yaml:"browser_timeout" json:"browser_timeout"`                   // Timeout in seconds for browser operations (default: 30)
+	UseFakeUserAgent bool         `yaml:"use_fake_user_agent" json:"use_fake_user_agent"`           // Use browser-like User-Agent header for this scraper
+	FakeUserAgent    string       `yaml:"fake_user_agent" json:"fake_user_agent"`                   // Optional custom fake User-Agent (defaults to built-in browser UA)
+	Proxy            *ProxyConfig `yaml:"proxy,omitempty" json:"proxy,omitempty"`                   // Optional scraper-specific proxy override
+	DownloadProxy    *ProxyConfig `yaml:"download_proxy,omitempty" json:"download_proxy,omitempty"` // Optional scraper-specific download proxy override
+}
+
+// LibreDMMConfig holds LibreDMM scraper configuration
+type LibreDMMConfig struct {
+	Enabled          bool         `yaml:"enabled" json:"enabled"`
+	RequestDelay     int          `yaml:"request_delay" json:"request_delay"`                       // Delay between requests in milliseconds (0 = no delay)
+	BaseURL          string       `yaml:"base_url" json:"base_url"`                                 // Base URL for LibreDMM
 	UseFakeUserAgent bool         `yaml:"use_fake_user_agent" json:"use_fake_user_agent"`           // Use browser-like User-Agent header for this scraper
 	FakeUserAgent    string       `yaml:"fake_user_agent" json:"fake_user_agent"`                   // Optional custom fake User-Agent (defaults to built-in browser UA)
 	Proxy            *ProxyConfig `yaml:"proxy,omitempty" json:"proxy,omitempty"`                   // Optional scraper-specific proxy override
@@ -436,6 +448,11 @@ func DefaultConfig() *Config {
 				ScrapeActress:  false,
 				BrowserTimeout: 30, // Timeout for browser operations
 			},
+			LibreDMM: LibreDMMConfig{
+				Enabled:      false,
+				RequestDelay: 500,
+				BaseURL:      "https://www.libredmm.com",
+			},
 			MGStage: MGStageConfig{
 				Enabled:      false, // Opt-in, requires age verification cookie
 				RequestDelay: 500,   // 500ms default delay
@@ -600,6 +617,7 @@ func migrateToV1(cfg *Config) error {
 	knownScrapers := []string{
 		"r18dev",
 		"dmm",
+		"libredmm",
 		"mgstage",
 		"javlibrary",
 		"javdb",
@@ -677,6 +695,11 @@ func (c *Config) Validate() error {
 	}
 	if c.Scrapers.DMM.Proxy != nil {
 		if err := validateFlareSolverrConfig("scrapers.dmm.proxy.flaresolverr", c.Scrapers.DMM.Proxy.FlareSolverr); err != nil {
+			return err
+		}
+	}
+	if c.Scrapers.LibreDMM.Proxy != nil {
+		if err := validateFlareSolverrConfig("scrapers.libredmm.proxy.flaresolverr", c.Scrapers.LibreDMM.Proxy.FlareSolverr); err != nil {
 			return err
 		}
 	}
@@ -765,6 +788,9 @@ func validateProxyProfileConfig(c *Config) error {
 	if err := validateProxyProfileRef("scrapers.dmm.proxy", c.Scrapers.DMM.Proxy, profiles); err != nil {
 		return err
 	}
+	if err := validateProxyProfileRef("scrapers.libredmm.proxy", c.Scrapers.LibreDMM.Proxy, profiles); err != nil {
+		return err
+	}
 	if err := validateProxyProfileRef("scrapers.mgstage.proxy", c.Scrapers.MGStage.Proxy, profiles); err != nil {
 		return err
 	}
@@ -796,6 +822,9 @@ func validateProxyProfileConfig(c *Config) error {
 		return err
 	}
 	if err := validateProxyProfileRef("scrapers.dmm.download_proxy", c.Scrapers.DMM.DownloadProxy, profiles); err != nil {
+		return err
+	}
+	if err := validateProxyProfileRef("scrapers.libredmm.download_proxy", c.Scrapers.LibreDMM.DownloadProxy, profiles); err != nil {
 		return err
 	}
 	if err := validateProxyProfileRef("scrapers.mgstage.download_proxy", c.Scrapers.MGStage.DownloadProxy, profiles); err != nil {

@@ -30,11 +30,12 @@ scrapers:
 
 	assert.Equal(t, CurrentConfigVersion, cfg.ConfigVersion)
 	assert.Equal(t, 7777, cfg.Server.Port)
-	assert.Equal(t, []string{"r18dev", "dmm", "mgstage", "javlibrary", "javdb", "javbus", "jav321", "tokyohot", "aventertainment", "dlgetchu"}, cfg.Scrapers.Priority)
+	assert.Equal(t, []string{"r18dev", "dmm", "libredmm", "mgstage", "javlibrary", "javdb", "javbus", "jav321", "tokyohot", "aventertainment", "dlgetchu"}, cfg.Scrapers.Priority)
 
 	saved, err := os.ReadFile(cfgPath)
 	require.NoError(t, err)
 	assert.Contains(t, string(saved), "config_version: 1")
+	assert.Contains(t, string(saved), "libredmm")
 	assert.Contains(t, string(saved), "javlibrary")
 	assert.Contains(t, string(saved), "javdb")
 	assert.Contains(t, string(saved), "javbus")
@@ -100,6 +101,7 @@ scrapers:
 	assert.Contains(t, savedText, "# user-managed config")
 	assert.Contains(t, savedText, "custom_source:")
 	assert.Contains(t, savedText, "config_version: 1")
+	assert.Contains(t, savedText, "libredmm")
 	assert.Contains(t, savedText, "javlibrary")
 	assert.Contains(t, savedText, "javdb")
 	assert.Contains(t, savedText, "javbus")

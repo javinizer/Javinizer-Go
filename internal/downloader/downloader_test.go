@@ -569,6 +569,11 @@ func TestResolveDownloadReferer(t *testing.T) {
 			expected: "https://www.dmm.co.jp/",
 		},
 		{
+			name:     "libredmm host uses libredmm referer",
+			url:      "https://imageproxy.libredmm.com/_refabc/https://pics.dmm.co.jp/digital/video/ipx00535/ipx00535-1.jpg",
+			expected: "https://www.libredmm.com/",
+		},
+		{
 			name:     "unknown host falls back to origin",
 			url:      "https://images.example.com/a/b.jpg",
 			expected: "https://images.example.com/",

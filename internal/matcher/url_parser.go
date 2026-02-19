@@ -2,6 +2,7 @@ package matcher
 
 import (
 	"fmt"
+	"net/url"
 	"regexp"
 	"strings"
 )
@@ -46,6 +47,19 @@ func ParseInput(input string) (*ParsedInput, error) {
 		}, nil
 	}
 
+	// LibreDMM URL detection
+	if strings.Contains(input, "libredmm.com") {
+		id := extractLibreDMMID(input)
+		if id == "" {
+			return nil, fmt.Errorf("failed to extract ID from LibreDMM URL")
+		}
+		return &ParsedInput{
+			ID:          id,
+			ScraperHint: "libredmm",
+			IsURL:       true,
+		}, nil
+	}
+
 	// Not a URL - treat as JAV ID
 	return &ParsedInput{
 		ID:          input,
@@ -82,6 +96,30 @@ func extractR18DevID(url string) string {
 	matches := idRegex.FindStringSubmatch(url)
 	if len(matches) > 1 {
 		return matches[1]
+	}
+
+	return ""
+}
+
+// extractLibreDMMID extracts movie ID from LibreDMM URLs.
+// Supports:
+//   - https://www.libredmm.com/movies/IPX-535
+//   - https://www.libredmm.com/movies/IPX-535.json
+//   - https://www.libredmm.com/search?q=IPX535&format=json
+func extractLibreDMMID(rawURL string) string {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return ""
+	}
+
+	if q := strings.TrimSpace(u.Query().Get("q")); q != "" {
+		return q
+	}
+
+	re := regexp.MustCompile(`/movies/([^/?&]+)`)
+	matches := re.FindStringSubmatch(u.Path)
+	if len(matches) > 1 {
+		return strings.TrimSuffix(matches[1], ".json")
 	}
 
 	return ""

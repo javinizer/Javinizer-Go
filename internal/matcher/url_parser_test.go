@@ -52,6 +52,20 @@ func TestParseInput(t *testing.T) {
 			expectedIsURL: true,
 		},
 		{
+			name:          "LibreDMM movie URL",
+			input:         "https://www.libredmm.com/movies/IPX-535",
+			expectedID:    "IPX-535",
+			expectedHint:  "libredmm",
+			expectedIsURL: true,
+		},
+		{
+			name:          "LibreDMM search URL",
+			input:         "https://www.libredmm.com/search?q=IPX535&format=json",
+			expectedID:    "IPX535",
+			expectedHint:  "libredmm",
+			expectedIsURL: true,
+		},
+		{
 			name:        "Empty input",
 			input:       "",
 			expectError: true,
@@ -90,6 +104,11 @@ func TestParseInput(t *testing.T) {
 		{
 			name:        "R18.dev URL without ID",
 			input:       "https://r18.dev/",
+			expectError: true,
+		},
+		{
+			name:        "LibreDMM URL without movie ID",
+			input:       "https://www.libredmm.com/",
 			expectError: true,
 		},
 	}
@@ -193,6 +212,42 @@ func TestExtractR18DevID(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := extractR18DevID(tt.url)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestExtractLibreDMMID(t *testing.T) {
+	tests := []struct {
+		name     string
+		url      string
+		expected string
+	}{
+		{
+			name:     "movie URL",
+			url:      "https://www.libredmm.com/movies/IPX-535",
+			expected: "IPX-535",
+		},
+		{
+			name:     "movie JSON URL",
+			url:      "https://www.libredmm.com/movies/IPX-535.json",
+			expected: "IPX-535",
+		},
+		{
+			name:     "search URL",
+			url:      "https://www.libredmm.com/search?q=IPX535&format=json",
+			expected: "IPX535",
+		},
+		{
+			name:     "no match",
+			url:      "https://www.libredmm.com/",
+			expected: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := extractLibreDMMID(tt.url)
 			assert.Equal(t, tt.expected, result)
 		})
 	}

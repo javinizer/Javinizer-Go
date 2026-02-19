@@ -340,6 +340,11 @@ func TestDownload_RefererHeader(t *testing.T) {
 			expectedReferer: "https://javdb.com/",
 		},
 		{
+			name:            "libredmm media uses libredmm referer",
+			url:             "https://imageproxy.libredmm.com/_refabc/https://pics.dmm.co.jp/digital/video/ipx00535/ipx00535-1.jpg",
+			expectedReferer: "https://www.libredmm.com/",
+		},
+		{
 			name:            "unknown host falls back to origin",
 			url:             "https://images.example.com/a/b.jpg",
 			expectedReferer: "https://images.example.com/",
