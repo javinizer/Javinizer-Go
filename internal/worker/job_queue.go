@@ -258,6 +258,7 @@ func (job *BatchJob) MarkStarted() {
 	defer job.mu.Unlock()
 	job.Status = JobStatusRunning
 	job.StartedAt = time.Now()
+	job.CompletedAt = nil
 }
 
 // MarkCompleted marks the job as completed

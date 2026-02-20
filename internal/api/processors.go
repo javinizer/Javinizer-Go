@@ -335,6 +335,7 @@ func processUpdateMode(job *worker.BatchJob, cfg *config.Config, db *database.DB
 			Progress: 0,
 			Message:  fmt.Sprintf("Failed to create HTTP client: %v", err),
 		})
+		job.MarkFailed()
 		return
 	}
 	dl := downloader.NewDownloaderWithNFOConfig(httpClient, afero.NewOsFs(), &cfg.Output, cfg.Scrapers.UserAgent, cfg.Metadata.NFO.ActressLanguageJA, cfg.Metadata.NFO.FirstNameOrder)
@@ -363,6 +364,7 @@ func processUpdateMode(job *worker.BatchJob, cfg *config.Config, db *database.DB
 			Progress: 100,
 			Message:  "Update completed: no files to process (all files failed during scraping)",
 		})
+		job.MarkCompleted()
 		return
 	}
 
@@ -609,6 +611,7 @@ func processUpdateMode(job *worker.BatchJob, cfg *config.Config, db *database.DB
 		Progress: 100,
 		Message:  fmt.Sprintf("Update completed: %d file(s) processed", processedFiles),
 	})
+	job.MarkCompleted()
 }
 
 // processOrganizeJob processes file organization for a completed scrape job
@@ -626,6 +629,7 @@ func processOrganizeJob(job *worker.BatchJob, mat *matcher.Matcher, destination 
 			Progress: 0,
 			Message:  fmt.Sprintf("Failed to create HTTP client: %v", err),
 		})
+		job.MarkFailed()
 		return
 	}
 	dl := downloader.NewDownloaderWithNFOConfig(httpClient, afero.NewOsFs(), &cfg.Output, "Javinizer/1.0", cfg.Metadata.NFO.ActressLanguageJA, cfg.Metadata.NFO.FirstNameOrder)
@@ -769,6 +773,7 @@ func processOrganizeJob(job *worker.BatchJob, mat *matcher.Matcher, destination 
 		Progress: 100,
 		Message:  fmt.Sprintf("Organized %d files, %d failed", organized, failed),
 	})
+	job.MarkCompleted()
 
 	// Cleanup temp posters only if ALL files succeeded
 	// If any failed, keep temp posters so user can retry without re-scraping

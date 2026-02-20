@@ -602,6 +602,9 @@ func organizeJob(deps *ServerDependencies) gin.HandlerFunc {
 			return
 		}
 
+		// Reuse the batch job lifecycle for organize progress polling.
+		job.MarkStarted()
+
 		// Start organization in background - use getter for thread-safe access
 		go processOrganizeJob(job, deps.GetMatcher(), req.Destination, req.CopyOnly, deps.DB, cfg)
 
@@ -636,6 +639,9 @@ func updateBatchJob(deps *ServerDependencies) gin.HandlerFunc {
 			c.JSON(400, ErrorResponse{Error: "Job must be completed before updating"})
 			return
 		}
+
+		// Reuse the batch job lifecycle for update progress polling.
+		job.MarkStarted()
 
 		// Start update in background - use getter for thread-safe access
 		go processUpdateJob(job, deps.GetConfig(), deps.DB)
