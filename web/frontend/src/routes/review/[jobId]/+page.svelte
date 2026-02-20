@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onDestroy, onMount } from 'svelte';
 	import { flip } from 'svelte/animate';
 	import { quintOut } from 'svelte/easing';
 	import { fade, scale, slide } from 'svelte/transition';
@@ -57,6 +57,10 @@
 	let organizeProgress = $state(0);
 	let organizeStatus = $state<'idle' | 'organizing' | 'completed' | 'failed'>('idle');
 	let fileStatuses = $state<Map<string, {status: string, error?: string}>>(new Map());
+	const ORGANIZE_POLL_INTERVAL_MS = 1500;
+	const ORGANIZE_POLL_TIMEOUT_MS = 10 * 60 * 1000;
+	let organizePollTimer: ReturnType<typeof setTimeout> | null = null;
+	let organizeCompletionTimer: ReturnType<typeof setTimeout> | null = null;
 
 	// Determine which panels to show based on download settings
 	// Config uses snake_case JSON property names
@@ -226,6 +230,104 @@
 		}
 	}
 
+	function clearOrganizePollTimer() {
+		if (organizePollTimer !== null) {
+			clearTimeout(organizePollTimer);
+			organizePollTimer = null;
+		}
+	}
+
+	function clearOrganizeCompletionTimer() {
+		if (organizeCompletionTimer !== null) {
+			clearTimeout(organizeCompletionTimer);
+			organizeCompletionTimer = null;
+		}
+	}
+
+	function finalizeOrganizeSuccess(message?: string) {
+		if (organizeStatus !== 'organizing' || organizeCompletionTimer !== null) {
+			return;
+		}
+
+		clearOrganizePollTimer();
+		organizeProgress = 100;
+
+		// Show 100% progress bar for 800ms before showing completion UI
+		organizeCompletionTimer = setTimeout(() => {
+			organizeCompletionTimer = null;
+			if (organizeStatus !== 'organizing') return;
+
+			organizeStatus = 'completed';
+			organizing = false;
+
+			const failures = Array.from(fileStatuses.values()).filter((s) => s.status === 'failed').length;
+			if (failures === 0) {
+				const action = isUpdateMode ? 'updated' : 'organized';
+				toastStore.success(message || `All files ${action} successfully! Redirecting in 5 seconds...`, 8000);
+				setTimeout(() => goto('/browse'), 5000);
+			}
+		}, 800);
+	}
+
+	function finalizeOrganizeFailure(message: string) {
+		if (organizeStatus !== 'organizing') return;
+
+		clearOrganizePollTimer();
+		clearOrganizeCompletionTimer();
+		organizeStatus = 'failed';
+		organizing = false;
+		toastStore.error(message, 7000);
+	}
+
+	function startOrganizeCompletionPolling() {
+		clearOrganizePollTimer();
+		const startedAt = Date.now();
+
+		const pollOnce = async () => {
+			if (organizeStatus !== 'organizing') {
+				clearOrganizePollTimer();
+				return;
+			}
+
+			try {
+				const latestJob = await apiClient.getBatchJob(jobId);
+				job = latestJob;
+
+				if (latestJob.status === 'completed') {
+					const action = isUpdateMode ? 'Update' : 'Organization';
+					finalizeOrganizeSuccess(`${action} completed successfully! Redirecting in 5 seconds...`);
+					return;
+				}
+
+				if (latestJob.status === 'failed') {
+					const action = isUpdateMode ? 'update' : 'organization';
+					finalizeOrganizeFailure(`The ${action} job failed.`);
+					return;
+				}
+
+				if (latestJob.status === 'cancelled') {
+					const action = isUpdateMode ? 'Update' : 'Organization';
+					finalizeOrganizeFailure(`${action} was cancelled.`);
+					return;
+				}
+			} catch (e) {
+				console.warn('Failed to poll batch job status:', e);
+			}
+
+			if (Date.now() - startedAt >= ORGANIZE_POLL_TIMEOUT_MS) {
+				const action = isUpdateMode ? 'Update' : 'Organization';
+				finalizeOrganizeFailure(`${action} timed out while waiting for completion.`);
+				return;
+			}
+
+			organizePollTimer = setTimeout(() => {
+				void pollOnce();
+			}, ORGANIZE_POLL_INTERVAL_MS);
+		};
+
+		void pollOnce();
+	}
+
 	// Fetch preview when destination, copy mode, or current movie changes
 	$effect(() => {
 		if (destinationPath && currentMovie) {
@@ -268,6 +370,18 @@
 				toastStore.error(`Failed to ${action} ${fileName}: ${msg.error}`, 7000);
 			}
 
+			// Fatal operation-level error from backend
+			if (msg.status === 'error' && !msg.file_path) {
+				finalizeOrganizeFailure(msg.message || 'Operation failed');
+				return;
+			}
+
+			if (msg.status === 'cancelled' && !msg.file_path) {
+				const action = isUpdateMode ? 'Update' : 'Organization';
+				finalizeOrganizeFailure(`${action} was cancelled.`);
+				return;
+			}
+
 			// Handle both organized and updated success messages
 			if ((msg.status === 'organized' || msg.status === 'updated') && msg.file_path) {
 				fileStatuses.set(msg.file_path, {status: 'success'});
@@ -276,30 +390,12 @@
 
 			// Handle completion for both operations
 			if (msg.status === 'organization_completed' || msg.status === 'update_completed') {
-				organizeProgress = 100;
-
-				// Show 100% progress bar for 800ms before showing completion UI
-				setTimeout(() => {
-					organizeStatus = 'completed';
-					organizing = false;
-
-					// Count failures
-					const failures = Array.from(fileStatuses.values())
-						.filter(s => s.status === 'failed').length;
-
-					if (failures === 0) {
-						const action = isUpdateMode ? 'updated' : 'organized';
-						toastStore.success(msg.message || `All files ${action} successfully! Redirecting in 5 seconds...`, 8000);
-						// Give users time to review results before redirecting
-						setTimeout(() => goto('/browse'), 5000);
-					}
-					// If there are failures, stay on page to show them
-				}, 800);
+				finalizeOrganizeSuccess(msg.message);
 			}
-		});
+			});
 
-		return unsubscribe;
-	});
+			return unsubscribe;
+		});
 
 	function updateCurrentMovie(movie: Movie) {
 		if (!currentResult?.data) return;
@@ -448,6 +544,8 @@
 		organizing = true;
 		organizeProgress = 0;
 		fileStatuses = new Map();
+		clearOrganizePollTimer();
+		clearOrganizeCompletionTimer();
 
 		try {
 			// Save all edited movies to backend first
@@ -461,10 +559,11 @@
 				copy_only: copyOnly
 			});
 
-			// DON'T show success or navigate - wait for WebSocket messages
+			startOrganizeCompletionPolling();
 		} catch (e) {
 			organizeStatus = 'failed';
 			organizing = false;
+			clearOrganizePollTimer();
 			const errorMessage = e instanceof Error ? e.message : 'Failed to start organize';
 			toastStore.error(errorMessage, 7000);
 		}
@@ -478,6 +577,8 @@
 		organizing = true;
 		organizeProgress = 0;
 		fileStatuses = new Map();
+		clearOrganizePollTimer();
+		clearOrganizeCompletionTimer();
 
 		try {
 			// Save all edited movies to backend first
@@ -488,10 +589,11 @@
 			// Start update (returns immediately)
 			await apiClient.updateBatchJob(jobId);
 
-			// DON'T show success or navigate - wait for WebSocket messages
+			startOrganizeCompletionPolling();
 		} catch (e) {
 			organizeStatus = 'failed';
 			organizing = false;
+			clearOrganizePollTimer();
 			const errorMessage = e instanceof Error ? e.message : 'Failed to start update';
 			toastStore.error(errorMessage, 7000);
 		}
@@ -613,6 +715,11 @@
 		if (urlDestination) {
 			destinationPath = urlDestination;
 		}
+	});
+
+	onDestroy(() => {
+		clearOrganizePollTimer();
+		clearOrganizeCompletionTimer();
 	});
 </script>
 
