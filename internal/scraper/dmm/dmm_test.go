@@ -547,6 +547,14 @@ func TestExtractActresses(t *testing.T) {
 			checkNames:    []string{"Doe", "Smith"}, // Check first names are extracted (note: FirstName field gets second part)
 		},
 		{
+			name: "Actress ID in non-leading query parameter",
+			html: `<table><tr><td>出演者:</td><td>
+				<a href="/av/list/?foo=bar&actress=333">高橋 あい</a>
+			</td></tr></table>`,
+			expectedCount: 1,
+			checkNames:    []string{"高橋 あい"},
+		},
+		{
 			name: "Filter out UI elements",
 			html: `<table><tr><td>actress:</td><td>
 				<a href="?actress=111">Test Actress</a>
@@ -598,6 +606,86 @@ func TestExtractActresses(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestExtractActressesFromStreamingPage_CastSectionPriority(t *testing.T) {
+	cfg := &config.Config{
+		Scrapers: config.ScrapersConfig{
+			DMM: config.DMMConfig{
+				Enabled:       true,
+				ScrapeActress: true,
+			},
+		},
+	}
+	scraper := New(cfg, nil)
+
+	html := `<html><body>
+		<div class="recommend">
+			<a href="/av/list/?actress=1044099&i3_ref=recommend">美園和花</a>
+			<a href="/av/list/?actress=1099472&i3_ref=recommend">瀬戸環奈</a>
+		</div>
+		<div data-e2eid="actress-information">
+			<h2>この商品に出演しているAV女優</h2>
+			<a href="/av/list/?actress=1056227">広瀬結香</a>
+			<a href="/av/list/?actress=1056227">
+				<picture>
+					<source srcset="https://awsimgsrc.dmm.co.jp/pics_dig/mono/actjpgs/hirose_yuuka.jpg?w=125&amp;h=125&amp;f=webp&amp;t=margin">
+					<img src="https://awsimgsrc.dmm.co.jp/pics_dig/mono/actjpgs/hirose_yuuka.jpg?w=125&h=125&t=margin">
+				</picture>
+				広瀬結香
+			</a>
+			<a href="/av/content/?id=1sdmm00132&dmmref=actress_video_detail">
+				<img src="https://awsimgsrc.dmm.co.jp/pics_dig/digital/video/1sdmm00132/1sdmm00132ps.jpg?w=90&h=122&t=margin">
+			</a>
+		</div>
+	</body></html>`
+
+	doc, err := parseHTMLString(html)
+	require.NoError(t, err)
+
+	actresses := scraper.extractActressesFromStreamingPage(doc)
+	require.Len(t, actresses, 1)
+	assert.Equal(t, 1056227, actresses[0].DMMID)
+	assert.Equal(t, "広瀬結香", actresses[0].JapaneseName)
+	assert.Equal(t, "https://pics.dmm.co.jp/mono/actjpgs/hirose_yuuka.jpg", actresses[0].ThumbURL)
+}
+
+func TestExtractActressesFromStreamingPage_HeadingFallback(t *testing.T) {
+	cfg := &config.Config{
+		Scrapers: config.ScrapersConfig{
+			DMM: config.DMMConfig{
+				Enabled:       true,
+				ScrapeActress: true,
+			},
+		},
+	}
+	scraper := New(cfg, nil)
+
+	html := `<html><body>
+		<div class="recommend">
+			<a href="/av/list/?actress=999999&i3_ref=recommend">おすすめ女優</a>
+		</div>
+		<section class="cast-area">
+			<div>
+				<h2>この商品に出演しているAV女優</h2>
+			</div>
+			<div>
+				<a href="/av/list/?foo=1&actress=2001">
+					<img src="https://awsimgsrc.dmm.co.jp/pics_dig/mono/actjpgs/test_cast.jpg?w=40&h=40&t=margin">
+					主演女優
+				</a>
+			</div>
+		</section>
+	</body></html>`
+
+	doc, err := parseHTMLString(html)
+	require.NoError(t, err)
+
+	actresses := scraper.extractActressesFromStreamingPage(doc)
+	require.Len(t, actresses, 1)
+	assert.Equal(t, 2001, actresses[0].DMMID)
+	assert.Equal(t, "主演女優", actresses[0].JapaneseName)
+	assert.Equal(t, "https://pics.dmm.co.jp/mono/actjpgs/test_cast.jpg", actresses[0].ThumbURL)
 }
 
 // TestExtractGenres verifies genre extraction
