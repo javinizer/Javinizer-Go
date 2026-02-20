@@ -20,6 +20,7 @@ func TestResolveSearchQuery(t *testing.T) {
 	}{
 		{name: "direct id", input: "120614-753", want: "120614-753", ok: true},
 		{name: "underscore id", input: "120614_753", want: "120614-753", ok: true},
+		{name: "two-digit suffix id", input: "020326_01-10MU", want: "020326-001", ok: true},
 		{name: "movie page url", input: "https://www.caribbeancom.com/moviepages/120614-753/index.html", want: "120614-753", ok: true},
 		{name: "embedded token", input: "120614_753-carib-1080p", want: "120614-753", ok: true},
 		{name: "invalid", input: "abc-123", want: "", ok: false},
@@ -30,6 +31,26 @@ func TestResolveSearchQuery(t *testing.T) {
 			got, ok := s.ResolveSearchQuery(tt.input)
 			if ok != tt.ok || got != tt.want {
 				t.Fatalf("ResolveSearchQuery(%q) = (%q, %v), want (%q, %v)", tt.input, got, ok, tt.want, tt.ok)
+			}
+		})
+	}
+}
+
+func TestNormalizeMovieID(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{name: "already canonical", input: "120614-753", want: "120614-753"},
+		{name: "underscore canonical", input: "120614_753", want: "120614-753"},
+		{name: "two-digit suffix padded", input: "020326_01-10MU", want: "020326-001"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := normalizeMovieID(tt.input); got != tt.want {
+				t.Fatalf("normalizeMovieID(%q) = %q, want %q", tt.input, got, tt.want)
 			}
 		})
 	}

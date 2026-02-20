@@ -22,7 +22,7 @@ import (
 const defaultBaseURL = "https://www.caribbeancom.com"
 
 var (
-	movieIDTokenRegex  = regexp.MustCompile(`(?i)(?:^|[^0-9])(\d{6})[-_](\d{3})(?:[^0-9]|$)`)
+	movieIDTokenRegex  = regexp.MustCompile(`(?i)(?:^|[^0-9])(\d{6})[-_](\d{2,3})(?:[^0-9]|$)`)
 	movieIDFromPageRe  = regexp.MustCompile(`(?i)/moviepages/(\d{6}[-_]\d{3})/`)
 	movieIDFromJSONRe  = regexp.MustCompile(`(?i)"movie_id"\s*:\s*"(\d{6}-\d{3})"`)
 	trailerURLJSONRe   = regexp.MustCompile(`(?i)"sample_flash_url"\s*:\s*"([^"]+)"`)
@@ -108,7 +108,7 @@ func (s *Scraper) ResolveSearchQuery(input string) (string, bool) {
 		return normalizeMovieID(m[1]), true
 	}
 	if m := movieIDTokenRegex.FindStringSubmatch(input); len(m) == 3 {
-		return m[1] + "-" + m[2], true
+		return normalizeMovieID(m[1] + "-" + m[2]), true
 	}
 	return "", false
 }
@@ -230,7 +230,7 @@ func extractMovieID(html, sourceURL, fallbackID string) string {
 		return normalizeMovieID(m[1])
 	}
 	if m := movieIDTokenRegex.FindStringSubmatch(fallbackID); len(m) == 3 {
-		return m[1] + "-" + m[2]
+		return normalizeMovieID(m[1] + "-" + m[2])
 	}
 	return strings.TrimSpace(strings.ToUpper(strings.ReplaceAll(fallbackID, "_", "-")))
 }
@@ -486,7 +486,11 @@ func atoiSafe(v string) int {
 func normalizeMovieID(v string) string {
 	v = strings.TrimSpace(strings.ToLower(v))
 	if m := movieIDTokenRegex.FindStringSubmatch(v); len(m) == 3 {
-		return m[1] + "-" + m[2]
+		suffix := m[2]
+		if len(suffix) == 2 {
+			suffix = "0" + suffix
+		}
+		return m[1] + "-" + suffix
 	}
 	if m := movieIDFromPageRe.FindStringSubmatch(v); len(m) > 1 {
 		return strings.ReplaceAll(strings.ToLower(strings.TrimSpace(m[1])), "_", "-")
