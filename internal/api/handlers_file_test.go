@@ -55,6 +55,39 @@ func TestScanDirectory(t *testing.T) {
 			},
 		},
 		{
+			name: "scan directory with date-based uncensored filenames",
+			setupFiles: func(tempDir string) string {
+				testFiles := []string{
+					"020326_001-1PON.mp4",
+					"020326_01-10MU.mp4",
+					"123025-001-CARIB.mp4",
+				}
+				for _, file := range testFiles {
+					path := filepath.Join(tempDir, file)
+					os.WriteFile(path, []byte("test"), 0644)
+				}
+				return tempDir
+			},
+			requestBody: func(path string) ScanRequest {
+				return ScanRequest{
+					Path:      path,
+					Recursive: false,
+				}
+			},
+			expectedStatus: 200,
+			validateFn: func(t *testing.T, resp *ScanResponse) {
+				matchedByName := map[string]bool{}
+				for _, file := range resp.Files {
+					if file.Matched {
+						matchedByName[file.Name] = true
+					}
+				}
+				assert.True(t, matchedByName["020326_001-1PON.mp4"])
+				assert.True(t, matchedByName["020326_01-10MU.mp4"])
+				assert.True(t, matchedByName["123025-001-CARIB.mp4"])
+			},
+		},
+		{
 			name: "scan non-existent directory",
 			setupFiles: func(tempDir string) string {
 				return filepath.Join(tempDir, "nonexistent")
