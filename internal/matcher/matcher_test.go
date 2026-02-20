@@ -44,6 +44,9 @@ func TestMatcher_MatchFile(t *testing.T) {
 		{"With Z suffix", "IPX-535Z.mp4", "IPX-535Z", 0, false, true},
 		{"With E suffix", "IPX-535E.mp4", "IPX-535E", 0, false, true},
 		{"T28 format", "T28-123.mp4", "T28-123", 0, false, true},
+		{"1PON date-based format", "020326_001-1PON.mp4", "020326_001-1PON", 0, false, true},
+		{"10MU date-based format", "020326_01-10MU.mp4", "020326_01-10MU", 0, false, true},
+		{"CARIB date-based format", "123025-001-CARIB.mp4", "123025-001-CARIB", 0, false, true},
 
 		// Multi-part files
 		{"Multi-part CD1", "IPX-535-pt1.mp4", "IPX-535", 1, true, true},
@@ -235,6 +238,9 @@ func TestMatcher_MatchString(t *testing.T) {
 		{"IPX-535", "IPX-535"},
 		{"IPX-535 Beautiful Day", "IPX-535"},
 		{"[ThZu.Cc]IPX-535", "IPX-535"},
+		{"020326_001-1PON", "020326_001-1PON"},
+		{"020326_01-10MU", "020326_01-10MU"},
+		{"123025-001-CARIB", "123025-001-CARIB"},
 		{"abc-123", "ABC-123"}, // Uppercase conversion
 		{"no match here", ""},
 		{"", ""},
