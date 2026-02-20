@@ -24,6 +24,9 @@
 	let history = $state<HistoryRecord[]>([]);
 	let stats = $state<HistoryStats | null>(null);
 	let loading = $state(true);
+	let hasLoadedOnce = $state(false);
+	let isRefreshing = $state(false);
+	let listRenderVersion = $state(0);
 	let error = $state<string | null>(null);
 
 	// Pagination
@@ -44,8 +47,16 @@
 	const currentPage = $derived(Math.floor(offset / limit) + 1);
 	const totalPages = $derived(Math.ceil(total / limit));
 
+	function itemDelay(index: number): number {
+		return Math.min(index * 28, 220);
+	}
+
 	async function loadHistory() {
-		loading = true;
+		if (!hasLoadedOnce) {
+			loading = true;
+		} else {
+			isRefreshing = true;
+		}
 		error = null;
 
 		try {
@@ -57,11 +68,16 @@
 			const response = await apiClient.getHistory(params);
 			history = response.records;
 			total = response.total;
+			listRenderVersion += 1;
+			hasLoadedOnce = true;
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to load history';
-			history = [];
+			if (!hasLoadedOnce) {
+				history = [];
+			}
 		} finally {
 			loading = false;
+			isRefreshing = false;
 		}
 	}
 
@@ -170,7 +186,7 @@
 				<p class="text-muted-foreground mt-1">View past scraping and organization operations</p>
 			</div>
 			<Button variant="outline" onclick={() => Promise.all([loadHistory(), loadStats()])}>
-				<RefreshCw class="h-4 w-4 mr-2" />
+				<RefreshCw class="h-4 w-4 mr-2 {isRefreshing ? 'animate-spin' : ''}" />
 				Refresh
 			</Button>
 		</div>
@@ -290,7 +306,7 @@
 		{/if}
 
 		<!-- History list -->
-		{#if loading}
+		{#if loading && !hasLoadedOnce}
 			<Card class="p-8 text-center">
 				<Clock class="h-8 w-8 animate-spin mx-auto mb-2" />
 				<p class="text-muted-foreground">Loading history...</p>
@@ -303,10 +319,15 @@
 				{/if}
 			</Card>
 		{:else}
-			<div class="space-y-3">
-				{#each history as item (item.id)}
-					<div animate:flip={{ duration: 240, easing: quintOut }} in:fade|local={{ duration: 170 }} out:fade|local={{ duration: 120 }}>
-						<Card class="p-4 hover:shadow-md transition-shadow">
+			{#key listRenderVersion}
+				<div class="space-y-3" in:fade|local={{ duration: 170 }}>
+					{#each history as item, index (`${item.id}-${listRenderVersion}`)}
+						<div
+							animate:flip={{ duration: 240, easing: quintOut }}
+							in:fly|local={{ y: 8, duration: 210, delay: itemDelay(index), easing: quintOut }}
+							out:fade|local={{ duration: 120 }}
+						>
+							<Card class="p-4 hover:shadow-md transition-shadow">
 						<div class="flex items-start justify-between">
 							<div class="flex-1">
 								<div class="flex items-center gap-3 mb-2">
@@ -410,10 +431,11 @@
 								{/if}
 							</div>
 						</div>
-						</Card>
-					</div>
-				{/each}
-			</div>
+							</Card>
+						</div>
+					{/each}
+				</div>
+			{/key}
 
 			<!-- Pagination -->
 			{#if totalPages > 1}

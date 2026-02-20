@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { flip } from 'svelte/animate';
-	import { quintOut } from 'svelte/easing';
-	import { fade } from 'svelte/transition';
+	import { cubicOut, quintOut } from 'svelte/easing';
+	import { fade, fly, scale } from 'svelte/transition';
 	import { Plus, RefreshCw, Search, Save, Trash2, Pencil, ImageOff, ChevronLeft, ChevronRight, ArrowUpDown } from 'lucide-svelte';
 	import Card from '$lib/components/ui/Card.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
@@ -23,6 +23,9 @@
 
 	let actresses = $state<Actress[]>([]);
 	let loading = $state(true);
+	let hasLoadedOnce = $state(false);
+	let isRefreshing = $state(false);
+	let listRenderVersion = $state(0);
 	let saving = $state(false);
 	let deletingId = $state<number | null>(null);
 	let error = $state<string | null>(null);
@@ -44,6 +47,10 @@
 	const totalPages = $derived(Math.max(1, Math.ceil(total / limit)));
 	const canGoPrev = $derived(offset > 0);
 	const canGoNext = $derived(offset + limit < total);
+
+	function itemDelay(index: number): number {
+		return Math.min(index * 35, 280);
+	}
 
 	function emptyForm(): ActressForm {
 		return {
@@ -106,7 +113,11 @@
 	}
 
 	async function loadActresses() {
-		loading = true;
+		if (!hasLoadedOnce) {
+			loading = true;
+		} else {
+			isRefreshing = true;
+		}
 		error = null;
 		try {
 			const response = await apiClient.listActresses({
@@ -118,12 +129,17 @@
 			});
 			actresses = response.actresses;
 			total = response.total;
+			listRenderVersion += 1;
+			hasLoadedOnce = true;
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to load actresses';
-			actresses = [];
-			total = 0;
+			if (!hasLoadedOnce) {
+				actresses = [];
+				total = 0;
+			}
 		} finally {
 			loading = false;
+			isRefreshing = false;
 		}
 	}
 
@@ -217,16 +233,19 @@
 
 <div class="container mx-auto px-4 py-8">
 	<div class="max-w-7xl mx-auto space-y-6">
-		<div class="flex flex-wrap items-center justify-between gap-3">
+		<div
+			class="flex flex-wrap items-center justify-between gap-3"
+			in:fly|local={{ y: -10, duration: 240, easing: cubicOut }}
+		>
 			<div>
 				<h1 class="text-3xl font-bold">Actress Database</h1>
 				<p class="text-muted-foreground mt-1">Create, update, and remove actress records stored in the database.</p>
 			</div>
-			<div class="flex items-center gap-2">
-				<Button variant="outline" onclick={loadActresses}>
-					<RefreshCw class="h-4 w-4" />
-					Refresh
-				</Button>
+				<div class="flex items-center gap-2">
+					<Button variant="outline" onclick={loadActresses}>
+						<RefreshCw class="h-4 w-4 {isRefreshing ? 'animate-spin' : ''}" />
+						Refresh
+					</Button>
 				<Button onclick={resetForm}>
 					<Plus class="h-4 w-4" />
 					New Actress
@@ -234,10 +253,11 @@
 			</div>
 		</div>
 
-		<div class="grid grid-cols-1 xl:grid-cols-5 gap-6">
+		<div class="grid grid-cols-1 xl:grid-cols-5 gap-6" in:fade|local={{ duration: 240 }}>
 			<div class="xl:col-span-2">
-				<Card class="p-5 space-y-4 sticky top-20">
-					<h2 class="text-lg font-semibold">{editingId ? 'Edit Actress' : 'Create Actress'}</h2>
+				<div in:fly|local={{ x: -14, duration: 260, easing: cubicOut }}>
+					<Card class="p-5 space-y-4 sticky top-20">
+						<h2 class="text-lg font-semibold">{editingId ? 'Edit Actress' : 'Create Actress'}</h2>
 
 					{#if formError}
 						<div class="rounded-md border border-destructive bg-destructive/10 p-3 text-sm text-destructive">
@@ -315,19 +335,21 @@
 						</div>
 					</div>
 
-					<div class="flex items-center gap-2 pt-2">
-						<Button onclick={saveActress} disabled={saving}>
-							<Save class="h-4 w-4" />
-							{saving ? 'Saving...' : editingId ? 'Update' : 'Create'}
-						</Button>
-						<Button variant="outline" onclick={resetForm} disabled={saving}>Clear</Button>
-					</div>
-				</Card>
+						<div class="flex items-center gap-2 pt-2">
+							<Button onclick={saveActress} disabled={saving}>
+								<Save class="h-4 w-4" />
+								{saving ? 'Saving...' : editingId ? 'Update' : 'Create'}
+							</Button>
+							<Button variant="outline" onclick={resetForm} disabled={saving}>Clear</Button>
+						</div>
+					</Card>
+				</div>
 			</div>
 
 			<div class="xl:col-span-3 space-y-4">
-				<Card class="p-4">
-					<div class="flex flex-wrap items-center gap-2">
+				<div in:fly|local={{ x: 14, duration: 260, easing: cubicOut }}>
+					<Card class="p-4">
+						<div class="flex flex-wrap items-center gap-2">
 						<div class="flex-1 min-w-[220px]">
 							<label class="sr-only" for="search">Search actresses</label>
 							<div class="relative">
@@ -397,147 +419,116 @@
 							</Button>
 						</div>
 					</div>
-					<div class="mt-3 text-sm text-muted-foreground">
-						Showing {actresses.length} of {total} actress records
-						{#if activeQuery}
-							for "{activeQuery}"
-						{/if}
-					</div>
-				</Card>
+						<div class="mt-3 text-sm text-muted-foreground">
+							Showing {actresses.length} of {total} actress records
+							{#if activeQuery}
+								for "{activeQuery}"
+							{/if}
+						</div>
+					</Card>
+				</div>
 
 				{#if error}
-					<Card class="p-4 border-destructive bg-destructive/10 text-destructive">{error}</Card>
+					<div in:fly|local={{ y: 8, duration: 180 }}>
+						<Card class="p-4 border-destructive bg-destructive/10 text-destructive">
+							{error}
+						</Card>
+					</div>
 				{/if}
 
-				{#if loading}
-					<Card class="p-8 text-center text-muted-foreground">Loading actresses...</Card>
+				{#if loading && !hasLoadedOnce}
+					<div in:fade|local={{ duration: 180 }}>
+						<Card class="p-8 text-center text-muted-foreground">Loading actresses...</Card>
+					</div>
 				{:else if actresses.length === 0}
-					<Card class="p-8 text-center">
-						<p class="text-muted-foreground">No actresses found.</p>
-					</Card>
+					<div in:fade|local={{ duration: 180 }}>
+						<Card class="p-8 text-center">
+							<p class="text-muted-foreground">No actresses found.</p>
+						</Card>
+					</div>
 				{:else}
-					{#if viewMode === 'cards'}
-						<div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-							{#each actresses as actress (actress.id)}
-								<div animate:flip={{ duration: 220, easing: quintOut }} in:fade|local={{ duration: 140 }}>
-									<Card class="p-3 h-full">
-										<div class="flex items-start gap-3 h-full">
-											{#if actress.thumb_url}
-												<img
-													src={actress.thumb_url}
-													alt={getDisplayName(actress)}
-													class="w-20 h-24 rounded object-cover border"
-													onerror={(event) => {
-														(event.currentTarget as HTMLImageElement).style.display = 'none';
-													}}
-												/>
-											{:else}
-												<div class="w-20 h-24 rounded border bg-muted flex items-center justify-center text-muted-foreground">
-													<ImageOff class="h-4 w-4" />
-												</div>
-											{/if}
+					{#key viewMode}
+						<div in:scale|local={{ start: 0.98, duration: 180, easing: quintOut }} out:fade|local={{ duration: 120 }}>
+							{#if viewMode === 'cards'}
+								<div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+									{#each actresses as actress, index (`${actress.id ?? 'na'}-${index}-${listRenderVersion}`)}
+										<div animate:flip={{ duration: 220, easing: quintOut }} in:fly|local={{ y: 10, duration: 220, delay: itemDelay(index), easing: quintOut }}>
+											<Card class="p-3 h-full">
+												<div class="flex items-start gap-3 h-full">
+													{#if actress.thumb_url}
+														<img
+															src={actress.thumb_url}
+															alt={getDisplayName(actress)}
+															class="w-20 h-24 rounded object-cover border"
+															onerror={(event) => {
+																(event.currentTarget as HTMLImageElement).style.display = 'none';
+															}}
+														/>
+													{:else}
+														<div class="w-20 h-24 rounded border bg-muted flex items-center justify-center text-muted-foreground">
+															<ImageOff class="h-4 w-4" />
+														</div>
+													{/if}
 
-											<div class="flex-1 min-w-0">
-												<div class="flex flex-wrap items-center gap-2">
-													<h3 class="font-semibold truncate">{getDisplayName(actress)}</h3>
-													{#if actress.id}
-														<span class="text-xs rounded bg-muted px-2 py-0.5">#{actress.id}</span>
-													{/if}
-													{#if actress.dmm_id}
-														<span class="text-xs rounded bg-muted px-2 py-0.5">DMM {actress.dmm_id}</span>
-													{/if}
+													<div class="flex-1 min-w-0">
+														<div class="flex flex-wrap items-center gap-2">
+															<h3 class="font-semibold truncate">{getDisplayName(actress)}</h3>
+															{#if actress.id}
+																<span class="text-xs rounded bg-muted px-2 py-0.5">#{actress.id}</span>
+															{/if}
+															{#if actress.dmm_id}
+																<span class="text-xs rounded bg-muted px-2 py-0.5">DMM {actress.dmm_id}</span>
+															{/if}
+														</div>
+														{#if actress.japanese_name}
+															<p class="text-sm text-muted-foreground truncate">{actress.japanese_name}</p>
+														{/if}
+														{#if actress.aliases}
+															<p class="text-xs text-muted-foreground line-clamp-2 mt-1">Aliases: {actress.aliases}</p>
+														{/if}
+														<div class="flex items-center gap-2 mt-3">
+															<Button variant="outline" size="sm" onclick={() => startEdit(actress)}>
+																<Pencil class="h-4 w-4" />
+																Edit
+															</Button>
+															<Button
+																variant="outline"
+																size="sm"
+																onclick={() => removeActress(actress)}
+																disabled={deletingId === actress.id}
+																class="text-destructive hover:bg-destructive/10"
+															>
+																<Trash2 class="h-4 w-4" />
+																Delete
+															</Button>
+														</div>
+													</div>
 												</div>
-												{#if actress.japanese_name}
-													<p class="text-sm text-muted-foreground truncate">{actress.japanese_name}</p>
-												{/if}
-												{#if actress.aliases}
-													<p class="text-xs text-muted-foreground line-clamp-2 mt-1">Aliases: {actress.aliases}</p>
-												{/if}
-												<div class="flex items-center gap-2 mt-3">
-													<Button variant="outline" size="sm" onclick={() => startEdit(actress)}>
-														<Pencil class="h-4 w-4" />
-														Edit
-													</Button>
-													<Button
-														variant="outline"
-														size="sm"
-														onclick={() => removeActress(actress)}
-														disabled={deletingId === actress.id}
-														class="text-destructive hover:bg-destructive/10"
-													>
-														<Trash2 class="h-4 w-4" />
-														Delete
-													</Button>
-												</div>
-											</div>
+											</Card>
 										</div>
-									</Card>
+									{/each}
 								</div>
-							{/each}
-						</div>
-					{:else if viewMode === 'compact'}
-						<div class="space-y-2">
-							{#each actresses as actress (actress.id)}
-								<div animate:flip={{ duration: 220, easing: quintOut }} in:fade|local={{ duration: 140 }}>
-									<Card class="p-3">
-										<div class="flex items-center gap-3">
-											<div class="flex-1 min-w-0">
-												<div class="flex items-center gap-2 min-w-0">
-													<p class="font-medium truncate">{getDisplayName(actress)}</p>
-													{#if actress.id}
-														<span class="text-xs rounded bg-muted px-2 py-0.5">#{actress.id}</span>
-													{/if}
-													{#if actress.dmm_id}
-														<span class="text-xs rounded bg-muted px-2 py-0.5">DMM {actress.dmm_id}</span>
-													{/if}
-												</div>
-												<p class="text-xs text-muted-foreground truncate">
-													{actress.japanese_name || '-'}
-												</p>
-											</div>
-											<div class="flex items-center gap-2">
-												<Button variant="outline" size="sm" onclick={() => startEdit(actress)}>
-													<Pencil class="h-4 w-4" />
-												</Button>
-												<Button
-													variant="outline"
-													size="sm"
-													onclick={() => removeActress(actress)}
-													disabled={deletingId === actress.id}
-													class="text-destructive hover:bg-destructive/10"
-												>
-													<Trash2 class="h-4 w-4" />
-												</Button>
-											</div>
-										</div>
-									</Card>
-								</div>
-							{/each}
-						</div>
-					{:else}
-						<Card class="overflow-hidden">
-							<div class="overflow-x-auto">
-								<table class="w-full text-sm">
-									<thead class="bg-muted/50">
-										<tr class="text-left border-b">
-											<th class="px-3 py-2 font-medium">ID</th>
-											<th class="px-3 py-2 font-medium">Name</th>
-											<th class="px-3 py-2 font-medium">Japanese Name</th>
-											<th class="px-3 py-2 font-medium">DMM ID</th>
-											<th class="px-3 py-2 font-medium">Aliases</th>
-											<th class="px-3 py-2 font-medium text-right">Actions</th>
-										</tr>
-									</thead>
-									<tbody>
-										{#each actresses as actress (actress.id)}
-											<tr class="border-b last:border-b-0" in:fade|local={{ duration: 120 }}>
-												<td class="px-3 py-2 text-muted-foreground">{actress.id ?? '-'}</td>
-												<td class="px-3 py-2 font-medium max-w-44 truncate">{getDisplayName(actress)}</td>
-												<td class="px-3 py-2 text-muted-foreground max-w-44 truncate">{actress.japanese_name || '-'}</td>
-												<td class="px-3 py-2 text-muted-foreground">{actress.dmm_id ?? '-'}</td>
-												<td class="px-3 py-2 text-muted-foreground max-w-52 truncate">{actress.aliases || '-'}</td>
-												<td class="px-3 py-2">
-													<div class="flex items-center justify-end gap-2">
+							{:else if viewMode === 'compact'}
+								<div class="space-y-2">
+									{#each actresses as actress, index (`${actress.id ?? 'na'}-${index}-${listRenderVersion}`)}
+										<div animate:flip={{ duration: 220, easing: quintOut }} in:fly|local={{ y: 8, duration: 190, delay: itemDelay(index), easing: quintOut }}>
+											<Card class="p-3">
+												<div class="flex items-center gap-3">
+													<div class="flex-1 min-w-0">
+														<div class="flex items-center gap-2 min-w-0">
+															<p class="font-medium truncate">{getDisplayName(actress)}</p>
+															{#if actress.id}
+																<span class="text-xs rounded bg-muted px-2 py-0.5">#{actress.id}</span>
+															{/if}
+															{#if actress.dmm_id}
+																<span class="text-xs rounded bg-muted px-2 py-0.5">DMM {actress.dmm_id}</span>
+															{/if}
+														</div>
+														<p class="text-xs text-muted-foreground truncate">
+															{actress.japanese_name || '-'}
+														</p>
+													</div>
+													<div class="flex items-center gap-2">
 														<Button variant="outline" size="sm" onclick={() => startEdit(actress)}>
 															<Pencil class="h-4 w-4" />
 														</Button>
@@ -551,14 +542,58 @@
 															<Trash2 class="h-4 w-4" />
 														</Button>
 													</div>
-												</td>
-											</tr>
-										{/each}
-									</tbody>
-								</table>
-							</div>
-						</Card>
-					{/if}
+												</div>
+											</Card>
+										</div>
+									{/each}
+								</div>
+							{:else}
+								<Card class="overflow-hidden">
+									<div class="overflow-x-auto">
+										<table class="w-full text-sm">
+											<thead class="bg-muted/50">
+												<tr class="text-left border-b">
+													<th class="px-3 py-2 font-medium">ID</th>
+													<th class="px-3 py-2 font-medium">Name</th>
+													<th class="px-3 py-2 font-medium">Japanese Name</th>
+													<th class="px-3 py-2 font-medium">DMM ID</th>
+													<th class="px-3 py-2 font-medium">Aliases</th>
+													<th class="px-3 py-2 font-medium text-right">Actions</th>
+												</tr>
+											</thead>
+											<tbody>
+												{#each actresses as actress, index (`${actress.id ?? 'na'}-${index}-${listRenderVersion}`)}
+													<tr class="border-b last:border-b-0" in:fly|local={{ y: 6, duration: 170, delay: itemDelay(index), easing: quintOut }}>
+														<td class="px-3 py-2 text-muted-foreground">{actress.id ?? '-'}</td>
+														<td class="px-3 py-2 font-medium max-w-44 truncate">{getDisplayName(actress)}</td>
+														<td class="px-3 py-2 text-muted-foreground max-w-44 truncate">{actress.japanese_name || '-'}</td>
+														<td class="px-3 py-2 text-muted-foreground">{actress.dmm_id ?? '-'}</td>
+														<td class="px-3 py-2 text-muted-foreground max-w-52 truncate">{actress.aliases || '-'}</td>
+														<td class="px-3 py-2">
+															<div class="flex items-center justify-end gap-2">
+																<Button variant="outline" size="sm" onclick={() => startEdit(actress)}>
+																	<Pencil class="h-4 w-4" />
+																</Button>
+																<Button
+																	variant="outline"
+																	size="sm"
+																	onclick={() => removeActress(actress)}
+																	disabled={deletingId === actress.id}
+																	class="text-destructive hover:bg-destructive/10"
+																>
+																	<Trash2 class="h-4 w-4" />
+																</Button>
+															</div>
+														</td>
+													</tr>
+												{/each}
+											</tbody>
+										</table>
+									</div>
+								</Card>
+							{/if}
+						</div>
+					{/key}
 				{/if}
 
 				<Card class="p-3">
