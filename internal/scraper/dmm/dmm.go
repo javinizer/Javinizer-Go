@@ -28,6 +28,8 @@ const (
 	newDigitalURL = newBaseURL + "/av/content/?id=%s"
 	// Amateur video URL format (video.dmm.co.jp/amateur/)
 	newAmateurURL = newBaseURL + "/amateur/content/?id=%s"
+	// Actress link selector used across old/new DMM pages
+	actressLinkSelector = `a[href*='?actress='], a[href*='&actress='], a[href*='/article=actress/id=']`
 )
 
 // Package-level compiled regexes for performance
@@ -38,6 +40,11 @@ var (
 	contentIDUnpadRegex     = regexp.MustCompile(`^([a-z]+)0*(\d+.*)$`)
 	// Generalized prefix cleaning for DMM content IDs (leading digits OR h_<digits>)
 	cleanPrefixRegex = regexp.MustCompile(`^(?:\d+|h_\d+)?([a-z]+\d+.*)$`)
+	// Actress parsing helpers
+	actressIDRegex        = regexp.MustCompile(`[?&]actress=(\d+)`)
+	actressArticleIDRegex = regexp.MustCompile(`/article=actress/id=(\d+)`)
+	actressParenRegex     = regexp.MustCompile(`\(.*\)|（.*）`)
+	actressJapaneseCharRe = regexp.MustCompile(`\p{Hiragana}|\p{Katakana}|\p{Han}`)
 )
 
 // Scraper implements the DMM/Fanza scraper
@@ -1006,7 +1013,7 @@ func (s *Scraper) extractGenres(doc *goquery.Document) []string {
 // extractActresses extracts actress information
 func (s *Scraper) extractActresses(doc *goquery.Document) []models.ActressInfo {
 	actresses := make([]models.ActressInfo, 0)
-	seenActressIDs := make(map[int]bool) // Track seen actress IDs to avoid duplicates
+	actressIndexByID := make(map[int]int) // Track seen actress IDs to avoid duplicates and merge metadata
 
 	// Find table rows and look for actress-specific rows
 	doc.Find("tr").Each(func(i int, row *goquery.Selection) {
@@ -1034,101 +1041,20 @@ func (s *Scraper) extractActresses(doc *goquery.Document) []models.ActressInfo {
 		}
 
 		// Extract all actress links from this specific content cell only
-		contentCell.Find("a[href*='actress']").Each(func(j int, sel *goquery.Selection) {
-			href, exists := sel.Attr("href")
-			if !exists {
+		contentCell.Find(actressLinkSelector).Each(func(j int, sel *goquery.Selection) {
+			actress := s.extractActressFromLink(sel)
+			if actress.DMMID == 0 {
 				return
 			}
-
-			// Extract actress ID from URL
-			actressID := 0
-
-			// Try ?actress=123 format first
-			if matches := regexp.MustCompile(`\?actress=(\d+)`).FindStringSubmatch(href); len(matches) > 1 {
-				actressID, _ = strconv.Atoi(matches[1])
-			} else if matches := regexp.MustCompile(`/article=actress/id=(\d+)`).FindStringSubmatch(href); len(matches) > 1 {
-				// Try /article=actress/id=123 format
-				actressID, _ = strconv.Atoi(matches[1])
-			} else {
-				// No actress ID found in URL
-				return
+			// Historical behavior for old DMM table pages treated English names as
+			// LastName FirstName (FirstName stored in second token).
+			if actress.JapaneseName == "" && actress.FirstName != "" && actress.LastName != "" {
+				actress.FirstName, actress.LastName = actress.LastName, actress.FirstName
 			}
 
-			// Check for duplicates
-			if seenActressIDs[actressID] {
-				return
+			if upsertActressInfo(&actresses, actressIndexByID, actress) {
+				logging.Debugf("DMM: Actress extracted - Name: %s, ThumbURL: %s, ID: %d", actress.FullName(), actress.ThumbURL, actress.DMMID)
 			}
-			seenActressIDs[actressID] = true
-
-			actressName := cleanString(sel.Text())
-
-			// Remove parenthetical content
-			actressName = regexp.MustCompile(`\(.*\)|（.*）`).ReplaceAllString(actressName, "")
-			actressName = strings.TrimSpace(actressName)
-
-			// Filter out known non-actress text patterns (DMM UI elements)
-			if strings.Contains(actressName, "購入前") ||
-				strings.Contains(actressName, "レビュー") ||
-				strings.Contains(actressName, "ポイント") ||
-				actressName == "" {
-				return
-			}
-
-			// Extract thumbnail URL - look for img tag within the link or in parent/sibling elements
-			thumbURL := ""
-
-			// Try to find img within the link
-			if img := sel.Find("img").First(); img.Length() > 0 {
-				if src, exists := img.Attr("src"); exists {
-					thumbURL = src
-				} else if src, exists := img.Attr("data-src"); exists {
-					// Some sites use lazy loading
-					thumbURL = src
-				}
-			}
-
-			// If no img in link, check parent's sibling or parent element
-			if thumbURL == "" {
-				parent := sel.Parent()
-				if img := parent.Find("img").First(); img.Length() > 0 {
-					if src, exists := img.Attr("src"); exists {
-						thumbURL = src
-					} else if src, exists := img.Attr("data-src"); exists {
-						thumbURL = src
-					}
-				}
-			}
-
-			// Determine if name is Japanese (using Unicode properties for Go 1.25+ compatibility)
-			isJapanese := regexp.MustCompile(`\p{Hiragana}|\p{Katakana}|\p{Han}`).MatchString(actressName)
-
-			actress := models.ActressInfo{
-				DMMID:    actressID,
-				ThumbURL: thumbURL,
-			}
-
-			if isJapanese {
-				// Japanese names: only populate japanese_name field
-				actress.JapaneseName = actressName
-			} else {
-				// English names: populate first_name and last_name
-				parts := strings.Fields(actressName)
-				if len(parts) == 1 {
-					actress.FirstName = parts[0]
-				} else if len(parts) >= 2 {
-					actress.LastName = parts[0]
-					actress.FirstName = parts[1]
-				}
-			}
-
-			// Try to construct fallback thumbnail URLs if we have no thumb yet
-			// DMM actress thumbnails follow pattern: https://pics.dmm.co.jp/mono/actjpgs/{name}.jpg
-			if actress.ThumbURL == "" {
-				actress.ThumbURL = s.tryActressThumbURLs(actress.FirstName, actress.LastName, actress.DMMID)
-			}
-
-			actresses = append(actresses, actress)
-			logging.Debugf("DMM: Actress extracted - Name: %s, ThumbURL: %s, ID: %d", actress.FullName(), actress.ThumbURL, actress.DMMID)
 		})
 	})
 
@@ -1140,7 +1066,56 @@ func (s *Scraper) extractActresses(doc *goquery.Document) []models.ActressInfo {
 // This function uses a more targeted approach to extract only the movie's actual cast.
 func (s *Scraper) extractActressesFromStreamingPage(doc *goquery.Document) []models.ActressInfo {
 	actresses := make([]models.ActressInfo, 0)
-	seen := make(map[int]bool) // Track actress IDs to avoid duplicates
+	actressIndexByID := make(map[int]int) // Track actress IDs to avoid duplicates and merge metadata
+
+	// Strategy 0: Prefer the dedicated cast block used on video.dmm.co.jp:
+	// "この商品に出演しているAV女優" (data-e2eid="actress-information")
+	if castSection := doc.Find(`[data-e2eid='actress-information']`).First(); castSection.Length() > 0 {
+		castSection.Find(actressLinkSelector).Each(func(i int, sel *goquery.Selection) {
+			actress := s.extractActressFromLink(sel)
+			if actress.DMMID == 0 {
+				return
+			}
+			if upsertActressInfo(&actresses, actressIndexByID, actress) {
+				logging.Debugf("DMM Streaming: Actress extracted from cast section - Name: %s, ID: %d", actress.FullName(), actress.DMMID)
+			}
+		})
+
+		if len(actresses) > 0 {
+			logging.Debugf("DMM Streaming: Found %d actresses in data-e2eid cast section", len(actresses))
+			return actresses
+		}
+	}
+
+	// Strategy 0b: Heading-based fallback for cast block when data-e2eid is absent
+	doc.Find("h2").Each(func(i int, heading *goquery.Selection) {
+		if len(actresses) > 0 {
+			return
+		}
+		if !strings.Contains(cleanString(heading.Text()), "この商品に出演しているAV女優") {
+			return
+		}
+
+		container := findNearestActressContainer(heading)
+		if container == nil || container.Length() == 0 {
+			return
+		}
+
+		container.Find(actressLinkSelector).Each(func(j int, sel *goquery.Selection) {
+			actress := s.extractActressFromLink(sel)
+			if actress.DMMID == 0 {
+				return
+			}
+			if upsertActressInfo(&actresses, actressIndexByID, actress) {
+				logging.Debugf("DMM Streaming: Actress extracted from heading-matched cast section - Name: %s, ID: %d", actress.FullName(), actress.DMMID)
+			}
+		})
+	})
+
+	if len(actresses) > 0 {
+		logging.Debugf("DMM Streaming: Found %d actresses via heading-matched cast section", len(actresses))
+		return actresses
+	}
 
 	// Strategy 1: Look for actresses in a metadata/details section
 	// video.dmm.co.jp pages typically have actress links in:
@@ -1150,19 +1125,20 @@ func (s *Scraper) extractActressesFromStreamingPage(doc *goquery.Document) []mod
 
 	// Try finding actress links within a table or definition list (common for metadata)
 	metadataSelectors := []string{
-		"table a[href*='actress']",         // Actress links within tables
-		"dl a[href*='actress']",            // Actress links within definition lists
-		".productData a[href*='actress']",  // Product data section
-		".cmn-detail a[href*='actress']",   // Common detail section
-		".product-info a[href*='actress']", // Product info section
+		buildScopedActressSelector("table"),         // Actress links within tables
+		buildScopedActressSelector("dl"),            // Actress links within definition lists
+		buildScopedActressSelector(".productData"),  // Product data section
+		buildScopedActressSelector(".cmn-detail"),   // Common detail section
+		buildScopedActressSelector(".product-info"), // Product info section
 	}
 
 	for _, selector := range metadataSelectors {
 		doc.Find(selector).Each(func(i int, sel *goquery.Selection) {
 			actress := s.extractActressFromLink(sel)
-			if actress.DMMID > 0 && !seen[actress.DMMID] {
-				actresses = append(actresses, actress)
-				seen[actress.DMMID] = true
+			if actress.DMMID > 0 {
+				if !upsertActressInfo(&actresses, actressIndexByID, actress) {
+					return
+				}
 				logging.Debugf("DMM Streaming: Actress extracted from metadata - Name: %s, ID: %d", actress.FullName(), actress.DMMID)
 			}
 		})
@@ -1181,15 +1157,16 @@ func (s *Scraper) extractActressesFromStreamingPage(doc *goquery.Document) []mod
 	count := 0
 	maxActresses := 6 // Reasonable limit to avoid including too many recommendations
 
-	doc.Find("a[href*='actress']").Each(func(i int, sel *goquery.Selection) {
+	doc.Find(actressLinkSelector).Each(func(i int, sel *goquery.Selection) {
 		if count >= maxActresses {
 			return
 		}
 
 		actress := s.extractActressFromLink(sel)
-		if actress.DMMID > 0 && !seen[actress.DMMID] {
-			actresses = append(actresses, actress)
-			seen[actress.DMMID] = true
+		if actress.DMMID > 0 {
+			if !upsertActressInfo(&actresses, actressIndexByID, actress) {
+				return
+			}
 			count++
 			logging.Debugf("DMM Streaming: Actress extracted (fallback) - Name: %s, ID: %d", actress.FullName(), actress.DMMID)
 		}
@@ -1206,60 +1183,20 @@ func (s *Scraper) extractActressFromLink(sel *goquery.Selection) models.ActressI
 	}
 
 	// Extract actress ID from URL
-	actressID := 0
-
-	// Try ?actress=123 format first
-	if matches := regexp.MustCompile(`\?actress=(\d+)`).FindStringSubmatch(href); len(matches) > 1 {
-		actressID, _ = strconv.Atoi(matches[1])
-	} else if matches := regexp.MustCompile(`/article=actress/id=(\d+)`).FindStringSubmatch(href); len(matches) > 1 {
-		// Try /article=actress/id=123 format
-		actressID, _ = strconv.Atoi(matches[1])
-	} else {
-		// No actress ID found in URL
+	actressID := extractActressID(href)
+	if actressID == 0 {
 		return models.ActressInfo{}
 	}
 
-	actressName := cleanString(sel.Text())
-
-	// Remove parenthetical content
-	actressName = regexp.MustCompile(`\(.*\)|（.*）`).ReplaceAllString(actressName, "")
-	actressName = strings.TrimSpace(actressName)
-
-	// Filter out known non-actress text patterns (DMM UI elements)
-	if strings.Contains(actressName, "購入前") ||
-		strings.Contains(actressName, "レビュー") ||
-		strings.Contains(actressName, "ポイント") ||
-		actressName == "" {
+	actressName := cleanActressName(sel.Text())
+	if shouldSkipActressName(actressName) {
 		return models.ActressInfo{}
 	}
 
-	// Extract thumbnail URL - look for img tag within the link or in parent/sibling elements
-	thumbURL := ""
-
-	// Try to find img within the link
-	if img := sel.Find("img").First(); img.Length() > 0 {
-		if src, exists := img.Attr("src"); exists {
-			thumbURL = src
-		} else if src, exists := img.Attr("data-src"); exists {
-			// Some sites use lazy loading
-			thumbURL = src
-		}
-	}
-
-	// If no img in link, check parent's sibling or parent element
-	if thumbURL == "" {
-		parent := sel.Parent()
-		if img := parent.Find("img").First(); img.Length() > 0 {
-			if src, exists := img.Attr("src"); exists {
-				thumbURL = src
-			} else if src, exists := img.Attr("data-src"); exists {
-				thumbURL = src
-			}
-		}
-	}
+	thumbURL := extractActressThumbURL(sel)
 
 	// Determine if name is Japanese (using Unicode properties for Go 1.25+ compatibility)
-	isJapanese := regexp.MustCompile(`\p{Hiragana}|\p{Katakana}|\p{Han}`).MatchString(actressName)
+	isJapanese := actressJapaneseCharRe.MatchString(actressName)
 
 	actress := models.ActressInfo{
 		DMMID:    actressID,
@@ -1287,6 +1224,151 @@ func (s *Scraper) extractActressFromLink(sel *goquery.Selection) models.ActressI
 	}
 
 	return actress
+}
+
+func buildScopedActressSelector(scope string) string {
+	return fmt.Sprintf(
+		"%s a[href*='?actress='], %s a[href*='&actress='], %s a[href*='/article=actress/id=']",
+		scope, scope, scope,
+	)
+}
+
+// findNearestActressContainer climbs parent nodes to find the nearest container
+// with actress links, used for heading-based cast block extraction.
+func findNearestActressContainer(sel *goquery.Selection) *goquery.Selection {
+	if sel == nil {
+		return nil
+	}
+
+	container := sel.Parent()
+	for depth := 0; depth < 8 && container.Length() > 0; depth++ {
+		if container.Find(actressLinkSelector).Length() > 0 {
+			return container
+		}
+		container = container.Parent()
+	}
+
+	return nil
+}
+
+func extractActressID(href string) int {
+	if matches := actressIDRegex.FindStringSubmatch(href); len(matches) > 1 {
+		if actressID, err := strconv.Atoi(matches[1]); err == nil {
+			return actressID
+		}
+	}
+	if matches := actressArticleIDRegex.FindStringSubmatch(href); len(matches) > 1 {
+		if actressID, err := strconv.Atoi(matches[1]); err == nil {
+			return actressID
+		}
+	}
+	return 0
+}
+
+func cleanActressName(name string) string {
+	name = cleanString(name)
+	name = actressParenRegex.ReplaceAllString(name, "")
+	return strings.TrimSpace(name)
+}
+
+func shouldSkipActressName(name string) bool {
+	return name == "" ||
+		strings.Contains(name, "購入前") ||
+		strings.Contains(name, "レビュー") ||
+		strings.Contains(name, "ポイント")
+}
+
+func extractActressThumbURL(sel *goquery.Selection) string {
+	extractFrom := func(root *goquery.Selection) string {
+		if root == nil || root.Length() == 0 {
+			return ""
+		}
+
+		// Prefer img attributes first.
+		if img := root.Find("img").First(); img.Length() > 0 {
+			for _, attr := range []string{"data-src", "src", "srcset"} {
+				if value, exists := img.Attr(attr); exists && value != "" && !strings.HasPrefix(value, "data:image") {
+					return value
+				}
+			}
+		}
+
+		// Next.js often stores the real URL in <source srcset>.
+		if source := root.Find("source").First(); source.Length() > 0 {
+			if value, exists := source.Attr("srcset"); exists && value != "" {
+				return value
+			}
+		}
+
+		return ""
+	}
+
+	if thumbURL := normalizeActressThumbURL(extractFrom(sel)); thumbURL != "" {
+		return thumbURL
+	}
+
+	return normalizeActressThumbURL(extractFrom(sel.Parent()))
+}
+
+func normalizeActressThumbURL(url string) string {
+	url = strings.TrimSpace(url)
+	if url == "" {
+		return ""
+	}
+
+	// Handle HTML-escaped query separators and srcset URL lists.
+	url = strings.ReplaceAll(url, "&amp;", "&")
+	if commaIdx := strings.Index(url, ","); commaIdx != -1 {
+		url = strings.TrimSpace(url[:commaIdx])
+	}
+	if whitespaceIdx := strings.IndexAny(url, " \t\r\n"); whitespaceIdx != -1 {
+		url = url[:whitespaceIdx]
+	}
+
+	// Normalize protocol-relative paths and DMM image hosts.
+	if strings.HasPrefix(url, "//") {
+		url = "https:" + url
+	}
+	if strings.HasPrefix(url, "/") {
+		url = "https://video.dmm.co.jp" + url
+	}
+	url = strings.Replace(url, "awsimgsrc.dmm.co.jp/pics_dig", "pics.dmm.co.jp", 1)
+
+	// Use canonical path without size/query hints.
+	if queryIdx := strings.Index(url, "?"); queryIdx != -1 {
+		url = url[:queryIdx]
+	}
+
+	return strings.TrimSpace(url)
+}
+
+// upsertActressInfo appends new actress records and merges duplicate IDs so
+// later links can fill missing fields (e.g., thumbnail URL).
+func upsertActressInfo(actresses *[]models.ActressInfo, indexByID map[int]int, actress models.ActressInfo) bool {
+	if actress.DMMID == 0 {
+		return false
+	}
+
+	if idx, exists := indexByID[actress.DMMID]; exists {
+		existing := &(*actresses)[idx]
+		if existing.ThumbURL == "" && actress.ThumbURL != "" {
+			existing.ThumbURL = actress.ThumbURL
+		}
+		if existing.JapaneseName == "" && actress.JapaneseName != "" {
+			existing.JapaneseName = actress.JapaneseName
+		}
+		if existing.FirstName == "" && actress.FirstName != "" {
+			existing.FirstName = actress.FirstName
+		}
+		if existing.LastName == "" && actress.LastName != "" {
+			existing.LastName = actress.LastName
+		}
+		return false
+	}
+
+	indexByID[actress.DMMID] = len(*actresses)
+	*actresses = append(*actresses, actress)
+	return true
 }
 
 // tryActressThumbURLs tries to construct and test actress thumbnail URLs
