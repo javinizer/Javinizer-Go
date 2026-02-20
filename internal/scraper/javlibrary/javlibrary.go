@@ -149,11 +149,23 @@ func (s *Scraper) Search(id string) (*models.ScraperResult, error) {
 
 // fetchPage fetches a page via FlareSolverr (if enabled) or direct HTTP
 func (s *Scraper) fetchPage(url string) (string, error) {
-	// Try FlareSolverr first if enabled
+	// Try direct request first and only escalate to FlareSolverr on blocked/challenge responses.
+	resp, err := s.client.R().Get(url)
+	if err == nil && resp != nil && resp.StatusCode() == 200 {
+		html := string(resp.Body())
+		if !models.IsCloudflareChallengePage(html) {
+			return html, nil
+		}
+		logging.Warnf("JavLibrary: Direct request returned Cloudflare challenge, escalating to FlareSolverr: %s", url)
+	} else if err == nil && resp != nil {
+		logging.Debugf("JavLibrary: Direct request returned status %d for %s", resp.StatusCode(), url)
+	}
+
+	// Fallback to FlareSolverr if enabled.
 	if s.flaresolverr != nil && s.cfg.UseFlareSolverr {
 		logging.Infof("JavLibrary: Using FlareSolverr for %s", url)
-		html, cookies, err := s.flaresolverr.ResolveURL(url)
-		if err == nil {
+		html, cookies, fsErr := s.flaresolverr.ResolveURL(url)
+		if fsErr == nil {
 			if models.IsCloudflareChallengePage(html) {
 				return "", models.NewScraperChallengeError(
 					"JavLibrary",
@@ -166,11 +178,9 @@ func (s *Scraper) fetchPage(url string) (string, error) {
 			}
 			return html, nil
 		}
-		logging.Warnf("JavLibrary: FlareSolverr failed, falling back to direct request: %v", err)
+		logging.Warnf("JavLibrary: FlareSolverr failed, falling back to direct request result: %v", fsErr)
 	}
 
-	// Fallback to direct request
-	resp, err := s.client.R().Get(url)
 	if err != nil {
 		return "", err
 	}

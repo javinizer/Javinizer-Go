@@ -238,19 +238,35 @@ func (s *Scraper) fetchPage(targetURL string) (string, error) {
 	s.waitForRateLimit()
 	defer s.updateLastRequestTime()
 
+	resp, err := s.client.R().Get(targetURL)
+	if err == nil && resp != nil && resp.StatusCode() == 200 {
+		html := resp.String()
+		if !models.IsCloudflareChallengePage(html) {
+			return html, nil
+		}
+		logging.Warnf("JavDB: Direct request returned Cloudflare challenge, escalating to FlareSolverr: %s", targetURL)
+	} else if err == nil && resp != nil {
+		logging.Debugf("JavDB: Direct request returned status %d for %s", resp.StatusCode(), targetURL)
+	}
+
 	if s.cfg.UseFlareSolverr && s.flaresolverr != nil {
 		logging.Debugf("JavDB: Resolving via FlareSolverr: %s", targetURL)
-		html, cookies, err := s.flaresolverr.ResolveURL(targetURL)
-		if err == nil {
+		html, cookies, fsErr := s.flaresolverr.ResolveURL(targetURL)
+		if fsErr == nil {
 			for _, c := range cookies {
 				s.client.SetCookie(&c)
 			}
+			if models.IsCloudflareChallengePage(html) {
+				return "", models.NewScraperChallengeError(
+					"JavDB",
+					"JavDB returned a Cloudflare challenge page (request blocked; check FlareSolverr/proxy configuration)",
+				)
+			}
 			return html, nil
 		}
-		logging.Warnf("JavDB: FlareSolverr failed, falling back to direct request: %v", err)
+		logging.Warnf("JavDB: FlareSolverr failed, falling back to direct request result: %v", fsErr)
 	}
 
-	resp, err := s.client.R().Get(targetURL)
 	return s.fetchPageDirectResponse(resp, err)
 }
 

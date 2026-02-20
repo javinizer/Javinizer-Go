@@ -150,8 +150,12 @@ type FlareSolverr struct {
 	baseURL      string
 	timeout      time.Duration
 	maxRetries   int
+	sessionTTL   int
 	sessions     sync.Map // session ID -> FlareSolverrSession
 	requestProxy *FlareSolverrProxy
+
+	persistentSessionMu sync.Mutex
+	persistentSessionID string
 }
 
 // FlareSolverrSession represents a FlareSolverr session
@@ -171,11 +175,12 @@ type FlareSolverrProxy struct {
 
 // FlareSolverrRequest represents a request to FlareSolverr
 type FlareSolverrRequest struct {
-	Cmd        string             `json:"cmd"`             // "request.get" or "sessions.create"
-	URL        string             `json:"url"`             // Target URL
-	MaxTimeout int                `json:"maxTimeout"`      // Timeout in milliseconds (FlareSolverr expects ms)
-	Session    string             `json:"session"`         // Optional: reuse existing session
-	Proxy      *FlareSolverrProxy `json:"proxy,omitempty"` // Optional: proxy for target URL request
+	Cmd               string             `json:"cmd"`                           // "request.get" or "sessions.create"
+	URL               string             `json:"url"`                           // Target URL
+	MaxTimeout        int                `json:"maxTimeout"`                    // Timeout in milliseconds (FlareSolverr expects ms)
+	Session           string             `json:"session"`                       // Optional: reuse existing session
+	SessionTTLMinutes int                `json:"session_ttl_minutes,omitempty"` // Optional: rotate existing session when older than TTL
+	Proxy             *FlareSolverrProxy `json:"proxy,omitempty"`               // Optional: proxy for target URL request
 }
 
 // FlareSolverrResponse represents a FlareSolverr response
@@ -207,15 +212,86 @@ func NewFlareSolverr(cfg *config.FlareSolverrConfig) (*FlareSolverr, error) {
 		baseURL:    cfg.URL,
 		timeout:    time.Duration(cfg.Timeout) * time.Second,
 		maxRetries: cfg.MaxRetries,
+		sessionTTL: secondsToMinutes(cfg.SessionTTL),
 	}, nil
 }
 
 // ResolveURL resolves a URL through FlareSolverr, returning HTML content and cookies
 func (fs *FlareSolverr) ResolveURL(targetURL string) (string, []http.Cookie, error) {
+	sessionID, err := fs.getOrCreatePersistentSession()
+	if err != nil {
+		logging.Warnf("FlareSolverr: failed to create persistent session, using one-off request: %v", err)
+		return fs.resolveURLRequest(targetURL, "")
+	}
+
+	html, cookies, err := fs.ResolveURLWithSession(targetURL, sessionID)
+	if err == nil {
+		return html, cookies, nil
+	}
+
+	// Session can become invalid if FlareSolverr restarts or rotates storage.
+	// Reset local session, recreate once, then retry.
+	logging.Warnf("FlareSolverr: persistent session %s failed, recreating: %v", sessionID, err)
+	fs.resetPersistentSession(sessionID)
+
+	retrySessionID, retryErr := fs.getOrCreatePersistentSession()
+	if retryErr != nil {
+		logging.Warnf("FlareSolverr: failed to recreate persistent session, using one-off request: %v", retryErr)
+		return fs.resolveURLRequest(targetURL, "")
+	}
+
+	html, cookies, err = fs.ResolveURLWithSession(targetURL, retrySessionID)
+	if err == nil {
+		return html, cookies, nil
+	}
+
+	logging.Warnf("FlareSolverr: recreated session %s failed, using one-off request: %v", retrySessionID, err)
+	return fs.resolveURLRequest(targetURL, "")
+}
+
+func (fs *FlareSolverr) getOrCreatePersistentSession() (string, error) {
+	fs.persistentSessionMu.Lock()
+	defer fs.persistentSessionMu.Unlock()
+
+	if fs.persistentSessionID != "" {
+		return fs.persistentSessionID, nil
+	}
+
+	sessionID, err := fs.CreateSession()
+	if err != nil {
+		return "", err
+	}
+
+	fs.persistentSessionID = sessionID
+	return sessionID, nil
+}
+
+func (fs *FlareSolverr) resetPersistentSession(sessionID string) {
+	fs.persistentSessionMu.Lock()
+	if fs.persistentSessionID == sessionID {
+		fs.persistentSessionID = ""
+	}
+	fs.persistentSessionMu.Unlock()
+
+	if sessionID == "" {
+		return
+	}
+	if err := fs.DestroySession(sessionID); err != nil {
+		logging.Debugf("FlareSolverr: session destroy during reset failed for %s: %v", sessionID, err)
+	}
+}
+
+func (fs *FlareSolverr) resolveURLRequest(targetURL, sessionID string) (string, []http.Cookie, error) {
 	req := FlareSolverrRequest{
 		Cmd:        "request.get",
 		URL:        targetURL,
 		MaxTimeout: int(fs.timeout.Milliseconds()),
+	}
+	if sessionID != "" {
+		req.Session = sessionID
+		if fs.sessionTTL > 0 {
+			req.SessionTTLMinutes = fs.sessionTTL
+		}
 	}
 	if fs.requestProxy != nil {
 		req.Proxy = fs.requestProxy
@@ -239,22 +315,16 @@ func (fs *FlareSolverr) ResolveURL(targetURL string) (string, []http.Cookie, err
 		return "", nil, fmt.Errorf("FlareSolverr error: %s", resp.Message)
 	}
 
-	// Convert cookies to http.Cookie format
-	cookies := make([]http.Cookie, len(resp.Solution.Cookies))
-	for i, c := range resp.Solution.Cookies {
-		cookies[i] = http.Cookie{
-			Name:  c.Name,
-			Value: c.Value,
-		}
-	}
-
-	return resp.Solution.Response, cookies, nil
+	return resp.Solution.Response, convertFlareSolverrCookies(resp), nil
 }
 
 // CreateSession creates a new FlareSolverr session for cookie persistence
 func (fs *FlareSolverr) CreateSession() (string, error) {
 	req := FlareSolverrRequest{
 		Cmd: "sessions.create",
+	}
+	if fs.requestProxy != nil {
+		req.Proxy = fs.requestProxy
 	}
 
 	var resp FlareSolverrResponse
@@ -289,6 +359,12 @@ func (fs *FlareSolverr) DestroySession(sessionID string) error {
 		Session: sessionID,
 	}
 
+	fs.persistentSessionMu.Lock()
+	if fs.persistentSessionID == sessionID {
+		fs.persistentSessionID = ""
+	}
+	fs.persistentSessionMu.Unlock()
+
 	var resp FlareSolverrResponse
 	_, err := fs.client.R().
 		SetBody(req).
@@ -307,32 +383,9 @@ func (fs *FlareSolverr) DestroySession(sessionID string) error {
 
 // ResolveURLWithSession resolves a URL using a specific session
 func (fs *FlareSolverr) ResolveURLWithSession(targetURL, sessionID string) (string, []http.Cookie, error) {
-	req := FlareSolverrRequest{
-		Cmd:        "request.get",
-		URL:        targetURL,
-		MaxTimeout: int(fs.timeout.Milliseconds()),
-		Session:    sessionID,
-	}
-	if fs.requestProxy != nil {
-		req.Proxy = fs.requestProxy
-	}
-
-	var resp FlareSolverrResponse
-	result, err := fs.client.R().
-		SetBody(req).
-		SetResult(&resp).
-		Post(fs.baseURL)
-
+	html, cookies, err := fs.resolveURLRequest(targetURL, sessionID)
 	if err != nil {
 		return "", nil, fmt.Errorf("FlareSolverr request with session failed: %w", err)
-	}
-
-	if result.StatusCode() != 200 {
-		return "", nil, fmt.Errorf("FlareSolverr returned status %d", result.StatusCode())
-	}
-
-	if resp.Status != "ok" {
-		return "", nil, fmt.Errorf("FlareSolverr error: %s", resp.Message)
 	}
 
 	// Update session URLs
@@ -342,16 +395,7 @@ func (fs *FlareSolverr) ResolveURLWithSession(targetURL, sessionID string) (stri
 		}
 	}
 
-	// Convert cookies to http.Cookie format
-	cookies := make([]http.Cookie, len(resp.Solution.Cookies))
-	for i, c := range resp.Solution.Cookies {
-		cookies[i] = http.Cookie{
-			Name:  c.Name,
-			Value: c.Value,
-		}
-	}
-
-	return resp.Solution.Response, cookies, nil
+	return html, cookies, nil
 }
 
 // NewRestyClientWithFlareSolverr creates a resty.Client with optional FlareSolverr support
@@ -425,4 +469,22 @@ func buildFlareSolverrRequestProxy(proxyConfig *config.ProxyConfig) *FlareSolver
 		Username: username,
 		Password: password,
 	}
+}
+
+func secondsToMinutes(seconds int) int {
+	if seconds <= 0 {
+		return 0
+	}
+	return (seconds + 59) / 60
+}
+
+func convertFlareSolverrCookies(resp FlareSolverrResponse) []http.Cookie {
+	cookies := make([]http.Cookie, len(resp.Solution.Cookies))
+	for i, c := range resp.Solution.Cookies {
+		cookies[i] = http.Cookie{
+			Name:  c.Name,
+			Value: c.Value,
+		}
+	}
+	return cookies
 }

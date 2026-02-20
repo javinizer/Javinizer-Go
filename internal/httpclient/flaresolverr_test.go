@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
@@ -12,6 +13,73 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestResolveURL_ReusesPersistentSessionAndTTL(t *testing.T) {
+	type fsReq struct {
+		Cmd               string `json:"cmd"`
+		Session           string `json:"session"`
+		SessionTTLMinutes int    `json:"session_ttl_minutes"`
+	}
+
+	var (
+		mu             sync.Mutex
+		createCalls    int
+		requestCalls   int
+		requestSess    []string
+		requestTTLMins []int
+	)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer r.Body.Close()
+
+		var req fsReq
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+
+		mu.Lock()
+		defer mu.Unlock()
+
+		switch req.Cmd {
+		case "sessions.create":
+			createCalls++
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"status":"ok","session":"persist-1"}`))
+		case "request.get":
+			requestCalls++
+			requestSess = append(requestSess, req.Session)
+			requestTTLMins = append(requestTTLMins, req.SessionTTLMinutes)
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"status":"ok","solution":{"response":"<html>ok</html>","cookies":[],"userAgent":"ua"}}`))
+		default:
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"status":"error","message":"unexpected cmd"}`))
+		}
+	}))
+	defer server.Close()
+
+	cfg := config.FlareSolverrConfig{
+		Enabled:    true,
+		URL:        server.URL,
+		Timeout:    30,
+		MaxRetries: 1,
+		SessionTTL: 300,
+	}
+
+	fs, err := httpclient.NewFlareSolverr(&cfg)
+	require.NoError(t, err)
+	require.NotNil(t, fs)
+
+	_, _, err = fs.ResolveURL("https://example.com/page1")
+	require.NoError(t, err)
+	_, _, err = fs.ResolveURL("https://example.com/page2")
+	require.NoError(t, err)
+
+	mu.Lock()
+	defer mu.Unlock()
+	assert.Equal(t, 1, createCalls, "persistent session should be created once")
+	assert.Equal(t, 2, requestCalls)
+	assert.Equal(t, []string{"persist-1", "persist-1"}, requestSess)
+	assert.Equal(t, []int{5, 5}, requestTTLMins, "session_ttl_minutes should be derived from config session_ttl")
+}
 
 func TestNewFlareSolverr(t *testing.T) {
 	tests := []struct {
