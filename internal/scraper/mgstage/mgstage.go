@@ -31,6 +31,13 @@ type Scraper struct {
 	lastRequestTime atomic.Value // stores time.Time of last request for rate limiting
 }
 
+var (
+	mgstageURLIDRe       = regexp.MustCompile(`(?i)mgstage\.com/product/product_detail/([^/?#]+)/?`)
+	mgstagePrefixedIDRe  = regexp.MustCompile(`(?i)(?:^|[^a-z0-9])(\d{2,4}[a-z]{2,8})[-_]?(\d{3,5}[a-z]?)(?:$|[^a-z0-9])`)
+	mgstageIDPartsStrict = regexp.MustCompile(`(?i)^([a-z0-9]+)-([0-9]+[a-z]?)$`)
+	mgstageCompactIDRe   = regexp.MustCompile(`^(\d{2,4}[A-Z]{2,8})(\d{3,5}[A-Z]?)$`)
+)
+
 // New creates a new MGStage scraper
 func New(cfg *config.Config) *Scraper {
 	proxyConfig := config.ResolveScraperProxy(cfg.Scrapers.Proxy, cfg.Scrapers.MGStage.Proxy)
@@ -96,6 +103,33 @@ func (s *Scraper) Name() string {
 // IsEnabled returns whether the scraper is enabled
 func (s *Scraper) IsEnabled() bool {
 	return s.enabled
+}
+
+// ResolveSearchQuery normalizes MGStage-specific IDs from free-form input.
+// This is primarily used by batch scraping to preserve 3-digit numeric prefixes
+// (e.g., "259LUXU-1806"), which generic filename matching can strip to "LUXU-1806".
+func (s *Scraper) ResolveSearchQuery(input string) (string, bool) {
+	input = strings.TrimSpace(input)
+	if input == "" {
+		return "", false
+	}
+
+	// Prefer explicit MGStage product URLs when provided.
+	if m := mgstageURLIDRe.FindStringSubmatch(input); len(m) > 1 {
+		if normalized, ok := normalizeMGStageIDToken(m[1]); ok {
+			return normalized, true
+		}
+		return strings.ToUpper(strings.TrimSpace(m[1])), true
+	}
+
+	// Detect prefixed IDs embedded in filenames/text.
+	if m := mgstagePrefixedIDRe.FindStringSubmatch(input); len(m) == 3 {
+		if normalized, ok := normalizeMGStageIDToken(m[1] + "-" + m[2]); ok {
+			return normalized, true
+		}
+	}
+
+	return "", false
 }
 
 // GetURL attempts to find the URL for a given movie ID using MGStage search
@@ -350,6 +384,30 @@ func normalizeIDForSearch(id string) string {
 	id = strings.ToLower(id)
 	id = strings.ReplaceAll(id, "-", "")
 	return id
+}
+
+func normalizeMGStageIDToken(token string) (string, bool) {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return "", false
+	}
+
+	token = strings.ReplaceAll(token, "_", "-")
+	token = strings.ToUpper(token)
+
+	if !strings.Contains(token, "-") {
+		compact := strings.ReplaceAll(token, "-", "")
+		m := mgstageCompactIDRe.FindStringSubmatch(compact)
+		if len(m) == 3 {
+			token = m[1] + "-" + m[2]
+		}
+	}
+
+	if m := mgstageIDPartsStrict.FindStringSubmatch(token); len(m) == 3 {
+		return m[1] + "-" + m[2], true
+	}
+
+	return "", false
 }
 
 // extractIDFromURL extracts the ID from MGStage product URL

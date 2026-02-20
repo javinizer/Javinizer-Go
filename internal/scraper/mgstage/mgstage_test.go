@@ -32,6 +32,7 @@ func TestScraperInterfaceCompliance(t *testing.T) {
 
 	// This will fail to compile if Scraper doesn't implement models.Scraper
 	var _ models.Scraper = scraper
+	var _ models.ScraperQueryResolver = scraper
 }
 
 // TestName verifies the scraper name
@@ -68,6 +69,57 @@ func TestIsEnabled(t *testing.T) {
 			scraper := New(cfg)
 
 			assert.Equal(t, tt.want, scraper.IsEnabled())
+		})
+	}
+}
+
+func TestResolveSearchQuery(t *testing.T) {
+	cfg := testConfig()
+	scraper := New(cfg)
+
+	tests := []struct {
+		name      string
+		input     string
+		wantQuery string
+		wantMatch bool
+	}{
+		{
+			name:      "prefixed ID with hyphen",
+			input:     "259LUXU-1806",
+			wantQuery: "259LUXU-1806",
+			wantMatch: true,
+		},
+		{
+			name:      "prefixed compact ID",
+			input:     "259luxu1806",
+			wantQuery: "259LUXU-1806",
+			wantMatch: true,
+		},
+		{
+			name:      "prefixed ID embedded in filename",
+			input:     "[SubsPlease] 259LUXU-1806 [1080p]",
+			wantQuery: "259LUXU-1806",
+			wantMatch: true,
+		},
+		{
+			name:      "mgstage URL",
+			input:     "https://www.mgstage.com/product/product_detail/259LUXU-1806/",
+			wantQuery: "259LUXU-1806",
+			wantMatch: true,
+		},
+		{
+			name:      "non-prefixed standard ID should not match resolver",
+			input:     "ABP-123",
+			wantQuery: "",
+			wantMatch: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotQuery, gotMatch := scraper.ResolveSearchQuery(tt.input)
+			assert.Equal(t, tt.wantMatch, gotMatch)
+			assert.Equal(t, tt.wantQuery, gotQuery)
 		})
 	}
 }
