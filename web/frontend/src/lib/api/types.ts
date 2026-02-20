@@ -188,6 +188,32 @@ export interface Movie {
 
 export interface Actress {
 	id?: number;
+	dmm_id?: number;
+	first_name?: string;
+	last_name?: string;
+	japanese_name?: string;
+	thumb_url?: string;
+	aliases?: string;
+}
+
+export interface ActressListParams {
+	limit?: number;
+	offset?: number;
+	q?: string;
+	sort_by?: 'name' | 'japanese_name' | 'id' | 'dmm_id' | 'updated_at' | 'created_at';
+	sort_order?: 'asc' | 'desc';
+}
+
+export interface ActressListResponse {
+	actresses: Actress[];
+	count: number;
+	total: number;
+	limit: number;
+	offset: number;
+}
+
+export interface ActressUpsertRequest {
+	dmm_id?: number;
 	first_name?: string;
 	last_name?: string;
 	japanese_name?: string;

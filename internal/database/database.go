@@ -520,6 +520,28 @@ func (r *ActressRepository) Update(actress *models.Actress) error {
 	return r.db.Save(actress).Error
 }
 
+// FindByID finds an actress by numeric ID.
+func (r *ActressRepository) FindByID(id uint) (*models.Actress, error) {
+	var actress models.Actress
+	err := r.db.First(&actress, id).Error
+	if err != nil {
+		return nil, err
+	}
+	return &actress, nil
+}
+
+// Delete removes an actress by numeric ID.
+func (r *ActressRepository) Delete(id uint) error {
+	return r.db.Delete(&models.Actress{}, id).Error
+}
+
+// Count returns total actresses in database.
+func (r *ActressRepository) Count() (int64, error) {
+	var count int64
+	err := r.db.Model(&models.Actress{}).Count(&count).Error
+	return count, err
+}
+
 // FindByJapaneseName finds an actress by Japanese name
 func (r *ActressRepository) FindByJapaneseName(name string) (*models.Actress, error) {
 	var actress models.Actress
@@ -548,8 +570,103 @@ func (r *ActressRepository) FindOrCreate(actress *models.Actress) error {
 // List returns a paginated list of actresses
 func (r *ActressRepository) List(limit, offset int) ([]models.Actress, error) {
 	var actresses []models.Actress
-	err := r.db.Limit(limit).Offset(offset).Find(&actresses).Error
+	err := r.db.Order("japanese_name ASC, last_name ASC, first_name ASC, id ASC").Limit(limit).Offset(offset).Find(&actresses).Error
 	return actresses, err
+}
+
+func normalizeActressSort(sortBy, sortOrder string) (string, string) {
+	sortBy = strings.TrimSpace(strings.ToLower(sortBy))
+	sortOrder = strings.TrimSpace(strings.ToLower(sortOrder))
+
+	if sortOrder != "desc" {
+		sortOrder = "asc"
+	}
+
+	switch sortBy {
+	case "id", "dmm_id", "japanese_name", "first_name", "last_name", "created_at", "updated_at":
+		return sortBy, sortOrder
+	case "name":
+		return "name", sortOrder
+	default:
+		return "name", "asc"
+	}
+}
+
+func actressOrderClauses(sortBy, sortOrder string) []string {
+	switch sortBy {
+	case "id":
+		return []string{"id " + sortOrder}
+	case "dmm_id":
+		return []string{"dmm_id " + sortOrder, "id " + sortOrder}
+	case "japanese_name":
+		return []string{"japanese_name " + sortOrder, "id " + sortOrder}
+	case "first_name":
+		return []string{"first_name " + sortOrder, "last_name " + sortOrder, "id " + sortOrder}
+	case "last_name":
+		return []string{"last_name " + sortOrder, "first_name " + sortOrder, "id " + sortOrder}
+	case "created_at":
+		return []string{"created_at " + sortOrder, "id " + sortOrder}
+	case "updated_at":
+		return []string{"updated_at " + sortOrder, "id " + sortOrder}
+	default:
+		return []string{"last_name " + sortOrder, "first_name " + sortOrder, "japanese_name " + sortOrder, "id " + sortOrder}
+	}
+}
+
+// ListSorted returns a paginated list of actresses with explicit sorting.
+func (r *ActressRepository) ListSorted(limit, offset int, sortBy, sortOrder string) ([]models.Actress, error) {
+	var actresses []models.Actress
+
+	sortBy, sortOrder = normalizeActressSort(sortBy, sortOrder)
+	dbq := r.db.DB
+	for _, clause := range actressOrderClauses(sortBy, sortOrder) {
+		dbq = dbq.Order(clause)
+	}
+
+	err := dbq.Limit(limit).Offset(offset).Find(&actresses).Error
+	return actresses, err
+}
+
+// SearchPaged searches actresses by name and supports pagination.
+func (r *ActressRepository) SearchPaged(query string, limit, offset int) ([]models.Actress, error) {
+	var actresses []models.Actress
+
+	searchPattern := "%" + query + "%"
+	err := r.db.Where("first_name LIKE ? OR last_name LIKE ? OR japanese_name LIKE ?",
+		searchPattern, searchPattern, searchPattern).
+		Order("japanese_name ASC, last_name ASC, first_name ASC, id ASC").
+		Limit(limit).
+		Offset(offset).
+		Find(&actresses).Error
+	return actresses, err
+}
+
+// SearchPagedSorted searches actresses by name with pagination and explicit sorting.
+func (r *ActressRepository) SearchPagedSorted(query string, limit, offset int, sortBy, sortOrder string) ([]models.Actress, error) {
+	var actresses []models.Actress
+
+	sortBy, sortOrder = normalizeActressSort(sortBy, sortOrder)
+	searchPattern := "%" + query + "%"
+
+	dbq := r.db.DB.Where("first_name LIKE ? OR last_name LIKE ? OR japanese_name LIKE ?",
+		searchPattern, searchPattern, searchPattern)
+	for _, clause := range actressOrderClauses(sortBy, sortOrder) {
+		dbq = dbq.Order(clause)
+	}
+
+	err := dbq.Limit(limit).Offset(offset).Find(&actresses).Error
+	return actresses, err
+}
+
+// CountSearch returns count of actresses matching a query.
+func (r *ActressRepository) CountSearch(query string) (int64, error) {
+	var count int64
+	searchPattern := "%" + query + "%"
+	err := r.db.Model(&models.Actress{}).
+		Where("first_name LIKE ? OR last_name LIKE ? OR japanese_name LIKE ?",
+			searchPattern, searchPattern, searchPattern).
+		Count(&count).Error
+	return count, err
 }
 
 // Search searches for actresses by name (first, last, or Japanese name)

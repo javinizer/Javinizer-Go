@@ -2,11 +2,12 @@
 	import { page } from '$app/stores';
 	import { cubicOut } from 'svelte/easing';
 	import { fly } from 'svelte/transition';
-	import { Home, FolderOpen, Settings, History, Film } from 'lucide-svelte';
+	import { Home, FolderOpen, Settings, History, Film, Users } from 'lucide-svelte';
 
 	const navItems = [
 		{ href: '/', label: 'Home', icon: Home },
 		{ href: '/browse', label: 'Browse & Scrape', icon: FolderOpen },
+		{ href: '/actresses', label: 'Actresses', icon: Users },
 		{ href: '/settings', label: 'Settings', icon: Settings },
 		{ href: '/history', label: 'History', icon: History }
 	];

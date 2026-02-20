@@ -28,7 +28,11 @@ import type {
 	HistoryListParams,
 	HistoryStats,
 	DeleteHistoryBulkParams,
-	DeleteHistoryBulkResponse
+	DeleteHistoryBulkResponse,
+	ActressListParams,
+	ActressListResponse,
+	ActressUpsertRequest,
+	Actress
 } from './types';
 
 // Build API base URL dynamically from browser location
@@ -241,6 +245,44 @@ class APIClient {
 			method: 'POST',
 			body: JSON.stringify(request)
 		});
+	}
+
+	// List actresses with pagination and optional search query
+	async listActresses(params?: ActressListParams): Promise<ActressListResponse> {
+		const queryParams = new URLSearchParams();
+		if (params?.limit) queryParams.set('limit', params.limit.toString());
+		if (params?.offset) queryParams.set('offset', params.offset.toString());
+		if (params?.q) queryParams.set('q', params.q);
+		if (params?.sort_by) queryParams.set('sort_by', params.sort_by);
+		if (params?.sort_order) queryParams.set('sort_order', params.sort_order);
+		const query = queryParams.toString() ? `?${queryParams}` : '';
+		return this.request<ActressListResponse>(`/api/v1/actresses${query}`);
+	}
+
+	// Get actress by ID
+	async getActress(id: number): Promise<Actress> {
+		return this.request<Actress>(`/api/v1/actresses/${id}`);
+	}
+
+	// Create actress
+	async createActress(request: ActressUpsertRequest): Promise<Actress> {
+		return this.request<Actress>('/api/v1/actresses', {
+			method: 'POST',
+			body: JSON.stringify(request)
+		});
+	}
+
+	// Update actress
+	async updateActress(id: number, request: ActressUpsertRequest): Promise<Actress> {
+		return this.request<Actress>(`/api/v1/actresses/${id}`, {
+			method: 'PUT',
+			body: JSON.stringify(request)
+		});
+	}
+
+	// Delete actress
+	async deleteActress(id: number): Promise<void> {
+		await this.request(`/api/v1/actresses/${id}`, { method: 'DELETE' });
 	}
 
 	// Get history records with optional filtering

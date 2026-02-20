@@ -342,6 +342,11 @@ func NewServer(deps *ServerDependencies) *gin.Engine {
 		v1.POST("/movies/:id/compare-nfo", compareNFO(deps))
 
 		// Actress endpoints
+		v1.GET("/actresses", listActresses(deps.ActressRepo))
+		v1.GET("/actresses/:id", getActress(deps.ActressRepo))
+		v1.POST("/actresses", createActress(deps.ActressRepo))
+		v1.PUT("/actresses/:id", updateActress(deps.ActressRepo))
+		v1.DELETE("/actresses/:id", deleteActress(deps.ActressRepo))
 		v1.GET("/actresses/search", searchActresses(deps.ActressRepo))
 
 		// System endpoints
