@@ -517,7 +517,7 @@
 		<Card class="p-4 bg-accent/30">
 			<h3 class="font-semibold mb-2">How to use:</h3>
 			<ul class="text-sm text-muted-foreground space-y-1">
-				<li>1. Select operation mode: <strong>Scrape & Organize</strong> (moves files) or <strong>Update Metadata</strong> (files stay in place)</li>
+				<li>1. Select operation mode: <strong>Scrape & Organize</strong> (choose move/copy/hard link/soft link during review) or <strong>Update Metadata</strong> (files stay in place)</li>
 				<li>2. Navigate to your video files using the file browser (type a path or click folders)</li>
 				<li>3. Click <strong>Scan</strong> to find JAV files (enable <strong>Recursive</strong> to include subfolders)</li>
 				<li>4. Configure options (force refresh, scraper selection) in the bottom bar as needed</li>

@@ -177,12 +177,14 @@ type BatchScrapeResponse struct {
 type OrganizeRequest struct {
 	Destination string `json:"destination" binding:"required" example:"/path/to/output"`
 	CopyOnly    bool   `json:"copy_only" example:"false"`
+	LinkMode    string `json:"link_mode,omitempty" binding:"omitempty,oneof=hard soft" example:"hard"`
 }
 
 // OrganizePreviewRequest represents a preview request
 type OrganizePreviewRequest struct {
 	Destination string `json:"destination" binding:"required" example:"/path/to/output"`
 	CopyOnly    bool   `json:"copy_only" example:"false"`
+	LinkMode    string `json:"link_mode,omitempty" binding:"omitempty,oneof=hard soft" example:"hard"`
 }
 
 // OrganizePreviewResponse represents the expected output structure

@@ -436,8 +436,23 @@ func TestOrganizeJob(t *testing.T) {
 			requestBody: OrganizeRequest{
 				Destination: "/output",
 				CopyOnly:    false,
+				LinkMode:    "hard",
 			},
 			expectedStatus: 200,
+		},
+		{
+			name: "invalid link mode",
+			setupJob: func(jq *worker.JobQueue) string {
+				job := jq.CreateJob([]string{"/path/to/file.mp4"})
+				job.MarkCompleted()
+				return job.ID
+			},
+			requestBody: OrganizeRequest{
+				Destination: "/output",
+				CopyOnly:    true,
+				LinkMode:    "invalid",
+			},
+			expectedStatus: 400,
 		},
 		{
 			name: "organize job not completed",
@@ -543,6 +558,7 @@ func TestPreviewOrganize(t *testing.T) {
 			requestBody: OrganizePreviewRequest{
 				Destination: "/output",
 				CopyOnly:    false,
+				LinkMode:    "soft",
 			},
 			expectedStatus: 200,
 			validateFn: func(t *testing.T, resp *OrganizePreviewResponse) {
@@ -571,6 +587,27 @@ func TestPreviewOrganize(t *testing.T) {
 				Destination: "/output",
 			},
 			expectedStatus: 404,
+		},
+		{
+			name: "preview invalid link mode",
+			setupJob: func(jq *worker.JobQueue) (string, string) {
+				job := jq.CreateJob([]string{"/path/to/file.mp4"})
+				result := &worker.FileResult{
+					FilePath:  "/path/to/file.mp4",
+					MovieID:   "IPX-535",
+					Status:    worker.JobStatusCompleted,
+					Data:      &models.Movie{ID: "IPX-535", Title: "Test"},
+					StartedAt: time.Now(),
+				}
+				job.UpdateFileResult("/path/to/file.mp4", result)
+				return job.ID, "IPX-535"
+			},
+			requestBody: OrganizePreviewRequest{
+				Destination: "/output",
+				CopyOnly:    true,
+				LinkMode:    "bad",
+			},
+			expectedStatus: 400,
 		},
 		{
 			name: "preview with resolved content ID (ABP-071 → ABP-071DOD)",

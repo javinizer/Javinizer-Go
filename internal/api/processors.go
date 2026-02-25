@@ -615,10 +615,21 @@ func processUpdateMode(job *worker.BatchJob, cfg *config.Config, db *database.DB
 }
 
 // processOrganizeJob processes file organization for a completed scrape job
-func processOrganizeJob(job *worker.BatchJob, mat *matcher.Matcher, destination string, copyOnly bool, db *database.DB, cfg *config.Config) {
+func processOrganizeJob(job *worker.BatchJob, mat *matcher.Matcher, destination string, copyOnly bool, linkModeRaw string, db *database.DB, cfg *config.Config) {
 	// Initialize organizer, downloader, NFO generator, and history logger
 	org := organizer.NewOrganizer(afero.NewOsFs(), &cfg.Output)
 	historyLogger := history.NewLogger(db)
+	linkMode, err := organizer.ParseLinkMode(linkModeRaw)
+	if err != nil {
+		wsHub.BroadcastProgress(&ws.ProgressMessage{
+			JobID:    job.ID,
+			Status:   "error",
+			Progress: 0,
+			Message:  fmt.Sprintf("Invalid link mode: %v", err),
+		})
+		job.MarkFailed()
+		return
+	}
 
 	// Initialize HTTP client for downloader
 	httpClient, err := downloader.NewHTTPClientForDownloader(cfg)
@@ -683,7 +694,7 @@ func processOrganizeJob(job *worker.BatchJob, mat *matcher.Matcher, destination 
 		match := matchResults[0]
 
 		// Organize file
-		result, err := org.Organize(match, movie, destination, false, false, copyOnly)
+		result, err := org.OrganizeWithLinkMode(match, movie, destination, false, false, copyOnly, linkMode)
 		if err != nil {
 			logging.Errorf("Failed to organize %s: %v", filePath, err)
 			failed++

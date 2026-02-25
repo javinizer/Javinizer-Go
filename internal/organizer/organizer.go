@@ -1,12 +1,15 @@
 package organizer
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
+	"syscall"
 
 	"github.com/javinizer/javinizer-go/internal/config"
 	"github.com/javinizer/javinizer-go/internal/matcher"
@@ -22,6 +25,40 @@ type Organizer struct {
 	templateEngine  *template.Engine
 	subtitleHandler *SubtitleHandler
 	matcher         *matcher.Matcher
+}
+
+// LinkMode controls how files are materialized when copy mode is enabled.
+type LinkMode string
+
+const (
+	LinkModeNone LinkMode = ""
+	LinkModeHard LinkMode = "hard"
+	LinkModeSoft LinkMode = "soft"
+)
+
+// ParseLinkMode validates and normalizes user input.
+func ParseLinkMode(raw string) (LinkMode, error) {
+	normalized := strings.ToLower(strings.TrimSpace(raw))
+	switch normalized {
+	case "", "none":
+		return LinkModeNone, nil
+	case string(LinkModeHard):
+		return LinkModeHard, nil
+	case string(LinkModeSoft):
+		return LinkModeSoft, nil
+	default:
+		return LinkModeNone, fmt.Errorf("invalid link mode %q (expected one of: none, hard, soft)", raw)
+	}
+}
+
+// IsValid returns true if the mode is supported.
+func (m LinkMode) IsValid() bool {
+	switch m {
+	case LinkModeNone, LinkModeHard, LinkModeSoft:
+		return true
+	default:
+		return false
+	}
 }
 
 // NewOrganizer creates a new file organizer
@@ -457,19 +494,45 @@ func (o *Organizer) Execute(plan *OrganizePlan, dryRun bool) (*OrganizeResult, e
 
 // Organize plans and executes file organization in one step
 func (o *Organizer) Organize(match matcher.MatchResult, movie *models.Movie, destDir string, dryRun bool, forceUpdate bool, copyOnly bool) (*OrganizeResult, error) {
+	return o.OrganizeWithLinkMode(match, movie, destDir, dryRun, forceUpdate, copyOnly, LinkModeNone)
+}
+
+// OrganizeWithLinkMode plans and executes file organization with optional link behavior for copy operations.
+func (o *Organizer) OrganizeWithLinkMode(
+	match matcher.MatchResult,
+	movie *models.Movie,
+	destDir string,
+	dryRun bool,
+	forceUpdate bool,
+	copyOnly bool,
+	linkMode LinkMode,
+) (*OrganizeResult, error) {
 	plan, err := o.Plan(match, movie, destDir, forceUpdate)
 	if err != nil {
 		return nil, err
 	}
 
 	if copyOnly {
-		return o.Copy(plan, dryRun)
+		return o.CopyWithLinkMode(plan, dryRun, linkMode)
 	}
 	return o.Execute(plan, dryRun)
 }
 
 // OrganizeBatch organizes multiple files
 func (o *Organizer) OrganizeBatch(matches []matcher.MatchResult, movies map[string]*models.Movie, destDir string, dryRun bool, forceUpdate bool, copyOnly bool) ([]OrganizeResult, error) {
+	return o.OrganizeBatchWithLinkMode(matches, movies, destDir, dryRun, forceUpdate, copyOnly, LinkModeNone)
+}
+
+// OrganizeBatchWithLinkMode organizes multiple files with optional link behavior for copy operations.
+func (o *Organizer) OrganizeBatchWithLinkMode(
+	matches []matcher.MatchResult,
+	movies map[string]*models.Movie,
+	destDir string,
+	dryRun bool,
+	forceUpdate bool,
+	copyOnly bool,
+	linkMode LinkMode,
+) ([]OrganizeResult, error) {
 	results := make([]OrganizeResult, 0, len(matches))
 
 	// Group by ID to process multi-part sets together
@@ -520,7 +583,7 @@ func (o *Organizer) OrganizeBatch(matches []matcher.MatchResult, movies map[stri
 				continue
 			}
 
-			result, err := o.Organize(match, movie, destDir, dryRun, forceUpdate, copyOnly)
+			result, err := o.OrganizeWithLinkMode(match, movie, destDir, dryRun, forceUpdate, copyOnly, linkMode)
 			if err != nil {
 				result = &OrganizeResult{
 					OriginalPath: match.File.Path,
@@ -542,6 +605,11 @@ func (o *Organizer) OrganizeBatch(matches []matcher.MatchResult, movies map[stri
 
 // Copy copies a file instead of moving it
 func (o *Organizer) Copy(plan *OrganizePlan, dryRun bool) (*OrganizeResult, error) {
+	return o.CopyWithLinkMode(plan, dryRun, LinkModeNone)
+}
+
+// CopyWithLinkMode materializes a file using direct copy, hard link, or soft link.
+func (o *Organizer) CopyWithLinkMode(plan *OrganizePlan, dryRun bool, linkMode LinkMode) (*OrganizeResult, error) {
 	result := &OrganizeResult{
 		OriginalPath: plan.SourcePath,
 		NewPath:      plan.TargetPath,
@@ -572,25 +640,76 @@ func (o *Organizer) Copy(plan *OrganizePlan, dryRun bool) (*OrganizeResult, erro
 		return result, result.Error
 	}
 
-	// Copy the file
-	sourceFile, err := o.fs.Open(plan.SourcePath)
-	if err != nil {
-		result.Error = fmt.Errorf("failed to open source file: %w", err)
+	if !linkMode.IsValid() {
+		result.Error = fmt.Errorf("unsupported link mode %q", linkMode)
 		return result, result.Error
 	}
-	defer sourceFile.Close()
 
-	targetFile, err := o.fs.Create(plan.TargetPath)
-	if err != nil {
-		result.Error = fmt.Errorf("failed to create target file: %w", err)
-		return result, result.Error
+	// Allow force-update workflows to replace an existing target when linking.
+	if linkMode != LinkModeNone {
+		if err := o.fs.Remove(plan.TargetPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+			result.Error = fmt.Errorf("failed to prepare target path for link: %w", err)
+			return result, result.Error
+		}
 	}
-	defer targetFile.Close()
 
-	// Copy data
-	if _, err := io.Copy(targetFile, sourceFile); err != nil {
-		result.Error = fmt.Errorf("failed to copy file: %w", err)
-		return result, result.Error
+	switch linkMode {
+	case LinkModeNone:
+		// Copy the file
+		sourceFile, err := o.fs.Open(plan.SourcePath)
+		if err != nil {
+			result.Error = fmt.Errorf("failed to open source file: %w", err)
+			return result, result.Error
+		}
+		defer sourceFile.Close()
+
+		targetFile, err := o.fs.Create(plan.TargetPath)
+		if err != nil {
+			result.Error = fmt.Errorf("failed to create target file: %w", err)
+			return result, result.Error
+		}
+		defer targetFile.Close()
+
+		// Copy data
+		if _, err := io.Copy(targetFile, sourceFile); err != nil {
+			result.Error = fmt.Errorf("failed to copy file: %w", err)
+			return result, result.Error
+		}
+	case LinkModeHard:
+		if err := os.Link(plan.SourcePath, plan.TargetPath); err != nil {
+			if errors.Is(err, syscall.EXDEV) {
+				result.Error = fmt.Errorf("failed to create hard link (source and destination must be on the same filesystem): %w", err)
+				return result, result.Error
+			}
+			if errors.Is(err, os.ErrPermission) {
+				result.Error = fmt.Errorf("failed to create hard link (permission denied): %w", err)
+				return result, result.Error
+			}
+			result.Error = fmt.Errorf("failed to create hard link: %w", err)
+			return result, result.Error
+		}
+	case LinkModeSoft:
+		linkTarget := plan.SourcePath
+		if !filepath.IsAbs(linkTarget) {
+			abs, err := filepath.Abs(linkTarget)
+			if err != nil {
+				result.Error = fmt.Errorf("failed to resolve source path for symlink: %w", err)
+				return result, result.Error
+			}
+			linkTarget = abs
+		}
+		if err := os.Symlink(linkTarget, plan.TargetPath); err != nil {
+			if errors.Is(err, os.ErrPermission) && runtime.GOOS == "windows" {
+				result.Error = fmt.Errorf("failed to create soft link (Windows requires Developer Mode or elevated privileges for symlinks): %w", err)
+				return result, result.Error
+			}
+			if errors.Is(err, os.ErrPermission) {
+				result.Error = fmt.Errorf("failed to create soft link (permission denied): %w", err)
+				return result, result.Error
+			}
+			result.Error = fmt.Errorf("failed to create soft link: %w", err)
+			return result, result.Error
+		}
 	}
 
 	result.Moved = true // "Moved" means operation succeeded (even though it's a copy)

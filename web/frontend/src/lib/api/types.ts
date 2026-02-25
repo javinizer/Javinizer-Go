@@ -252,6 +252,7 @@ export interface HealthResponse {
 export interface OrganizeRequest {
 	destination: string;
 	copy_only?: boolean;
+	link_mode?: 'hard' | 'soft';
 }
 
 export interface OrganizeResponse {
@@ -261,6 +262,7 @@ export interface OrganizeResponse {
 export interface OrganizePreviewRequest {
 	destination: string;
 	copy_only?: boolean;
+	link_mode?: 'hard' | 'soft';
 }
 
 export interface OrganizePreviewResponse {

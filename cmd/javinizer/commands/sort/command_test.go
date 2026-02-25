@@ -26,6 +26,7 @@ func TestNewCommand(t *testing.T) {
 	assert.NotNil(t, cmd.Flags().Lookup("recursive"))
 	assert.NotNil(t, cmd.Flags().Lookup("dest"))
 	assert.NotNil(t, cmd.Flags().Lookup("move"))
+	assert.NotNil(t, cmd.Flags().Lookup("link-mode"))
 	assert.NotNil(t, cmd.Flags().Lookup("nfo"))
 	assert.NotNil(t, cmd.Flags().Lookup("download"))
 	assert.NotNil(t, cmd.Flags().Lookup("extrafanart"))
@@ -47,6 +48,9 @@ func TestFlags_DefaultValues(t *testing.T) {
 
 	move, _ := cmd.Flags().GetBool("move")
 	assert.False(t, move, "move should default to false (copy mode)")
+
+	linkMode, _ := cmd.Flags().GetString("link-mode")
+	assert.Equal(t, "none", linkMode, "link-mode should default to none")
 
 	nfo, _ := cmd.Flags().GetBool("nfo")
 	assert.True(t, nfo, "nfo should default to true")
@@ -116,6 +120,17 @@ func TestRun_Integration_InvalidConfig(t *testing.T) {
 	// Should return error for invalid config
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to load config")
+}
+
+func TestRun_LinkModeWithMoveRejected(t *testing.T) {
+	tmpDir := t.TempDir()
+	cmd := sort.NewCommand()
+	require.NoError(t, cmd.Flags().Set("move", "true"))
+	require.NoError(t, cmd.Flags().Set("link-mode", "hard"))
+
+	err := sort.Run(cmd, []string{tmpDir}, "")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "--link-mode can only be used when --move is disabled")
 }
 
 // TestRun_Integration_DryRunMode tests that dry-run mode doesn't modify files
