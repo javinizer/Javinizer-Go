@@ -34,6 +34,7 @@ func NewCommand() *cobra.Command {
 	sortCmd.Flags().BoolP("recursive", "r", true, "Scan directories recursively")
 	sortCmd.Flags().StringP("dest", "d", "", "Destination directory (default: same as source)")
 	sortCmd.Flags().BoolP("move", "m", false, "Move files instead of copying")
+	sortCmd.Flags().String("link-mode", "none", "Link mode for copy operations: none, hard, soft")
 	sortCmd.Flags().BoolP("nfo", "", true, "Generate NFO files")
 	sortCmd.Flags().BoolP("download", "", true, "Download media (covers, screenshots, etc.)")
 	sortCmd.Flags().Bool("extrafanart", false, "Download extrafanart (screenshots)")
@@ -51,12 +52,21 @@ func Run(cmd *cobra.Command, args []string, configFile string) error {
 	recursive, _ := cmd.Flags().GetBool("recursive")
 	destPath, _ := cmd.Flags().GetString("dest")
 	moveFiles, _ := cmd.Flags().GetBool("move")
+	linkModeRaw, _ := cmd.Flags().GetString("link-mode")
 	generateNFO, _ := cmd.Flags().GetBool("nfo")
 	downloadMedia, _ := cmd.Flags().GetBool("download")
 	downloadExtrafanart, _ := cmd.Flags().GetBool("extrafanart")
 	scraperPriority, _ := cmd.Flags().GetStringSlice("scrapers")
 	forceUpdate, _ := cmd.Flags().GetBool("force-update")
 	forceRefresh, _ := cmd.Flags().GetBool("force-refresh")
+
+	linkMode, err := organizer.ParseLinkMode(linkModeRaw)
+	if err != nil {
+		return err
+	}
+	if moveFiles && linkMode != organizer.LinkModeNone {
+		return fmt.Errorf("--link-mode can only be used when --move is disabled")
+	}
 
 	// Load configuration
 	cfg, err := config.LoadOrCreate(configFile)
@@ -117,7 +127,15 @@ func Run(cmd *cobra.Command, args []string, configFile string) error {
 	fmt.Printf("Source: %s\n", sourcePath)
 	fmt.Printf("Destination: %s\n", destPath)
 	fmt.Printf("Mode: %s\n", map[bool]string{true: "DRY RUN", false: "LIVE"}[dryRun])
-	fmt.Printf("Operation: %s\n", map[bool]string{true: "MOVE", false: "COPY"}[moveFiles])
+	operationLabel := "COPY"
+	if moveFiles {
+		operationLabel = "MOVE"
+	} else if linkMode == organizer.LinkModeHard {
+		operationLabel = "HARDLINK"
+	} else if linkMode == organizer.LinkModeSoft {
+		operationLabel = "SOFTLINK"
+	}
+	fmt.Printf("Operation: %s\n", operationLabel)
 	fmt.Printf("Generate NFO: %v\n", generateNFO)
 	fmt.Printf("Download Media: %v\n\n", downloadMedia)
 
@@ -206,8 +224,13 @@ func Run(cmd *cobra.Command, args []string, configFile string) error {
 				logging.Debugf("[%s] Executing MOVE operation", match.ID)
 				result, err = fileOrganizer.Execute(plan, dryRun)
 			} else {
-				logging.Debugf("[%s] Executing COPY operation", match.ID)
-				result, err = fileOrganizer.Copy(plan, dryRun)
+				if linkMode == organizer.LinkModeHard {
+					operation = "HARDLINK"
+				} else if linkMode == organizer.LinkModeSoft {
+					operation = "SOFTLINK"
+				}
+				logging.Debugf("[%s] Executing %s operation", match.ID, operation)
+				result, err = fileOrganizer.CopyWithLinkMode(plan, dryRun, linkMode)
 			}
 
 			if err != nil {

@@ -742,7 +742,7 @@ func organizeJob(deps *ServerDependencies) gin.HandlerFunc {
 		job.MarkStarted()
 
 		// Start organization in background - use getter for thread-safe access
-		go processOrganizeJob(job, deps.GetMatcher(), req.Destination, req.CopyOnly, deps.DB, cfg)
+		go processOrganizeJob(job, deps.GetMatcher(), req.Destination, req.CopyOnly, req.LinkMode, deps.DB, cfg)
 
 		c.JSON(200, gin.H{"message": "Organization started"})
 	}

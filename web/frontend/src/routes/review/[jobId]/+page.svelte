@@ -47,7 +47,8 @@
 	let editedMovies = $state<Map<string, Movie>>(new Map());
 	let organizing = $state(false);
 	let destinationPath = $state('');
-	let copyOnly = $state(false);
+	type OrganizeOperation = 'move' | 'copy' | 'hardlink' | 'softlink';
+	let organizeOperation = $state<OrganizeOperation>('move');
 	let showDestinationBrowser = $state(false);
 	let tempDestinationPath = $state('');
 	let showTrailerModal = $state(false);
@@ -279,10 +280,19 @@
 			preview = null;
 			return;
 		}
+
+		const copyOnly = organizeOperation !== 'move';
+		const linkMode = organizeOperation === 'hardlink'
+			? 'hard'
+			: organizeOperation === 'softlink'
+				? 'soft'
+				: undefined;
+
 		try {
 			preview = await apiClient.previewOrganize(jobId, currentMovie.id, {
 				destination: destinationPath,
-				copy_only: copyOnly
+				copy_only: copyOnly,
+				link_mode: linkMode
 			});
 		} catch (e) {
 			console.error('Failed to fetch preview:', e);
@@ -406,7 +416,7 @@
 		void pollOnce();
 	}
 
-	// Fetch preview when destination, copy mode, or current movie changes
+	// Fetch preview when destination, operation mode, or current movie changes
 	$effect(() => {
 		if (destinationPath && currentMovie) {
 			fetchPreview();
@@ -625,6 +635,13 @@
 			return;
 		}
 
+		const copyOnly = organizeOperation !== 'move';
+		const linkMode = organizeOperation === 'hardlink'
+			? 'hard'
+			: organizeOperation === 'softlink'
+				? 'soft'
+				: undefined;
+
 		// Clear old WebSocket messages to prevent stale completion messages
 		websocketStore.clearMessages();
 
@@ -645,7 +662,8 @@
 			// Start organize (returns immediately)
 			await apiClient.organizeBatchJob(jobId, {
 				destination: destinationPath,
-				copy_only: copyOnly
+				copy_only: copyOnly,
+				link_mode: linkMode
 			});
 
 			startOrganizeCompletionPolling();
@@ -1519,16 +1537,31 @@
 									</Button>
 								</div>
 
-								<div class="flex items-center gap-2">
-									<input
-										type="checkbox"
-										id="copyOnly"
-										bind:checked={copyOnly}
-										class="w-4 h-4 text-primary bg-gray-100 border-gray-300 rounded focus:ring-primary focus:ring-2"
-									/>
-									<label for="copyOnly" class="text-sm text-muted-foreground cursor-pointer">
-										Copy files only (don't move)
+								<div class="space-y-2">
+									<label for="organizeOperation" class="text-sm font-medium">
+										File operation
 									</label>
+									<select
+										id="organizeOperation"
+										bind:value={organizeOperation}
+										class="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-primary focus:border-primary transition-all text-sm"
+									>
+										<option value="move">Move files</option>
+										<option value="copy">Copy files</option>
+										<option value="hardlink">Hard link files</option>
+										<option value="softlink">Soft link files</option>
+									</select>
+									<p class="text-xs text-muted-foreground">
+										{#if organizeOperation === 'hardlink'}
+											Hard links require source and destination on the same filesystem.
+										{:else if organizeOperation === 'softlink'}
+											Soft links point to the original file path. Windows may require Developer Mode or elevated privileges.
+										{:else if organizeOperation === 'copy'}
+											Copy creates independent destination files and keeps originals unchanged.
+										{:else}
+											Move relocates source files into the organized destination.
+										{/if}
+									</p>
 								</div>
 
 								{#if preview}

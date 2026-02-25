@@ -319,6 +319,147 @@ func TestOrganizer_Copy(t *testing.T) {
 	}
 }
 
+func TestOrganizer_CopyWithLinkMode_HardLink(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	sourceFile := filepath.Join(tmpDir, "source", "ipx-535.mp4")
+	if err := os.MkdirAll(filepath.Dir(sourceFile), 0755); err != nil {
+		t.Fatalf("Failed to create source directory: %v", err)
+	}
+	if err := os.WriteFile(sourceFile, []byte("test content"), 0644); err != nil {
+		t.Fatalf("Failed to create source file: %v", err)
+	}
+
+	cfg := &config.OutputConfig{
+		FolderFormat: "<ID>",
+		FileFormat:   "<ID>",
+		RenameFile:   true,
+	}
+	org := NewOrganizer(afero.NewOsFs(), cfg)
+	movie := createTestMovie()
+
+	match := matcher.MatchResult{
+		File: scanner.FileInfo{
+			Path:      sourceFile,
+			Name:      "ipx-535.mp4",
+			Extension: ".mp4",
+		},
+		ID: "IPX-535",
+	}
+
+	destDir := filepath.Join(tmpDir, "dest")
+	plan, err := org.Plan(match, movie, destDir, false)
+	if err != nil {
+		t.Fatalf("Plan failed: %v", err)
+	}
+
+	result, err := org.CopyWithLinkMode(plan, false, LinkModeHard)
+	if err != nil {
+		t.Fatalf("CopyWithLinkMode hard failed: %v", err)
+	}
+
+	srcInfo, err := os.Stat(sourceFile)
+	if err != nil {
+		t.Fatalf("Failed to stat source file: %v", err)
+	}
+	dstInfo, err := os.Stat(result.NewPath)
+	if err != nil {
+		t.Fatalf("Failed to stat target file: %v", err)
+	}
+	if !os.SameFile(srcInfo, dstInfo) {
+		t.Error("Expected hard link to reference the same file")
+	}
+}
+
+func TestOrganizer_CopyWithLinkMode_SoftLink(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	sourceFile := filepath.Join(tmpDir, "source", "ipx-535.mp4")
+	if err := os.MkdirAll(filepath.Dir(sourceFile), 0755); err != nil {
+		t.Fatalf("Failed to create source directory: %v", err)
+	}
+	if err := os.WriteFile(sourceFile, []byte("test content"), 0644); err != nil {
+		t.Fatalf("Failed to create source file: %v", err)
+	}
+
+	cfg := &config.OutputConfig{
+		FolderFormat: "<ID>",
+		FileFormat:   "<ID>",
+		RenameFile:   true,
+	}
+	org := NewOrganizer(afero.NewOsFs(), cfg)
+	movie := createTestMovie()
+
+	match := matcher.MatchResult{
+		File: scanner.FileInfo{
+			Path:      sourceFile,
+			Name:      "ipx-535.mp4",
+			Extension: ".mp4",
+		},
+		ID: "IPX-535",
+	}
+
+	destDir := filepath.Join(tmpDir, "dest")
+	plan, err := org.Plan(match, movie, destDir, false)
+	if err != nil {
+		t.Fatalf("Plan failed: %v", err)
+	}
+
+	result, err := org.CopyWithLinkMode(plan, false, LinkModeSoft)
+	if err != nil {
+		if os.IsPermission(err) {
+			t.Skipf("Skipping symlink test due to permissions: %v", err)
+		}
+		t.Fatalf("CopyWithLinkMode soft failed: %v", err)
+	}
+
+	info, err := os.Lstat(result.NewPath)
+	if err != nil {
+		t.Fatalf("Failed to lstat target file: %v", err)
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		t.Error("Expected target to be a symlink")
+	}
+
+	linkedContent, err := os.ReadFile(result.NewPath)
+	if err != nil {
+		t.Fatalf("Failed to read through symlink: %v", err)
+	}
+	if string(linkedContent) != "test content" {
+		t.Errorf("Symlink content mismatch: got %q", string(linkedContent))
+	}
+}
+
+func TestParseLinkMode(t *testing.T) {
+	mode, err := ParseLinkMode("hard")
+	if err != nil {
+		t.Fatalf("ParseLinkMode hard returned error: %v", err)
+	}
+	if mode != LinkModeHard {
+		t.Fatalf("Expected hard, got %q", mode)
+	}
+
+	mode, err = ParseLinkMode(" SOFT ")
+	if err != nil {
+		t.Fatalf("ParseLinkMode soft returned error: %v", err)
+	}
+	if mode != LinkModeSoft {
+		t.Fatalf("Expected soft, got %q", mode)
+	}
+
+	mode, err = ParseLinkMode("")
+	if err != nil {
+		t.Fatalf("ParseLinkMode empty returned error: %v", err)
+	}
+	if mode != LinkModeNone {
+		t.Fatalf("Expected none, got %q", mode)
+	}
+
+	if _, err := ParseLinkMode("invalid"); err == nil {
+		t.Fatal("Expected invalid link mode to return error")
+	}
+}
+
 func TestOrganizer_Revert(t *testing.T) {
 	tmpDir := t.TempDir()
 
