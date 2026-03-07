@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -15,6 +16,22 @@ import (
 	"github.com/javinizer/javinizer-go/internal/models"
 	"github.com/spf13/afero"
 )
+
+type testDownloadProxyResolver struct {
+	match            func(host string) bool
+	downloadOverride *config.ProxyConfig
+	scraperProxy     *config.ProxyConfig
+}
+
+func (r testDownloadProxyResolver) ResolveDownloadProxyForHost(host string) (*config.ProxyConfig, *config.ProxyConfig, bool) {
+	if r.match == nil {
+		return nil, nil, false
+	}
+	if !r.match(strings.ToLower(strings.TrimSpace(host))) {
+		return nil, nil, false
+	}
+	return r.downloadOverride, r.scraperProxy, true
+}
 
 func createTestMovie() *models.Movie {
 	releaseDate := time.Date(2020, 9, 13, 0, 0, 0, 0, time.UTC)
@@ -1405,7 +1422,18 @@ func TestAdaptiveDownloader_SelectProxyForRequest_UsesScraperDownloadOverride(t 
 		URL:     "http://javdb-download-proxy.example.com:8080",
 	}
 
-	client := &adaptiveDownloaderHTTPClient{cfg: cfg}
+	client := &adaptiveDownloaderHTTPClient{
+		cfg: cfg,
+		proxyResolvers: []models.ScraperDownloadProxyResolver{
+			testDownloadProxyResolver{
+				match: func(host string) bool {
+					return strings.HasSuffix(host, "jdbstatic.com") || strings.HasSuffix(host, "javdb.com")
+				},
+				downloadOverride: cfg.Scrapers.JavDB.DownloadProxy,
+				scraperProxy:     cfg.Scrapers.JavDB.Proxy,
+			},
+		},
+	}
 	req := httptest.NewRequest(http.MethodGet, "https://c0.jdbstatic.com/samples/x.jpg", nil)
 
 	resolved := client.selectProxyForRequest(req)
@@ -1427,7 +1455,16 @@ func TestAdaptiveDownloader_SelectProxyForRequest_AVEntertainmentNoScraperProxyU
 		Enabled: false,
 	}
 
-	client := &adaptiveDownloaderHTTPClient{cfg: cfg}
+	client := &adaptiveDownloaderHTTPClient{
+		cfg: cfg,
+		proxyResolvers: []models.ScraperDownloadProxyResolver{
+			testDownloadProxyResolver{
+				match:            func(host string) bool { return strings.HasSuffix(host, "aventertainments.com") },
+				downloadOverride: cfg.Scrapers.AVEntertainment.DownloadProxy,
+				scraperProxy:     cfg.Scrapers.AVEntertainment.Proxy,
+			},
+		},
+	}
 	req := httptest.NewRequest(http.MethodGet, "https://imgs02.aventertainments.com/vodimages/screenshot/large/1pon_020326_001/001.webp", nil)
 
 	resolved := client.selectProxyForRequest(req)
@@ -1447,7 +1484,16 @@ func TestAdaptiveDownloader_SelectProxyForRequest_CaribbeancomUsesScraperProxy(t
 		URL:     "http://caribbeancom-proxy.example.com:8080",
 	}
 
-	client := &adaptiveDownloaderHTTPClient{cfg: cfg}
+	client := &adaptiveDownloaderHTTPClient{
+		cfg: cfg,
+		proxyResolvers: []models.ScraperDownloadProxyResolver{
+			testDownloadProxyResolver{
+				match:            func(host string) bool { return strings.HasSuffix(host, "caribbeancom.com") },
+				downloadOverride: cfg.Scrapers.Caribbeancom.DownloadProxy,
+				scraperProxy:     cfg.Scrapers.Caribbeancom.Proxy,
+			},
+		},
+	}
 	req := httptest.NewRequest(http.MethodGet, "https://www.caribbeancom.com/moviepages/120614-753/images/l_l.jpg", nil)
 
 	resolved := client.selectProxyForRequest(req)
@@ -1469,7 +1515,16 @@ func TestAdaptiveDownloader_SelectProxyForRequest_FC2NoScraperProxyUsesDirect(t 
 		Enabled: false,
 	}
 
-	client := &adaptiveDownloaderHTTPClient{cfg: cfg}
+	client := &adaptiveDownloaderHTTPClient{
+		cfg: cfg,
+		proxyResolvers: []models.ScraperDownloadProxyResolver{
+			testDownloadProxyResolver{
+				match:            func(host string) bool { return strings.HasSuffix(host, "fc2.com") },
+				downloadOverride: cfg.Scrapers.FC2.DownloadProxy,
+				scraperProxy:     cfg.Scrapers.FC2.Proxy,
+			},
+		},
+	}
 	req := httptest.NewRequest(http.MethodGet, "https://contents-thumbnail2.fc2.com/w1280/storage201000.contents.fc2.com/file/x.jpg", nil)
 
 	resolved := client.selectProxyForRequest(req)
@@ -1493,7 +1548,16 @@ func TestAdaptiveDownloader_SelectProxyForRequest_FC2DownloadOverrideWins(t *tes
 		URL:     "http://fc2-download-proxy.example.com:8080",
 	}
 
-	client := &adaptiveDownloaderHTTPClient{cfg: cfg}
+	client := &adaptiveDownloaderHTTPClient{
+		cfg: cfg,
+		proxyResolvers: []models.ScraperDownloadProxyResolver{
+			testDownloadProxyResolver{
+				match:            func(host string) bool { return strings.HasSuffix(host, "fc2.com") },
+				downloadOverride: cfg.Scrapers.FC2.DownloadProxy,
+				scraperProxy:     cfg.Scrapers.FC2.Proxy,
+			},
+		},
+	}
 	req := httptest.NewRequest(http.MethodGet, "https://storage201000.contents.fc2.com/file/x.jpg", nil)
 
 	resolved := client.selectProxyForRequest(req)
@@ -1512,7 +1576,18 @@ func TestAdaptiveDownloader_SelectProxyForRequest_UnknownHostFallsBackToGlobal(t
 		URL:     "http://global-proxy.example.com:8080",
 	}
 
-	client := &adaptiveDownloaderHTTPClient{cfg: cfg}
+	client := &adaptiveDownloaderHTTPClient{
+		cfg: cfg,
+		proxyResolvers: []models.ScraperDownloadProxyResolver{
+			testDownloadProxyResolver{
+				match: func(host string) bool {
+					return strings.HasSuffix(host, "jdbstatic.com") || strings.HasSuffix(host, "javdb.com")
+				},
+				downloadOverride: cfg.Scrapers.JavDB.DownloadProxy,
+				scraperProxy:     cfg.Scrapers.JavDB.Proxy,
+			},
+		},
+	}
 	req := httptest.NewRequest(http.MethodGet, "https://example-cdn.invalid/path/image.jpg", nil)
 
 	resolved := client.selectProxyForRequest(req)
@@ -1546,7 +1621,18 @@ func TestAdaptiveDownloader_SelectProxyForRequest_UsesDownloadProxyProfileWithou
 		Profile: "download",
 	}
 
-	client := &adaptiveDownloaderHTTPClient{cfg: cfg}
+	client := &adaptiveDownloaderHTTPClient{
+		cfg: cfg,
+		proxyResolvers: []models.ScraperDownloadProxyResolver{
+			testDownloadProxyResolver{
+				match: func(host string) bool {
+					return strings.HasSuffix(host, "jdbstatic.com") || strings.HasSuffix(host, "javdb.com")
+				},
+				downloadOverride: cfg.Scrapers.JavDB.DownloadProxy,
+				scraperProxy:     cfg.Scrapers.JavDB.Proxy,
+			},
+		},
+	}
 	req := httptest.NewRequest(http.MethodGet, "https://c0.jdbstatic.com/samples/x.jpg", nil)
 
 	resolved := client.selectProxyForRequest(req)
@@ -1573,7 +1659,18 @@ func TestAdaptiveDownloader_SelectProxyForRequest_ReusesMainProxyWhenRequested(t
 		UseMainProxy: true,
 	}
 
-	client := &adaptiveDownloaderHTTPClient{cfg: cfg}
+	client := &adaptiveDownloaderHTTPClient{
+		cfg: cfg,
+		proxyResolvers: []models.ScraperDownloadProxyResolver{
+			testDownloadProxyResolver{
+				match: func(host string) bool {
+					return strings.HasSuffix(host, "jdbstatic.com") || strings.HasSuffix(host, "javdb.com")
+				},
+				downloadOverride: cfg.Scrapers.JavDB.DownloadProxy,
+				scraperProxy:     cfg.Scrapers.JavDB.Proxy,
+			},
+		},
+	}
 	req := httptest.NewRequest(http.MethodGet, "https://javdb.com/v/mgnl032", nil)
 
 	resolved := client.selectProxyForRequest(req)
@@ -1599,7 +1696,18 @@ func TestAdaptiveDownloader_SelectProxyForRequest_EmptyDownloadOverrideInheritsS
 		// Empty override should be treated as inherit scraper/global proxy.
 	}
 
-	client := &adaptiveDownloaderHTTPClient{cfg: cfg}
+	client := &adaptiveDownloaderHTTPClient{
+		cfg: cfg,
+		proxyResolvers: []models.ScraperDownloadProxyResolver{
+			testDownloadProxyResolver{
+				match: func(host string) bool {
+					return strings.HasSuffix(host, "jdbstatic.com") || strings.HasSuffix(host, "javdb.com")
+				},
+				downloadOverride: cfg.Scrapers.JavDB.DownloadProxy,
+				scraperProxy:     cfg.Scrapers.JavDB.Proxy,
+			},
+		},
+	}
 	req := httptest.NewRequest(http.MethodGet, "https://c0.jdbstatic.com/samples/x.jpg", nil)
 
 	resolved := client.selectProxyForRequest(req)

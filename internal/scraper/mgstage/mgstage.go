@@ -28,6 +28,8 @@ type Scraper struct {
 	enabled         bool
 	usingProxy      bool
 	requestDelay    time.Duration
+	proxyOverride   *config.ProxyConfig
+	downloadProxy   *config.ProxyConfig
 	lastRequestTime atomic.Value // stores time.Time of last request for rate limiting
 }
 
@@ -79,10 +81,12 @@ func New(cfg *config.Config) *Scraper {
 	requestDelay := time.Duration(cfg.Scrapers.MGStage.RequestDelay) * time.Millisecond
 
 	scraper := &Scraper{
-		client:       client,
-		enabled:      cfg.Scrapers.MGStage.Enabled,
-		usingProxy:   usingProxy,
-		requestDelay: requestDelay,
+		client:        client,
+		enabled:       cfg.Scrapers.MGStage.Enabled,
+		usingProxy:    usingProxy,
+		requestDelay:  requestDelay,
+		proxyOverride: cfg.Scrapers.MGStage.Proxy,
+		downloadProxy: cfg.Scrapers.MGStage.DownloadProxy,
 	}
 
 	// Initialize lastRequestTime with zero time
@@ -103,6 +107,15 @@ func (s *Scraper) Name() string {
 // IsEnabled returns whether the scraper is enabled
 func (s *Scraper) IsEnabled() bool {
 	return s.enabled
+}
+
+// ResolveDownloadProxyForHost declares MGStage-owned media hosts for downloader proxy routing.
+func (s *Scraper) ResolveDownloadProxyForHost(host string) (*config.ProxyConfig, *config.ProxyConfig, bool) {
+	host = strings.ToLower(strings.TrimSpace(host))
+	if host == "" || !strings.Contains(host, "mgstage") {
+		return nil, nil, false
+	}
+	return s.downloadProxy, s.proxyOverride, true
 }
 
 // ResolveSearchQuery normalizes MGStage-specific IDs from free-form input.

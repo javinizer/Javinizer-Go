@@ -45,6 +45,8 @@ type Scraper struct {
 	enabled         bool
 	baseURL         string
 	requestDelay    time.Duration
+	proxyOverride   *config.ProxyConfig
+	downloadProxy   *config.ProxyConfig
 	lastRequestTime atomic.Value
 }
 
@@ -79,12 +81,14 @@ func New(cfg *config.Config) *Scraper {
 	}
 
 	s := &Scraper{
-		client:       client,
-		flaresolverr: fs,
-		cfg:          &scraperCfg,
-		enabled:      scraperCfg.Enabled,
-		baseURL:      strings.TrimRight(baseURL, "/"),
-		requestDelay: time.Duration(scraperCfg.RequestDelay) * time.Millisecond,
+		client:        client,
+		flaresolverr:  fs,
+		cfg:           &scraperCfg,
+		enabled:       scraperCfg.Enabled,
+		baseURL:       strings.TrimRight(baseURL, "/"),
+		requestDelay:  time.Duration(scraperCfg.RequestDelay) * time.Millisecond,
+		proxyOverride: scraperCfg.Proxy,
+		downloadProxy: scraperCfg.DownloadProxy,
 	}
 
 	s.lastRequestTime.Store(time.Time{})
@@ -107,6 +111,18 @@ func (s *Scraper) Name() string {
 // IsEnabled returns whether the scraper is enabled.
 func (s *Scraper) IsEnabled() bool {
 	return s.enabled
+}
+
+// ResolveDownloadProxyForHost declares JavDB-owned media hosts for downloader proxy routing.
+func (s *Scraper) ResolveDownloadProxyForHost(host string) (*config.ProxyConfig, *config.ProxyConfig, bool) {
+	host = strings.ToLower(strings.TrimSpace(host))
+	if host == "" {
+		return nil, nil, false
+	}
+	if strings.HasSuffix(host, "jdbstatic.com") || strings.HasSuffix(host, "javdb.com") {
+		return s.downloadProxy, s.proxyOverride, true
+	}
+	return nil, nil, false
 }
 
 // GetURL returns JavDB search URL for a given ID.

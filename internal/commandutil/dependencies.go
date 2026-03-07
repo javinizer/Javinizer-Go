@@ -13,6 +13,7 @@ import (
 	"github.com/javinizer/javinizer-go/internal/scraper/caribbeancom"
 	"github.com/javinizer/javinizer-go/internal/scraper/dlgetchu"
 	"github.com/javinizer/javinizer-go/internal/scraper/dmm"
+	"github.com/javinizer/javinizer-go/internal/scraper/fc2"
 	"github.com/javinizer/javinizer-go/internal/scraper/jav321"
 	"github.com/javinizer/javinizer-go/internal/scraper/javbus"
 	"github.com/javinizer/javinizer-go/internal/scraper/javdb"
@@ -116,6 +117,7 @@ func NewDependenciesWithOptions(cfg *config.Config, opts *DependenciesOptions) (
 		registry.Register(aventertainment.New(cfg))
 		registry.Register(dlgetchu.New(cfg))
 		registry.Register(caribbeancom.New(cfg))
+		registry.Register(fc2.New(cfg))
 		javLibraryProxy := config.ResolveScraperProxy(cfg.Scrapers.Proxy, cfg.Scrapers.JavLibrary.Proxy)
 		javlib, err := javlibrary.New(&cfg.Scrapers.JavLibrary, javLibraryProxy, cfg.Scrapers.UserAgent)
 		if err != nil {

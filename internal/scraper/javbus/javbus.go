@@ -40,6 +40,8 @@ type Scraper struct {
 	baseURL         string
 	language        string
 	requestDelay    time.Duration
+	proxyOverride   *config.ProxyConfig
+	downloadProxy   *config.ProxyConfig
 	lastRequestTime atomic.Value
 }
 
@@ -79,11 +81,13 @@ func New(cfg *config.Config) *Scraper {
 	lang := normalizeLanguage(scraperCfg.Language)
 
 	s := &Scraper{
-		client:       client,
-		enabled:      scraperCfg.Enabled,
-		baseURL:      base,
-		language:     lang,
-		requestDelay: time.Duration(scraperCfg.RequestDelay) * time.Millisecond,
+		client:        client,
+		enabled:       scraperCfg.Enabled,
+		baseURL:       base,
+		language:      lang,
+		requestDelay:  time.Duration(scraperCfg.RequestDelay) * time.Millisecond,
+		proxyOverride: scraperCfg.Proxy,
+		downloadProxy: scraperCfg.DownloadProxy,
 	}
 	s.lastRequestTime.Store(time.Time{})
 
@@ -102,6 +106,18 @@ func (s *Scraper) Name() string {
 // IsEnabled returns whether the scraper is enabled.
 func (s *Scraper) IsEnabled() bool {
 	return s.enabled
+}
+
+// ResolveDownloadProxyForHost declares JavBus-owned media hosts for downloader proxy routing.
+func (s *Scraper) ResolveDownloadProxyForHost(host string) (*config.ProxyConfig, *config.ProxyConfig, bool) {
+	host = strings.ToLower(strings.TrimSpace(host))
+	if host == "" {
+		return nil, nil, false
+	}
+	if strings.HasSuffix(host, "javbus.com") || strings.HasSuffix(host, "javbus.org") {
+		return s.downloadProxy, s.proxyOverride, true
+	}
+	return nil, nil, false
 }
 
 // GetURL attempts to find a detail URL for the given movie ID.

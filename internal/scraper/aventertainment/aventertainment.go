@@ -42,6 +42,8 @@ type Scraper struct {
 	language        string
 	requestDelay    time.Duration
 	scrapeBonus     bool
+	proxyOverride   *config.ProxyConfig
+	downloadProxy   *config.ProxyConfig
 	lastRequestTime atomic.Value
 }
 
@@ -75,12 +77,14 @@ func New(cfg *config.Config) *Scraper {
 	base = strings.TrimRight(base, "/")
 
 	s := &Scraper{
-		client:       client,
-		enabled:      scraperCfg.Enabled,
-		baseURL:      base,
-		language:     normalizeLanguage(scraperCfg.Language),
-		requestDelay: time.Duration(scraperCfg.RequestDelay) * time.Millisecond,
-		scrapeBonus:  scraperCfg.ScrapeBonusScreens,
+		client:        client,
+		enabled:       scraperCfg.Enabled,
+		baseURL:       base,
+		language:      normalizeLanguage(scraperCfg.Language),
+		requestDelay:  time.Duration(scraperCfg.RequestDelay) * time.Millisecond,
+		scrapeBonus:   scraperCfg.ScrapeBonusScreens,
+		proxyOverride: scraperCfg.Proxy,
+		downloadProxy: scraperCfg.DownloadProxy,
 	}
 	s.lastRequestTime.Store(time.Time{})
 
@@ -96,6 +100,15 @@ func (s *Scraper) Name() string { return "aventertainment" }
 
 // IsEnabled returns whether scraper is enabled.
 func (s *Scraper) IsEnabled() bool { return s.enabled }
+
+// ResolveDownloadProxyForHost declares AVEntertainment-owned media hosts for downloader proxy routing.
+func (s *Scraper) ResolveDownloadProxyForHost(host string) (*config.ProxyConfig, *config.ProxyConfig, bool) {
+	host = strings.ToLower(strings.TrimSpace(host))
+	if host == "" || !strings.HasSuffix(host, "aventertainments.com") {
+		return nil, nil, false
+	}
+	return s.downloadProxy, s.proxyOverride, true
+}
 
 // ResolveSearchQuery maps non-standard filename IDs to AVEntertainment-friendly
 // query formats.

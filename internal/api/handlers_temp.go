@@ -110,7 +110,7 @@ func serveTempImage(deps *ServerDependencies) gin.HandlerFunc {
 		}
 
 		cfg := deps.GetConfig()
-		httpClient, err := downloader.NewHTTPClientForDownloader(cfg)
+		httpClient, err := downloader.NewHTTPClientForDownloaderWithRegistry(cfg, deps.GetRegistry())
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create http client"})
 			return

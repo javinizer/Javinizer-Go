@@ -91,7 +91,7 @@ func rescrapeBatchMovie(deps *ServerDependencies) gin.HandlerFunc {
 		cfg := deps.GetConfig()
 
 		// Create HTTP client for poster downloads with scraper-level download proxy support.
-		httpClient, err := downloader.NewHTTPClientForDownloader(cfg)
+		httpClient, err := downloader.NewHTTPClientForDownloaderWithRegistry(cfg, deps.GetRegistry())
 		if err != nil {
 			logging.Warnf("Failed to create HTTP client for poster downloads: %v", err)
 			httpClient = nil // Continue without poster generation

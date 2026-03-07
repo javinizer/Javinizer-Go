@@ -49,7 +49,7 @@ Javinizer supports multiple metadata scrapers that can be enabled/disabled and p
 ### General Scraper Settings
 
 ```yaml
-config_version: 1
+config_version: 2
 
 scrapers:
   user_agent: "Javinizer (+https://github.com/javinizer/Javinizer)"

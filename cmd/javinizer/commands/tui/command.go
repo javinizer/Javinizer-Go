@@ -230,7 +230,7 @@ func run(cmd *cobra.Command, args []string) error {
 	agg := aggregator.NewWithDatabase(cfg, db)
 
 	// Initialize HTTP client for downloader
-	httpClient, err := downloader.NewHTTPClientForDownloader(cfg)
+	httpClient, err := downloader.NewHTTPClientForDownloaderWithRegistry(cfg, registry)
 	if err != nil {
 		return fmt.Errorf("failed to create HTTP client: %w", err)
 	}
