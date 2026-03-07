@@ -24,6 +24,7 @@ import (
 	"github.com/javinizer/javinizer-go/internal/scraper/caribbeancom"
 	"github.com/javinizer/javinizer-go/internal/scraper/dlgetchu"
 	"github.com/javinizer/javinizer-go/internal/scraper/dmm"
+	"github.com/javinizer/javinizer-go/internal/scraper/fc2"
 	"github.com/javinizer/javinizer-go/internal/scraper/jav321"
 	"github.com/javinizer/javinizer-go/internal/scraper/javbus"
 	"github.com/javinizer/javinizer-go/internal/scraper/javdb"
@@ -460,6 +461,28 @@ func getAvailableScrapers(deps *ServerDependencies) gin.HandlerFunc {
 				options = append(options, scraperFakeUserAgentOptions()...)
 				options = append(options, scraperProxyOptions(profileChoices)...)
 				options = append(options, scraperDownloadProxyOptions(profileChoices)...)
+			case "fc2":
+				displayName = "FC2"
+				options = []ScraperOption{
+					{
+						Key:         "request_delay",
+						Label:       "Request delay",
+						Description: "Delay between requests to avoid rate limiting",
+						Type:        "number",
+						Min:         ptrInt(0),
+						Max:         ptrInt(5000),
+						Unit:        "ms",
+					},
+					{
+						Key:         "base_url",
+						Label:       "Base URL",
+						Description: "FC2 base URL",
+						Type:        "string",
+					},
+				}
+				options = append(options, scraperFakeUserAgentOptions()...)
+				options = append(options, scraperProxyOptions(profileChoices)...)
+				options = append(options, scraperDownloadProxyOptions(profileChoices)...)
 			}
 
 			scrapers = append(scrapers, ScraperInfo{
@@ -743,6 +766,7 @@ func reloadComponents(deps *ServerDependencies, newCfg *config.Config) error {
 	newRegistry.Register(aventertainment.New(newCfg))
 	newRegistry.Register(dlgetchu.New(newCfg))
 	newRegistry.Register(caribbeancom.New(newCfg))
+	newRegistry.Register(fc2.New(newCfg))
 
 	// Register JavLibrary scraper (may return error if language is invalid)
 	javLibraryProxy := config.ResolveScraperProxy(newCfg.Scrapers.Proxy, newCfg.Scrapers.JavLibrary.Proxy)

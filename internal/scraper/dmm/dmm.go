@@ -56,6 +56,8 @@ type Scraper struct {
 	browserTimeout int
 	contentIDRepo  *database.ContentIDMappingRepository
 	proxyConfig    *config.ProxyConfig // Store proxy config for browser operations
+	proxyOverride  *config.ProxyConfig
+	downloadProxy  *config.ProxyConfig
 }
 
 // New creates a new DMM scraper
@@ -103,6 +105,8 @@ func New(cfg *config.Config, contentIDRepo *database.ContentIDMappingRepository)
 		browserTimeout: cfg.Scrapers.DMM.BrowserTimeout,
 		contentIDRepo:  contentIDRepo,
 		proxyConfig:    proxyConfig, // Store effective proxy config for browser operations
+		proxyOverride:  cfg.Scrapers.DMM.Proxy,
+		downloadProxy:  cfg.Scrapers.DMM.DownloadProxy,
 	}
 }
 
@@ -114,6 +118,22 @@ func (s *Scraper) Name() string {
 // IsEnabled returns whether the scraper is enabled
 func (s *Scraper) IsEnabled() bool {
 	return s.enabled
+}
+
+// ResolveDownloadProxyForHost declares DMM-owned media hosts for downloader proxy routing.
+func (s *Scraper) ResolveDownloadProxyForHost(host string) (*config.ProxyConfig, *config.ProxyConfig, bool) {
+	host = strings.ToLower(strings.TrimSpace(host))
+	if host == "" {
+		return nil, nil, false
+	}
+	// Exclude LibreDMM hosts to avoid conflicting matches.
+	if strings.Contains(host, "libredmm") {
+		return nil, nil, false
+	}
+	if strings.Contains(host, "dmm") {
+		return s.downloadProxy, s.proxyOverride, true
+	}
+	return nil, nil, false
 }
 
 // ResolveContentID attempts to resolve the display ID to an actual DMM content ID

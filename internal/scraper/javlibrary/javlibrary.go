@@ -20,12 +20,14 @@ var SupportedLanguages = []string{"en", "ja", "cn", "tw"}
 
 // Scraper implements the models.Scraper interface for JavLibrary
 type Scraper struct {
-	client       *resty.Client
-	flaresolverr *httpclient.FlareSolverr
-	cfg          *config.JavLibraryConfig
-	enabled      bool
-	baseURL      string
-	language     string
+	client        *resty.Client
+	flaresolverr  *httpclient.FlareSolverr
+	cfg           *config.JavLibraryConfig
+	enabled       bool
+	baseURL       string
+	language      string
+	proxyOverride *config.ProxyConfig
+	downloadProxy *config.ProxyConfig
 }
 
 // New creates a new JavLibrary scraper.
@@ -79,12 +81,14 @@ func New(cfg *config.JavLibraryConfig, proxyConfig *config.ProxyConfig, globalUs
 	}
 
 	return &Scraper{
-		client:       client,
-		flaresolverr: fs,
-		cfg:          cfg,
-		enabled:      cfg.Enabled,
-		baseURL:      baseURL,
-		language:     language,
+		client:        client,
+		flaresolverr:  fs,
+		cfg:           cfg,
+		enabled:       cfg.Enabled,
+		baseURL:       baseURL,
+		language:      language,
+		proxyOverride: proxyConfig,
+		downloadProxy: cfg.DownloadProxy,
 	}, nil
 }
 
@@ -96,6 +100,15 @@ func (s *Scraper) Name() string {
 // IsEnabled returns whether the scraper is enabled
 func (s *Scraper) IsEnabled() bool {
 	return s.enabled
+}
+
+// ResolveDownloadProxyForHost declares JavLibrary-owned media hosts for downloader proxy routing.
+func (s *Scraper) ResolveDownloadProxyForHost(host string) (*config.ProxyConfig, *config.ProxyConfig, bool) {
+	host = strings.ToLower(strings.TrimSpace(host))
+	if host == "" || !strings.Contains(host, "javlibrary") {
+		return nil, nil, false
+	}
+	return s.downloadProxy, s.proxyOverride, true
 }
 
 // GetURL returns the search URL for a given ID

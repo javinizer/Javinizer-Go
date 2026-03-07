@@ -3,6 +3,8 @@ package models
 import (
 	"strings"
 	"time"
+
+	"github.com/javinizer/javinizer-go/internal/config"
 )
 
 // Rating represents rating information from scrapers
@@ -79,6 +81,16 @@ type Scraper interface {
 // scraper-specific pattern, or ("", false) when it does not apply.
 type ScraperQueryResolver interface {
 	ResolveSearchQuery(input string) (string, bool)
+}
+
+// ScraperDownloadProxyResolver is an optional hook for scrapers to control
+// media download proxy routing for scraper-specific media/CDN hosts.
+//
+// Implementations should return handled=false for unrelated hosts.
+// When handled=true, downloader applies the same proxy precedence rules used by
+// scraper download_proxy/proxy/global settings.
+type ScraperDownloadProxyResolver interface {
+	ResolveDownloadProxyForHost(host string) (downloadOverride *config.ProxyConfig, scraperProxy *config.ProxyConfig, handled bool)
 }
 
 // ScraperRegistry manages available scrapers

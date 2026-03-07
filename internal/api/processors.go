@@ -73,7 +73,7 @@ func processBatchJob(job *worker.BatchJob, registry *models.ScraperRegistry, agg
 	defer pool.Stop()
 
 	// Create HTTP client for temp poster downloads with scraper-level download proxy support.
-	httpClient, err := downloader.NewHTTPClientForDownloader(cfg)
+	httpClient, err := downloader.NewHTTPClientForDownloaderWithRegistry(cfg, registry)
 	if err != nil {
 		logging.Warnf("Failed to create HTTP client for poster downloads: %v (will skip poster generation)", err)
 		httpClient = nil // Continue without poster generation
@@ -311,23 +311,23 @@ func downloadMediaFilesWithHistory(dl *downloader.Downloader, movie *models.Movi
 
 // processUpdateJob handles update operation triggered from review page
 // Generates NFOs and downloads media files in place without moving video files
-func processUpdateJob(job *worker.BatchJob, cfg *config.Config, db *database.DB) {
+func processUpdateJob(job *worker.BatchJob, cfg *config.Config, db *database.DB, registry *models.ScraperRegistry) {
 	// Setup context for cancellation (mirrors processBatchJob pattern)
 	ctx, cancel := context.WithCancel(context.Background())
 	job.SetCancelFunc(cancel)
 	defer cancel()
 
-	processUpdateMode(job, cfg, db, ctx)
+	processUpdateMode(job, cfg, db, registry, ctx)
 }
 
 // processUpdateMode handles update mode: generate NFOs and download media files in place (no file organization)
-func processUpdateMode(job *worker.BatchJob, cfg *config.Config, db *database.DB, ctx context.Context) {
+func processUpdateMode(job *worker.BatchJob, cfg *config.Config, db *database.DB, registry *models.ScraperRegistry, ctx context.Context) {
 	// Initialize components
 	nfoGen := nfo.NewGenerator(afero.NewOsFs(), nfo.ConfigFromAppConfig(&cfg.Metadata.NFO, &cfg.Output, &cfg.Metadata, db))
 	historyLogger := history.NewLogger(db)
 
 	// Initialize HTTP client for downloader
-	httpClient, err := downloader.NewHTTPClientForDownloader(cfg)
+	httpClient, err := downloader.NewHTTPClientForDownloaderWithRegistry(cfg, registry)
 	if err != nil {
 		wsHub.BroadcastProgress(&ws.ProgressMessage{
 			JobID:    job.ID,
@@ -615,7 +615,7 @@ func processUpdateMode(job *worker.BatchJob, cfg *config.Config, db *database.DB
 }
 
 // processOrganizeJob processes file organization for a completed scrape job
-func processOrganizeJob(job *worker.BatchJob, mat *matcher.Matcher, destination string, copyOnly bool, linkModeRaw string, db *database.DB, cfg *config.Config) {
+func processOrganizeJob(job *worker.BatchJob, mat *matcher.Matcher, destination string, copyOnly bool, linkModeRaw string, db *database.DB, cfg *config.Config, registry *models.ScraperRegistry) {
 	// Initialize organizer, downloader, NFO generator, and history logger
 	org := organizer.NewOrganizer(afero.NewOsFs(), &cfg.Output)
 	historyLogger := history.NewLogger(db)
@@ -632,7 +632,7 @@ func processOrganizeJob(job *worker.BatchJob, mat *matcher.Matcher, destination 
 	}
 
 	// Initialize HTTP client for downloader
-	httpClient, err := downloader.NewHTTPClientForDownloader(cfg)
+	httpClient, err := downloader.NewHTTPClientForDownloaderWithRegistry(cfg, registry)
 	if err != nil {
 		wsHub.BroadcastProgress(&ws.ProgressMessage{
 			JobID:    job.ID,

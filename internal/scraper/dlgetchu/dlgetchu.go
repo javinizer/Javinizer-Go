@@ -40,6 +40,8 @@ type Scraper struct {
 	enabled         bool
 	baseURL         string
 	requestDelay    time.Duration
+	proxyOverride   *config.ProxyConfig
+	downloadProxy   *config.ProxyConfig
 	lastRequestTime atomic.Value
 }
 
@@ -73,10 +75,12 @@ func New(cfg *config.Config) *Scraper {
 	base = strings.TrimRight(base, "/")
 
 	s := &Scraper{
-		client:       client,
-		enabled:      scraperCfg.Enabled,
-		baseURL:      base,
-		requestDelay: time.Duration(scraperCfg.RequestDelay) * time.Millisecond,
+		client:        client,
+		enabled:       scraperCfg.Enabled,
+		baseURL:       base,
+		requestDelay:  time.Duration(scraperCfg.RequestDelay) * time.Millisecond,
+		proxyOverride: scraperCfg.Proxy,
+		downloadProxy: scraperCfg.DownloadProxy,
 	}
 	s.lastRequestTime.Store(time.Time{})
 
@@ -92,6 +96,18 @@ func (s *Scraper) Name() string { return "dlgetchu" }
 
 // IsEnabled returns whether scraper is enabled.
 func (s *Scraper) IsEnabled() bool { return s.enabled }
+
+// ResolveDownloadProxyForHost declares DLgetchu-owned media hosts for downloader proxy routing.
+func (s *Scraper) ResolveDownloadProxyForHost(host string) (*config.ProxyConfig, *config.ProxyConfig, bool) {
+	host = strings.ToLower(strings.TrimSpace(host))
+	if host == "" {
+		return nil, nil, false
+	}
+	if strings.HasSuffix(host, "dl.getchu.com") || strings.HasSuffix(host, "getchu.com") {
+		return s.downloadProxy, s.proxyOverride, true
+	}
+	return nil, nil, false
+}
 
 // GetURL resolves detail URL for an ID.
 func (s *Scraper) GetURL(id string) (string, error) {

@@ -41,6 +41,8 @@ type Scraper struct {
 	baseURL         string
 	language        string
 	requestDelay    time.Duration
+	proxyOverride   *config.ProxyConfig
+	downloadProxy   *config.ProxyConfig
 	lastRequestTime atomic.Value
 }
 
@@ -76,11 +78,13 @@ func New(cfg *config.Config) *Scraper {
 	lang := normalizeLanguage(scraperCfg.Language)
 
 	s := &Scraper{
-		client:       client,
-		enabled:      scraperCfg.Enabled,
-		baseURL:      base,
-		language:     lang,
-		requestDelay: time.Duration(scraperCfg.RequestDelay) * time.Millisecond,
+		client:        client,
+		enabled:       scraperCfg.Enabled,
+		baseURL:       base,
+		language:      lang,
+		requestDelay:  time.Duration(scraperCfg.RequestDelay) * time.Millisecond,
+		proxyOverride: scraperCfg.Proxy,
+		downloadProxy: scraperCfg.DownloadProxy,
 	}
 	s.lastRequestTime.Store(time.Time{})
 
@@ -96,6 +100,15 @@ func (s *Scraper) Name() string { return "caribbeancom" }
 
 // IsEnabled returns whether scraper is enabled.
 func (s *Scraper) IsEnabled() bool { return s.enabled }
+
+// ResolveDownloadProxyForHost declares Caribbeancom-owned media hosts for downloader proxy routing.
+func (s *Scraper) ResolveDownloadProxyForHost(host string) (*config.ProxyConfig, *config.ProxyConfig, bool) {
+	host = strings.ToLower(strings.TrimSpace(host))
+	if host == "" || !strings.HasSuffix(host, "caribbeancom.com") {
+		return nil, nil, false
+	}
+	return s.downloadProxy, s.proxyOverride, true
+}
 
 // ResolveSearchQuery normalizes Caribbeancom-style IDs from free-form input.
 func (s *Scraper) ResolveSearchQuery(input string) (string, bool) {

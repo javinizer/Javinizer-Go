@@ -742,7 +742,7 @@ func organizeJob(deps *ServerDependencies) gin.HandlerFunc {
 		job.MarkStarted()
 
 		// Start organization in background - use getter for thread-safe access
-		go processOrganizeJob(job, deps.GetMatcher(), req.Destination, req.CopyOnly, req.LinkMode, deps.DB, cfg)
+		go processOrganizeJob(job, deps.GetMatcher(), req.Destination, req.CopyOnly, req.LinkMode, deps.DB, cfg, deps.GetRegistry())
 
 		c.JSON(200, gin.H{"message": "Organization started"})
 	}
@@ -780,7 +780,7 @@ func updateBatchJob(deps *ServerDependencies) gin.HandlerFunc {
 		job.MarkStarted()
 
 		// Start update in background - use getter for thread-safe access
-		go processUpdateJob(job, deps.GetConfig(), deps.DB)
+		go processUpdateJob(job, deps.GetConfig(), deps.DB, deps.GetRegistry())
 
 		c.JSON(200, gin.H{"message": "Update started"})
 	}

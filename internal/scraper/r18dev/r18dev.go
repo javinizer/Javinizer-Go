@@ -30,6 +30,8 @@ type Scraper struct {
 	requestDelay      time.Duration
 	maxRetries        int
 	respectRetryAfter bool
+	proxyOverride     *config.ProxyConfig
+	downloadProxy     *config.ProxyConfig
 	lastRequestTime   atomic.Value // stores time.Time of last request for rate limiting
 }
 
@@ -81,6 +83,8 @@ func New(cfg *config.Config) *Scraper {
 		requestDelay:      requestDelay,
 		maxRetries:        maxRetries,
 		respectRetryAfter: cfg.Scrapers.R18Dev.RespectRetryAfter,
+		proxyOverride:     cfg.Scrapers.R18Dev.Proxy,
+		downloadProxy:     cfg.Scrapers.R18Dev.DownloadProxy,
 	}
 
 	// Initialize lastRequestTime with zero time
@@ -101,6 +105,15 @@ func (s *Scraper) Name() string {
 // IsEnabled returns whether the scraper is enabled
 func (s *Scraper) IsEnabled() bool {
 	return s.enabled
+}
+
+// ResolveDownloadProxyForHost declares R18.dev-owned media hosts for downloader proxy routing.
+func (s *Scraper) ResolveDownloadProxyForHost(host string) (*config.ProxyConfig, *config.ProxyConfig, bool) {
+	host = strings.ToLower(strings.TrimSpace(host))
+	if host == "" || !strings.Contains(host, "r18.dev") {
+		return nil, nil, false
+	}
+	return s.downloadProxy, s.proxyOverride, true
 }
 
 // GetURL constructs the URL for a given movie ID

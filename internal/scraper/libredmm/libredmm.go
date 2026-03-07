@@ -63,6 +63,8 @@ type Scraper struct {
 	enabled         bool
 	baseURL         string
 	requestDelay    time.Duration
+	proxyOverride   *config.ProxyConfig
+	downloadProxy   *config.ProxyConfig
 	lastRequestTime atomic.Value
 	pollInterval    time.Duration
 	maxPollAttempts int
@@ -101,6 +103,8 @@ func New(cfg *config.Config) *Scraper {
 		enabled:         scraperCfg.Enabled,
 		baseURL:         base,
 		requestDelay:    time.Duration(scraperCfg.RequestDelay) * time.Millisecond,
+		proxyOverride:   scraperCfg.Proxy,
+		downloadProxy:   scraperCfg.DownloadProxy,
 		pollInterval:    defaultPollInterval,
 		maxPollAttempts: defaultPollAttempts,
 	}
@@ -118,6 +122,15 @@ func (s *Scraper) Name() string { return "libredmm" }
 
 // IsEnabled returns whether scraper is enabled.
 func (s *Scraper) IsEnabled() bool { return s.enabled }
+
+// ResolveDownloadProxyForHost declares LibreDMM-owned media hosts for downloader proxy routing.
+func (s *Scraper) ResolveDownloadProxyForHost(host string) (*config.ProxyConfig, *config.ProxyConfig, bool) {
+	host = strings.ToLower(strings.TrimSpace(host))
+	if host == "" || !strings.HasSuffix(host, "libredmm.com") {
+		return nil, nil, false
+	}
+	return s.downloadProxy, s.proxyOverride, true
+}
 
 // ResolveSearchQuery prioritizes this scraper when the input is a LibreDMM URL.
 func (s *Scraper) ResolveSearchQuery(input string) (string, bool) {

@@ -23,7 +23,7 @@ const (
 
 	// CurrentConfigVersion is the latest configuration schema version.
 	// Increment this when adding migrations for new config fields/structures.
-	CurrentConfigVersion = 1
+	CurrentConfigVersion = 2
 
 	// DefaultUserAgent is the true/identifying UA for Javinizer.
 	DefaultUserAgent = "Javinizer (+https://github.com/javinizer/Javinizer)"
@@ -100,6 +100,7 @@ type ScrapersConfig struct {
 	AVEntertainment       AVEntertainmentConfig `yaml:"aventertainment" json:"aventertainment"`
 	DLGetchu              DLGetchuConfig        `yaml:"dlgetchu" json:"dlgetchu"`
 	Caribbeancom          CaribbeancomConfig    `yaml:"caribbeancom" json:"caribbeancom"`
+	FC2                   FC2Config             `yaml:"fc2" json:"fc2"`
 }
 
 // R18DevConfig holds R18.dev scraper configuration
@@ -240,6 +241,17 @@ type CaribbeancomConfig struct {
 	Language         string       `yaml:"language" json:"language"`                                 // Language code: ja, en (default: ja)
 	RequestDelay     int          `yaml:"request_delay" json:"request_delay"`                       // Delay between requests in milliseconds (0 = no delay)
 	BaseURL          string       `yaml:"base_url" json:"base_url"`                                 // Base URL for Caribbeancom
+	UseFakeUserAgent bool         `yaml:"use_fake_user_agent" json:"use_fake_user_agent"`           // Use browser-like User-Agent header for this scraper
+	FakeUserAgent    string       `yaml:"fake_user_agent" json:"fake_user_agent"`                   // Optional custom fake User-Agent (defaults to built-in browser UA)
+	Proxy            *ProxyConfig `yaml:"proxy,omitempty" json:"proxy,omitempty"`                   // Optional scraper-specific proxy override
+	DownloadProxy    *ProxyConfig `yaml:"download_proxy,omitempty" json:"download_proxy,omitempty"` // Optional scraper-specific download proxy override
+}
+
+// FC2Config holds FC2 scraper configuration
+type FC2Config struct {
+	Enabled          bool         `yaml:"enabled" json:"enabled"`
+	RequestDelay     int          `yaml:"request_delay" json:"request_delay"`                       // Delay between requests in milliseconds (0 = no delay)
+	BaseURL          string       `yaml:"base_url" json:"base_url"`                                 // Base URL for FC2
 	UseFakeUserAgent bool         `yaml:"use_fake_user_agent" json:"use_fake_user_agent"`           // Use browser-like User-Agent header for this scraper
 	FakeUserAgent    string       `yaml:"fake_user_agent" json:"fake_user_agent"`                   // Optional custom fake User-Agent (defaults to built-in browser UA)
 	Proxy            *ProxyConfig `yaml:"proxy,omitempty" json:"proxy,omitempty"`                   // Optional scraper-specific proxy override
@@ -567,6 +579,11 @@ func DefaultConfig() *Config {
 				RequestDelay: 1000,
 				BaseURL:      "https://www.caribbeancom.com",
 			},
+			FC2: FC2Config{
+				Enabled:      false,
+				RequestDelay: 1000,
+				BaseURL:      "https://adult.contents.fc2.com",
+			},
 		},
 		Metadata: MetadataConfig{
 			Priority: PriorityConfig{
@@ -748,6 +765,26 @@ func migrateToV1(cfg *Config) error {
 	return nil
 }
 
+// migrateToV2 appends FC2 to scraper priority ordering for discoverability.
+func migrateToV2(cfg *Config) error {
+	if cfg == nil {
+		return nil
+	}
+
+	existing := cfg.Scrapers.Priority
+	if len(existing) == 0 {
+		return nil
+	}
+
+	for _, scraper := range existing {
+		if scraper == "fc2" {
+			return nil
+		}
+	}
+	cfg.Scrapers.Priority = append(cfg.Scrapers.Priority, "fc2")
+	return nil
+}
+
 // applyMigrations upgrades config to CurrentConfigVersion.
 // Returns true when any migration is applied.
 func applyMigrations(cfg *Config) (bool, error) {
@@ -758,6 +795,10 @@ func applyMigrations(cfg *Config) (bool, error) {
 		switch next {
 		case 1:
 			if err := migrateToV1(cfg); err != nil {
+				return false, fmt.Errorf("failed to migrate config to version %d: %w", next, err)
+			}
+		case 2:
+			if err := migrateToV2(cfg); err != nil {
 				return false, fmt.Errorf("failed to migrate config to version %d: %w", next, err)
 			}
 		default:
@@ -863,6 +904,11 @@ func (c *Config) Validate() error {
 	}
 	if c.Scrapers.Caribbeancom.Proxy != nil {
 		if err := validateFlareSolverrConfig("scrapers.caribbeancom.proxy.flaresolverr", c.Scrapers.Caribbeancom.Proxy.FlareSolverr); err != nil {
+			return err
+		}
+	}
+	if c.Scrapers.FC2.Proxy != nil {
+		if err := validateFlareSolverrConfig("scrapers.fc2.proxy.flaresolverr", c.Scrapers.FC2.Proxy.FlareSolverr); err != nil {
 			return err
 		}
 	}
@@ -1036,6 +1082,9 @@ func validateProxyProfileConfig(c *Config) error {
 	if err := validateProxyProfileRef("scrapers.caribbeancom.proxy", c.Scrapers.Caribbeancom.Proxy, profiles); err != nil {
 		return err
 	}
+	if err := validateProxyProfileRef("scrapers.fc2.proxy", c.Scrapers.FC2.Proxy, profiles); err != nil {
+		return err
+	}
 	if err := validateProxyProfileRef("output.download_proxy", &c.Output.DownloadProxy, profiles); err != nil {
 		return err
 	}
@@ -1073,6 +1122,9 @@ func validateProxyProfileConfig(c *Config) error {
 		return err
 	}
 	if err := validateProxyProfileRef("scrapers.caribbeancom.download_proxy", c.Scrapers.Caribbeancom.DownloadProxy, profiles); err != nil {
+		return err
+	}
+	if err := validateProxyProfileRef("scrapers.fc2.download_proxy", c.Scrapers.FC2.DownloadProxy, profiles); err != nil {
 		return err
 	}
 

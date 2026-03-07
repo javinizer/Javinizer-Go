@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -61,6 +62,13 @@ type MultipartInfo struct {
 
 // NewHTTPClientForDownloader creates an HTTP client for production use with proxy and timeout configuration
 func NewHTTPClientForDownloader(cfg *config.Config) (httpclient.HTTPClient, error) {
+	return NewHTTPClientForDownloaderWithRegistry(cfg, nil)
+}
+
+// NewHTTPClientForDownloaderWithRegistry creates an HTTP client for production use
+// with proxy and timeout configuration. When a scraper registry is provided,
+// scraper-specific media host proxy routing is injected from scraper implementations.
+func NewHTTPClientForDownloaderWithRegistry(cfg *config.Config, registry *models.ScraperRegistry) (httpclient.HTTPClient, error) {
 	outputCfg := &cfg.Output
 	// Use configured timeout, default to 60 seconds if not set
 	timeout := outputCfg.DownloadTimeout
@@ -71,9 +79,10 @@ func NewHTTPClientForDownloader(cfg *config.Config) (httpclient.HTTPClient, erro
 	timeoutDuration := time.Duration(timeout) * time.Second
 
 	adaptiveClient := &adaptiveDownloaderHTTPClient{
-		timeout: timeoutDuration,
-		cfg:     cfg,
-		clients: make(map[string]httpclient.HTTPClient),
+		timeout:        timeoutDuration,
+		cfg:            cfg,
+		clients:        make(map[string]httpclient.HTTPClient),
+		proxyResolvers: collectDownloadProxyResolvers(cfg, registry),
 	}
 
 	// Explicit download proxy override still takes precedence when configured.
@@ -110,14 +119,66 @@ func NewHTTPClientForDownloader(cfg *config.Config) (httpclient.HTTPClient, erro
 	return adaptiveClient, nil
 }
 
+func collectDownloadProxyResolvers(cfg *config.Config, registry *models.ScraperRegistry) []models.ScraperDownloadProxyResolver {
+	if cfg == nil || registry == nil {
+		return nil
+	}
+
+	resolvers := make([]models.ScraperDownloadProxyResolver, 0)
+	seen := make(map[string]struct{})
+	add := func(scraper models.Scraper) {
+		if scraper == nil {
+			return
+		}
+		name := scraper.Name()
+		if _, ok := seen[name]; ok {
+			return
+		}
+		resolver, ok := scraper.(models.ScraperDownloadProxyResolver)
+		if !ok || resolver == nil {
+			return
+		}
+		resolvers = append(resolvers, resolver)
+		seen[name] = struct{}{}
+	}
+
+	for _, name := range cfg.Scrapers.Priority {
+		scraper, exists := registry.Get(name)
+		if exists {
+			add(scraper)
+		}
+	}
+
+	remaining := make([]string, 0)
+	for _, scraper := range registry.GetAll() {
+		if scraper == nil {
+			continue
+		}
+		if _, ok := seen[scraper.Name()]; ok {
+			continue
+		}
+		remaining = append(remaining, scraper.Name())
+	}
+	sort.Strings(remaining)
+	for _, name := range remaining {
+		scraper, exists := registry.Get(name)
+		if exists {
+			add(scraper)
+		}
+	}
+
+	return resolvers
+}
+
 // adaptiveDownloaderHTTPClient routes media downloads through per-scraper proxies when needed.
 type adaptiveDownloaderHTTPClient struct {
-	timeout      time.Duration
-	cfg          *config.Config
-	forceClient  httpclient.HTTPClient // forced proxy client for all downloads
-	directClient httpclient.HTTPClient
-	mu           sync.Mutex
-	clients      map[string]httpclient.HTTPClient // keyed by proxy fingerprint
+	timeout        time.Duration
+	cfg            *config.Config
+	forceClient    httpclient.HTTPClient // forced proxy client for all downloads
+	directClient   httpclient.HTTPClient
+	proxyResolvers []models.ScraperDownloadProxyResolver
+	mu             sync.Mutex
+	clients        map[string]httpclient.HTTPClient // keyed by proxy fingerprint
 }
 
 func (c *adaptiveDownloaderHTTPClient) Do(req *http.Request) (*http.Response, error) {
@@ -150,33 +211,11 @@ func (c *adaptiveDownloaderHTTPClient) selectProxyForRequest(req *http.Request) 
 		return nil
 	}
 
-	switch {
-	case strings.HasSuffix(host, "jdbstatic.com") || strings.HasSuffix(host, "javdb.com"):
-		return c.resolveScraperDownloadProxy(c.cfg.Scrapers.JavDB.DownloadProxy, c.cfg.Scrapers.JavDB.Proxy)
-	case strings.HasSuffix(host, "javbus.com") || strings.HasSuffix(host, "javbus.org"):
-		return c.resolveScraperDownloadProxy(c.cfg.Scrapers.JavBus.DownloadProxy, c.cfg.Scrapers.JavBus.Proxy)
-	case strings.HasSuffix(host, "jav321.com"):
-		return c.resolveScraperDownloadProxy(c.cfg.Scrapers.Jav321.DownloadProxy, c.cfg.Scrapers.Jav321.Proxy)
-	case strings.HasSuffix(host, "tokyo-hot.com"):
-		return c.resolveScraperDownloadProxy(c.cfg.Scrapers.TokyoHot.DownloadProxy, c.cfg.Scrapers.TokyoHot.Proxy)
-	case strings.HasSuffix(host, "aventertainments.com"):
-		return c.resolveScraperDownloadProxy(c.cfg.Scrapers.AVEntertainment.DownloadProxy, c.cfg.Scrapers.AVEntertainment.Proxy)
-	case strings.HasSuffix(host, "dl.getchu.com") || strings.HasSuffix(host, "getchu.com"):
-		return c.resolveScraperDownloadProxy(c.cfg.Scrapers.DLGetchu.DownloadProxy, c.cfg.Scrapers.DLGetchu.Proxy)
-	case strings.HasSuffix(host, "caribbeancom.com"):
-		return c.resolveScraperDownloadProxy(c.cfg.Scrapers.Caribbeancom.DownloadProxy, c.cfg.Scrapers.Caribbeancom.Proxy)
-	case strings.HasSuffix(host, "fc2.com"):
-		return c.resolveScraperDownloadProxy(c.cfg.Scrapers.FC2.DownloadProxy, c.cfg.Scrapers.FC2.Proxy)
-	case strings.HasSuffix(host, "libredmm.com"):
-		return c.resolveScraperDownloadProxy(c.cfg.Scrapers.LibreDMM.DownloadProxy, c.cfg.Scrapers.LibreDMM.Proxy)
-	case strings.Contains(host, "javlibrary"):
-		return c.resolveScraperDownloadProxy(c.cfg.Scrapers.JavLibrary.DownloadProxy, c.cfg.Scrapers.JavLibrary.Proxy)
-	case strings.Contains(host, "dmm"):
-		return c.resolveScraperDownloadProxy(c.cfg.Scrapers.DMM.DownloadProxy, c.cfg.Scrapers.DMM.Proxy)
-	case strings.Contains(host, "mgstage"):
-		return c.resolveScraperDownloadProxy(c.cfg.Scrapers.MGStage.DownloadProxy, c.cfg.Scrapers.MGStage.Proxy)
-	case strings.Contains(host, "r18.dev"):
-		return c.resolveScraperDownloadProxy(c.cfg.Scrapers.R18Dev.DownloadProxy, c.cfg.Scrapers.R18Dev.Proxy)
+	for _, resolver := range c.proxyResolvers {
+		downloadOverride, scraperProxy, handled := resolver.ResolveDownloadProxyForHost(host)
+		if handled {
+			return c.resolveScraperDownloadProxy(downloadOverride, scraperProxy)
+		}
 	}
 
 	// Fallback to global scraper proxy, if enabled.
