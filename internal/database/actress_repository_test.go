@@ -206,6 +206,33 @@ func TestActressRepository(t *testing.T) {
 		assert.True(t, found, "Should find actress by Japanese name")
 	})
 
+	t.Run("SearchPaged with pagination and query", func(t *testing.T) {
+		seed := []*models.Actress{
+			{DMMID: 31001, JapaneseName: "小川あい", FirstName: "Ai", LastName: "Ogawa"},
+			{DMMID: 31002, JapaneseName: "小川みゆ", FirstName: "Miyu", LastName: "Ogawa"},
+			{DMMID: 31003, JapaneseName: "佐々木あい", FirstName: "Ai", LastName: "Sasaki"},
+		}
+		for _, a := range seed {
+			err := repo.Create(a)
+			require.NoError(t, err)
+		}
+
+		page1, err := repo.SearchPaged("小川", 1, 0)
+		require.NoError(t, err)
+		require.Len(t, page1, 1)
+		assert.Contains(t, page1[0].JapaneseName, "小川")
+
+		page2, err := repo.SearchPaged("小川", 1, 1)
+		require.NoError(t, err)
+		require.Len(t, page2, 1)
+		assert.Contains(t, page2[0].JapaneseName, "小川")
+		assert.NotEqual(t, page1[0].ID, page2[0].ID)
+
+		noMatch, err := repo.SearchPaged("no-such-actress", 10, 0)
+		require.NoError(t, err)
+		assert.Len(t, noMatch, 0)
+	})
+
 	t.Run("Search with empty query", func(t *testing.T) {
 		results, err := repo.Search("")
 		require.NoError(t, err)

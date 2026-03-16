@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/javinizer/javinizer-go/internal/config"
+	"github.com/javinizer/javinizer-go/internal/httpclient"
 	"github.com/javinizer/javinizer-go/internal/models"
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/require"
@@ -1718,6 +1719,46 @@ func TestAdaptiveDownloader_SelectProxyForRequest_EmptyDownloadOverrideInheritsS
 	if resolved.URL != "http://javdb-main-proxy.example.com:8080" {
 		t.Fatalf("Expected inherited scraper proxy URL, got %q", resolved.URL)
 	}
+}
+
+func TestAdaptiveDownloader_GetOrCreateProxyClient_CachesByProxyKey(t *testing.T) {
+	proxyCfg := &config.ProxyConfig{
+		Enabled:  true,
+		URL:      "http://proxy.example.com:8080",
+		Username: "user",
+		Password: "pass",
+	}
+	client := &adaptiveDownloaderHTTPClient{
+		timeout: 15 * time.Second,
+		clients: make(map[string]httpclient.HTTPClient),
+	}
+
+	first, err := client.getOrCreateProxyClient(proxyCfg)
+	require.NoError(t, err)
+	require.NotNil(t, first)
+	require.Len(t, client.clients, 1)
+
+	second, err := client.getOrCreateProxyClient(proxyCfg)
+	require.NoError(t, err)
+	require.NotNil(t, second)
+	require.Len(t, client.clients, 1)
+	require.Equal(t, first, second)
+}
+
+func TestAdaptiveDownloader_GetOrCreateProxyClient_ReturnsClientCreationError(t *testing.T) {
+	client := &adaptiveDownloaderHTTPClient{
+		timeout: 10 * time.Second,
+		clients: make(map[string]httpclient.HTTPClient),
+	}
+	badProxy := &config.ProxyConfig{
+		Enabled: true,
+		URL:     "http://[::1",
+	}
+
+	created, err := client.getOrCreateProxyClient(badProxy)
+	require.Error(t, err)
+	require.Nil(t, created)
+	require.Len(t, client.clients, 0)
 }
 
 func TestDownloader_DownloadAll_AllDisabled(t *testing.T) {

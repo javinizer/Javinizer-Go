@@ -110,3 +110,69 @@ func TestAggregate_TranslationFailureDoesNotFailAggregate(t *testing.T) {
 	assert.Equal(t, "Original Title", movie.Title)
 	assert.Len(t, movie.Translations, 1)
 }
+
+func TestMergeTranslationFields(t *testing.T) {
+	t.Run("overwrites all non-empty incoming fields", func(t *testing.T) {
+		current := models.MovieTranslation{
+			Language:      "en",
+			Title:         "Old Title",
+			OriginalTitle: "Old Original",
+			Description:   "Old Description",
+			Director:      "Old Director",
+			Maker:         "Old Maker",
+			Label:         "Old Label",
+			Series:        "Old Series",
+			SourceName:    "old-source",
+		}
+		incoming := models.MovieTranslation{
+			Language:      "ja",
+			Title:         "New Title",
+			OriginalTitle: "New Original",
+			Description:   "New Description",
+			Director:      "New Director",
+			Maker:         "New Maker",
+			Label:         "New Label",
+			Series:        "New Series",
+			SourceName:    "new-source",
+		}
+
+		merged := mergeTranslationFields(current, incoming)
+		assert.Equal(t, "ja", merged.Language)
+		assert.Equal(t, "New Title", merged.Title)
+		assert.Equal(t, "New Original", merged.OriginalTitle)
+		assert.Equal(t, "New Description", merged.Description)
+		assert.Equal(t, "New Director", merged.Director)
+		assert.Equal(t, "New Maker", merged.Maker)
+		assert.Equal(t, "New Label", merged.Label)
+		assert.Equal(t, "New Series", merged.Series)
+		assert.Equal(t, "new-source", merged.SourceName)
+	})
+
+	t.Run("keeps existing values when incoming fields are empty", func(t *testing.T) {
+		current := models.MovieTranslation{
+			Language:      "en",
+			Title:         "Old Title",
+			OriginalTitle: "Old Original",
+			Description:   "Old Description",
+			Director:      "Old Director",
+			Maker:         "Old Maker",
+			Label:         "Old Label",
+			Series:        "Old Series",
+			SourceName:    "old-source",
+		}
+		incoming := models.MovieTranslation{
+			Language: "fr",
+		}
+
+		merged := mergeTranslationFields(current, incoming)
+		assert.Equal(t, "fr", merged.Language)
+		assert.Equal(t, "Old Title", merged.Title)
+		assert.Equal(t, "Old Original", merged.OriginalTitle)
+		assert.Equal(t, "Old Description", merged.Description)
+		assert.Equal(t, "Old Director", merged.Director)
+		assert.Equal(t, "Old Maker", merged.Maker)
+		assert.Equal(t, "Old Label", merged.Label)
+		assert.Equal(t, "Old Series", merged.Series)
+		assert.Equal(t, "old-source", merged.SourceName)
+	})
+}
