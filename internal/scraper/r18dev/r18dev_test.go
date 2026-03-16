@@ -30,7 +30,8 @@ func createTestConfig(enabled bool) *config.Config {
 		Scrapers: config.ScrapersConfig{
 			UserAgent: "Test Agent",
 			R18Dev: config.R18DevConfig{
-				Enabled: enabled,
+				Enabled:  enabled,
+				Language: "en",
 			},
 			Proxy: config.ProxyConfig{
 				Enabled: false,
@@ -1220,23 +1221,58 @@ func TestIDResolution(t *testing.T) {
 	}
 }
 
-// TestParseResponse_LanguageHandling verifies proper language field handling
+// TestParseResponse_LanguageHandling verifies configurable language handling.
 func TestParseResponse_LanguageHandling(t *testing.T) {
-	cfg := createTestConfig(true)
-	scraper := New(cfg)
-
 	data := &R18Response{
 		DVDID:     "TEST-001",
 		ContentID: "test00001",
-		TitleJA:   "Test Movie",
+		TitleJA:   "日本語タイトル",
+		TitleEn:   "English Title",
 	}
 
-	result, err := scraper.parseResponse(data, "https://r18.dev/test")
-	require.NoError(t, err)
+	t.Run("english mode", func(t *testing.T) {
+		cfg := createTestConfig(true)
+		cfg.Scrapers.R18Dev.Language = "en"
+		scraper := New(cfg)
 
-	// R18Dev should always set language to "en"
-	assert.Equal(t, "en", result.Language)
-	assert.Equal(t, "r18dev", result.Source)
+		result, err := scraper.parseResponse(data, "https://r18.dev/test")
+		require.NoError(t, err)
+
+		assert.Equal(t, "en", result.Language)
+		assert.Equal(t, "English Title", result.Title)
+		assert.Equal(t, "r18dev", result.Source)
+	})
+
+	t.Run("japanese mode", func(t *testing.T) {
+		cfg := createTestConfig(true)
+		cfg.Scrapers.R18Dev.Language = "ja"
+		scraper := New(cfg)
+
+		result, err := scraper.parseResponse(data, "https://r18.dev/test")
+		require.NoError(t, err)
+
+		assert.Equal(t, "ja", result.Language)
+		assert.Equal(t, "日本語タイトル", result.Title)
+		assert.Equal(t, "r18dev", result.Source)
+	})
+}
+
+func TestNormalizeLanguage(t *testing.T) {
+	tests := []struct {
+		in   string
+		want string
+	}{
+		{in: "en", want: "en"},
+		{in: "EN", want: "en"},
+		{in: "ja", want: "ja"},
+		{in: "JA", want: "ja"},
+		{in: "", want: "en"},
+		{in: "unknown", want: "en"},
+	}
+
+	for _, tt := range tests {
+		assert.Equal(t, tt.want, normalizeLanguage(tt.in))
+	}
 }
 
 // TestParseResponse_TitleFallback verifies title fallback logic

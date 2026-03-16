@@ -106,6 +106,7 @@ type ScrapersConfig struct {
 // R18DevConfig holds R18.dev scraper configuration
 type R18DevConfig struct {
 	Enabled           bool         `yaml:"enabled" json:"enabled"`
+	Language          string       `yaml:"language" json:"language"`                                 // Language code: en, ja (default: en)
 	RequestDelay      int          `yaml:"request_delay" json:"request_delay"`                       // Delay between requests in milliseconds (0 = no delay)
 	MaxRetries        int          `yaml:"max_retries" json:"max_retries"`                           // Maximum number of retry attempts for rate-limited requests
 	RespectRetryAfter bool         `yaml:"respect_retry_after" json:"respect_retry_after"`           // Whether to respect Retry-After header from server
@@ -515,7 +516,8 @@ func DefaultConfig() *Config {
 				},
 			},
 			R18Dev: R18DevConfig{
-				Enabled: true,
+				Enabled:  true,
+				Language: "en",
 			},
 			DMM: DMMConfig{
 				Enabled:        false, // DMM site now redirects to JavaScript-rendered site
@@ -837,6 +839,14 @@ func (c *Config) Validate() error {
 	}
 	if c.Scrapers.DMM.BrowserTimeout < 1 || c.Scrapers.DMM.BrowserTimeout > 300 {
 		return fmt.Errorf("scrapers.dmm.browser_timeout must be between 1 and 300")
+	}
+	switch strings.ToLower(strings.TrimSpace(c.Scrapers.R18Dev.Language)) {
+	case "", "en":
+		c.Scrapers.R18Dev.Language = "en"
+	case "ja":
+		c.Scrapers.R18Dev.Language = "ja"
+	default:
+		return fmt.Errorf("scrapers.r18dev.language must be either 'en' or 'ja'")
 	}
 
 	if err := validateProxyProfileConfig(c); err != nil {

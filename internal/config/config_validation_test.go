@@ -550,6 +550,7 @@ func TestBooleanDefaults(t *testing.T) {
 
 	// Verify expected boolean defaults
 	assert.True(t, cfg.Scrapers.R18Dev.Enabled)
+	assert.Equal(t, "en", cfg.Scrapers.R18Dev.Language)
 	assert.False(t, cfg.Scrapers.DMM.Enabled) // DMM disabled by default
 	assert.False(t, cfg.Scrapers.DMM.ScrapeActress)
 
@@ -571,6 +572,40 @@ func TestBooleanDefaults(t *testing.T) {
 	assert.True(t, cfg.Output.DownloadPoster)
 
 	assert.False(t, cfg.MediaInfo.CLIEnabled)
+}
+
+func TestR18DevLanguageValidation(t *testing.T) {
+	tests := []struct {
+		name      string
+		language  string
+		shouldErr bool
+	}{
+		{name: "default empty maps to en", language: "", shouldErr: false},
+		{name: "english", language: "en", shouldErr: false},
+		{name: "japanese", language: "ja", shouldErr: false},
+		{name: "invalid", language: "fr", shouldErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := DefaultConfig()
+			cfg.Scrapers.R18Dev.Language = tt.language
+
+			err := cfg.Validate()
+			if tt.shouldErr {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), "scrapers.r18dev.language must be either 'en' or 'ja'")
+				return
+			}
+
+			require.NoError(t, err)
+			if tt.language == "ja" {
+				assert.Equal(t, "ja", cfg.Scrapers.R18Dev.Language)
+			} else {
+				assert.Equal(t, "en", cfg.Scrapers.R18Dev.Language)
+			}
+		})
+	}
 }
 
 // TestArrayDefaults tests that array fields have proper defaults

@@ -140,6 +140,18 @@ func getAvailableScrapers(deps *ServerDependencies) gin.HandlerFunc {
 			switch name {
 			case "r18dev":
 				displayName = "R18.dev"
+				options = []ScraperOption{
+					{
+						Key:         "language",
+						Label:       "Language",
+						Description: "Language for metadata fields from R18.dev",
+						Type:        "select",
+						Choices: []ScraperChoice{
+							{Value: "en", Label: "English"},
+							{Value: "ja", Label: "Japanese"},
+						},
+					},
+				}
 				options = append(options, scraperFakeUserAgentOptions()...)
 				options = append(options, scraperProxyOptions(profileChoices)...)
 				options = append(options, scraperDownloadProxyOptions(profileChoices)...)

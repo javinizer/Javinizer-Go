@@ -185,11 +185,12 @@ func TestGetAvailableScrapers(t *testing.T) {
 				assert.Equal(t, "r18dev", resp.Scrapers[0].Name)
 				assert.Equal(t, "R18.dev", resp.Scrapers[0].DisplayName)
 				assert.True(t, resp.Scrapers[0].Enabled)
-				assert.Len(t, resp.Scrapers[0].Options, 6)
+				assert.Len(t, resp.Scrapers[0].Options, 7)
 				optionKeys := make(map[string]bool)
 				for _, opt := range resp.Scrapers[0].Options {
 					optionKeys[opt.Key] = true
 				}
+				assert.True(t, optionKeys["language"])
 				assert.True(t, optionKeys["use_fake_user_agent"])
 				assert.True(t, optionKeys["fake_user_agent"])
 				assert.True(t, optionKeys["proxy.enabled"])

@@ -27,6 +27,7 @@ const (
 type Scraper struct {
 	client            *resty.Client
 	enabled           bool
+	language          string
 	requestDelay      time.Duration
 	maxRetries        int
 	respectRetryAfter bool
@@ -55,11 +56,16 @@ func New(cfg *config.Config) *Scraper {
 		cfg.Scrapers.R18Dev.UseFakeUserAgent,
 		cfg.Scrapers.R18Dev.FakeUserAgent,
 	)
+	language := normalizeLanguage(cfg.Scrapers.R18Dev.Language)
 	client.SetHeader("User-Agent", userAgent)
 
 	// Add browser-like headers to help bypass protection
 	client.SetHeader("Accept", "application/json, text/html, */*")
-	client.SetHeader("Accept-Language", "en-US,en;q=0.9,ja;q=0.8")
+	if language == "ja" {
+		client.SetHeader("Accept-Language", "ja,en-US;q=0.8,en;q=0.6")
+	} else {
+		client.SetHeader("Accept-Language", "en-US,en;q=0.9,ja;q=0.8")
+	}
 	client.SetHeader("Accept-Encoding", "gzip, deflate, br")
 	client.SetHeader("Connection", "keep-alive")
 	client.SetHeader("Referer", "https://r18.dev/")
@@ -80,6 +86,7 @@ func New(cfg *config.Config) *Scraper {
 	scraper := &Scraper{
 		client:            client,
 		enabled:           cfg.Scrapers.R18Dev.Enabled,
+		language:          language,
 		requestDelay:      requestDelay,
 		maxRetries:        maxRetries,
 		respectRetryAfter: cfg.Scrapers.R18Dev.RespectRetryAfter,
@@ -332,12 +339,12 @@ func (s *Scraper) parseResponse(data *R18Response, sourceURL string) (*models.Sc
 	result := &models.ScraperResult{
 		Source:        s.Name(),
 		SourceURL:     sourceURL,
-		Language:      "en", // R18.dev provides English metadata
+		Language:      s.language,
 		ID:            movieID,
 		ContentID:     data.ContentID,
-		Title:         cleanString(getPreferredString(data.TitleEn, data.TitleJA)),
+		Title:         cleanString(selectLocalizedString(s.language, data.TitleEn, data.TitleJA)),
 		OriginalTitle: cleanString(data.TitleJA), // Japanese title
-		Description:   cleanString(getPreferredString(data.DescriptionEn, data.Description)),
+		Description:   cleanString(selectLocalizedString(s.language, data.DescriptionEn, data.Description)),
 		Runtime:       data.Runtime,
 	}
 
@@ -349,20 +356,18 @@ func (s *Scraper) parseResponse(data *R18Response, sourceURL string) (*models.Sc
 		}
 	}
 
-	// Parse director - prefer English field
-	result.Director = cleanString(getPreferredString(data.DirectorEn, data.Director))
+	// Parse director based on configured language preference.
+	result.Director = cleanString(selectLocalizedString(s.language, data.DirectorEn, data.Director))
 
-	// Parse maker/studio - prefer flat English field, fallback to nested object
-	result.Maker = cleanString(getPreferredString(data.MakerNameEn, data.Maker.Name))
-	result.Label = cleanString(getPreferredString(data.LabelNameEn, data.Label.Name))
+	// Parse maker/studio based on configured language preference.
+	result.Maker = cleanString(selectLocalizedString(s.language, data.MakerNameEn, data.Maker.Name))
+	result.Label = cleanString(selectLocalizedString(s.language, data.LabelNameEn, data.Label.Name))
 
-	// Parse series - try English field first, then nested object, then fallback string
-	if data.SeriesNameEn != "" {
-		result.Series = cleanString(data.SeriesNameEn)
-	} else if data.Series.Name != "" {
-		result.Series = cleanString(data.Series.Name)
-	} else if data.SeriesName != "" {
-		result.Series = cleanString(data.SeriesName)
+	// Parse series based on configured language preference.
+	if s.language == "ja" {
+		result.Series = cleanString(getPreferredString(data.Series.Name, getPreferredString(data.SeriesName, data.SeriesNameEn)))
+	} else {
+		result.Series = cleanString(getPreferredString(data.SeriesNameEn, getPreferredString(data.Series.Name, data.SeriesName)))
 	}
 
 	// Parse actresses with detailed information
@@ -585,6 +590,20 @@ func getPreferredString(preferred, fallback string) string {
 		return preferred
 	}
 	return fallback
+}
+
+func selectLocalizedString(language, englishValue, japaneseValue string) string {
+	if language == "ja" {
+		return getPreferredString(japaneseValue, englishValue)
+	}
+	return getPreferredString(englishValue, japaneseValue)
+}
+
+func normalizeLanguage(lang string) string {
+	if strings.ToLower(strings.TrimSpace(lang)) == "ja" {
+		return "ja"
+	}
+	return "en"
 }
 
 // R18Response represents the JSON response from R18.dev API (current format)

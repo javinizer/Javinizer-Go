@@ -90,6 +90,7 @@ scrapers:
     # the global profile selection from scrapers.proxy.
     r18dev:
         enabled: true
+        language: en               # en | ja
         request_delay: 1500          # Delay between requests in milliseconds (1.5 seconds to stay under 10 req/15s limit)
         max_retries: 3               # Retry up to 3 times on rate limit (429)
         respect_retry_after: true    # Respect Retry-After header from server
