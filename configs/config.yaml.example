@@ -189,55 +189,75 @@ metadata:
         actress:
             - dmm
             - r18dev
+            - libredmm
         original_title:
             - dmm
             - r18dev
+            - libredmm
         cover_url:
             - dmm
             - r18dev
+            - libredmm
         description:
             - dmm
             - r18dev
+            - libredmm
         director:
             - dmm
             - r18dev
+            - libredmm
         genre:
             - dmm
             - r18dev
+            - libredmm
         id:
             - dmm
             - r18dev
+            - libredmm
         content_id:
             - dmm
             - r18dev
+            - libredmm
         label:
             - dmm
             - r18dev
+            - libredmm
         maker:
             - dmm
             - r18dev
+            - libredmm
         poster_url:
             - r18dev
+            - libredmm
             - dmm
         rating:
             - dmm
             - r18dev
+            - libredmm
         release_date:
             - dmm
             - r18dev
+            - libredmm
         runtime:
             - dmm
             - r18dev
+            - libredmm
         series:
             - dmm
             - r18dev
+            - libredmm
         screenshot_url:
             - dmm
             - r18dev
-        title: []
+            - libredmm
+        title:
+            - dmm
+            - r18dev
+            - libredmm
         trailer_url:
             - dmm
             - r18dev
+            - libredmm
     # Actress image database (SQLite-backed)
     actress_database:
         enabled: true
