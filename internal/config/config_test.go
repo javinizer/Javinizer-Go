@@ -127,30 +127,58 @@ func TestLoadEmptyConfig(t *testing.T) {
 	}
 }
 
-// TestProxyConfigValidation tests proxy config with invalid URLs
+// TestProxyConfigValidation ensures proxy config uses profiles instead of legacy direct fields.
 func TestProxyConfigValidation(t *testing.T) {
 	tests := []struct {
-		name       string
-		proxyURL   string
-		shouldFail bool
+		name      string
+		content   string
+		shouldErr bool
 	}{
-		{"valid http proxy", "http://proxy.example.com:8080", false},
-		{"valid https proxy", "https://proxy.example.com:8080", false},
-		{"valid socks5 proxy", "socks5://localhost:1080", false},
-		{"valid with auth", "http://user:pass@proxy.example.com:8080", false},
-		{"empty url when enabled", "", true}, // Invalid: enabled but no URL
+		{
+			name: "valid profile-based proxy",
+			content: `
+scrapers:
+  proxy:
+    enabled: true
+    default_profile: "main"
+    profiles:
+      main:
+        url: "http://proxy.example.com:8080"
+`,
+			shouldErr: false,
+		},
+		{
+			name: "legacy direct url is rejected",
+			content: `
+scrapers:
+  proxy:
+    enabled: true
+    default_profile: "main"
+    profiles:
+      main:
+        url: "http://proxy.example.com:8080"
+    url: "http://legacy.example.com:8080"
+`,
+			shouldErr: true,
+		},
+		{
+			name: "enabled proxy requires default profile",
+			content: `
+scrapers:
+  proxy:
+    enabled: true
+    profiles:
+      main:
+        url: "http://proxy.example.com:8080"
+`,
+			shouldErr: true,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			content := `
-scrapers:
-  proxy:
-    enabled: true
-    url: "` + tt.proxyURL + `"
-`
 			tmpFile := t.TempDir() + "/proxy.yaml"
-			if err := os.WriteFile(tmpFile, []byte(content), 0644); err != nil {
+			if err := os.WriteFile(tmpFile, []byte(tt.content), 0644); err != nil {
 				t.Fatalf("Failed to write test file: %v", err)
 			}
 
@@ -159,14 +187,16 @@ scrapers:
 				t.Fatalf("Failed to load config: %v", err)
 			}
 
-			if cfg.Scrapers.Proxy.URL != tt.proxyURL {
-				t.Errorf("Expected proxy URL %q, got %q", tt.proxyURL, cfg.Scrapers.Proxy.URL)
+			err = cfg.Validate()
+			if tt.shouldErr {
+				if err == nil {
+					t.Fatal("Expected validation error, got nil")
+				}
+				return
 			}
-
-			// Note: Actual validation of proxy URL happens in httpclient factory,
-			// not in config loading. Config just stores the string.
-			// The shouldFail flag here documents expected behavior,
-			// but Load() itself won't fail - only when creating HTTP client.
+			if err != nil {
+				t.Fatalf("Expected valid config, got error: %v", err)
+			}
 		})
 	}
 }

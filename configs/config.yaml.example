@@ -64,14 +64,30 @@ scrapers:
                 url: ""           # Examples: "http://proxy.example.com:8080", "socks5://localhost:1080"
                 username: ""      # Optional authentication
                 password: ""      # Optional authentication
+                flaresolverr:
+                    enabled: false
+                    url: "http://localhost:8191/v1"
+                    timeout: 30
+                    max_retries: 3
+                    session_ttl: 300
             backup:
                 url: ""
                 username: ""
                 password: ""
-        # Legacy direct fields (still supported as fallback)
-        url: ""
-        username: ""
-        password: ""
+                flaresolverr:
+                    enabled: false
+                    url: "http://localhost:8191/v1"
+                    timeout: 30
+                    max_retries: 3
+                    session_ttl: 300
+        flaresolverr:
+            enabled: false
+            url: "http://localhost:8191/v1"
+            timeout: 30
+            max_retries: 3
+            session_ttl: 300
+    # Per-scraper proxy/download_proxy overrides are optional. If omitted, scrapers use
+    # the global profile selection from scrapers.proxy.
     r18dev:
         enabled: true
         request_delay: 1500          # Delay between requests in milliseconds (1.5 seconds to stay under 10 req/15s limit)
@@ -86,41 +102,17 @@ scrapers:
         browser_timeout: 30       # Timeout in seconds for browser operations
         use_fake_user_agent: false
         fake_user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"
-        # Optional per-scraper proxy override using profile selection
-        # proxy:
-        #   enabled: true
-        #   profile: "backup"
-        # Optional per-scraper download proxy override using profile selection
-        # download_proxy:
-        #   enabled: true
-        #   profile: "backup"
     libredmm:
         enabled: false
         request_delay: 500
         base_url: "https://www.libredmm.com"
         use_fake_user_agent: false
         fake_user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"
-        # Optional per-scraper proxy override
-        # proxy:
-        #   enabled: true
-        #   profile: "backup"
-        # Optional per-scraper download proxy override
-        # download_proxy:
-        #   enabled: true
-        #   profile: "backup"
     mgstage:
         enabled: false            # Opt-in: requires age verification cookie (adc=1)
         request_delay: 500        # Delay between requests in milliseconds
         use_fake_user_agent: false
         fake_user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"
-        # Optional per-scraper proxy override
-        # proxy:
-        #   enabled: true
-        #   profile: "backup"
-        # Optional per-scraper download proxy override
-        # download_proxy:
-        #   enabled: true
-        #   profile: "backup"
     javlibrary:
         enabled: false
         # Frontend scraper options:
@@ -130,17 +122,12 @@ scrapers:
         language: en
         request_delay: 1000
         base_url: "http://www.javlibrary.com"
+        cf_clearance: ""
+        cf_bm: ""
+        user_agent: ""
         use_flaresolverr: true
         use_fake_user_agent: true
         fake_user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"
-        # Optional per-scraper proxy override (FlareSolverr uses global scrapers.proxy.flaresolverr)
-        # proxy:
-        #   enabled: true
-        #   profile: "backup"
-        # Optional per-scraper download proxy override
-        # download_proxy:
-        #   enabled: true
-        #   profile: "backup"
     javdb:
         enabled: false
         request_delay: 1000
@@ -148,14 +135,6 @@ scrapers:
         use_flaresolverr: true
         use_fake_user_agent: true
         fake_user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"
-        # Optional per-scraper proxy override (FlareSolverr uses global scrapers.proxy.flaresolverr)
-        # proxy:
-        #   enabled: true
-        #   profile: "backup"
-        # Optional per-scraper download proxy override
-        # download_proxy:
-        #   enabled: true
-        #   profile: "backup"
     javbus:
         enabled: false
         language: ja
@@ -164,28 +143,12 @@ scrapers:
         use_fake_user_agent: true
         fake_user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"
         # age=verified, dv=1, existmag=mag cookies are applied automatically by scraper.
-        # Optional per-scraper proxy override
-        # proxy:
-        #   enabled: true
-        #   profile: "backup"
-        # Optional per-scraper download proxy override
-        # download_proxy:
-        #   enabled: true
-        #   profile: "backup"
     jav321:
         enabled: false
         request_delay: 1000
         base_url: "https://jp.jav321.com"
         use_fake_user_agent: false
         fake_user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"
-        # Optional per-scraper proxy override
-        # proxy:
-        #   enabled: true
-        #   profile: "backup"
-        # Optional per-scraper download proxy override
-        # download_proxy:
-        #   enabled: true
-        #   profile: "backup"
     tokyohot:
         enabled: false
         language: ja
@@ -193,14 +156,6 @@ scrapers:
         base_url: "https://www.tokyo-hot.com"
         use_fake_user_agent: false
         fake_user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"
-        # Optional per-scraper proxy override
-        # proxy:
-        #   enabled: true
-        #   profile: "backup"
-        # Optional per-scraper download proxy override
-        # download_proxy:
-        #   enabled: true
-        #   profile: "backup"
     aventertainment:
         enabled: false
         language: en
@@ -209,28 +164,12 @@ scrapers:
         scrape_bonus_screens: false # Append bonus image files (e.g., "特典ファイル ... (48 Pics)") to screenshot URLs
         use_fake_user_agent: false
         fake_user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"
-        # Optional per-scraper proxy override
-        # proxy:
-        #   enabled: true
-        #   profile: "backup"
-        # Optional per-scraper download proxy override
-        # download_proxy:
-        #   enabled: true
-        #   profile: "backup"
     dlgetchu:
         enabled: false
         request_delay: 1000
         base_url: "http://dl.getchu.com"
         use_fake_user_agent: false
         fake_user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"
-        # Optional per-scraper proxy override
-        # proxy:
-        #   enabled: true
-        #   profile: "backup"
-        # Optional per-scraper download proxy override
-        # download_proxy:
-        #   enabled: true
-        #   profile: "backup"
     caribbeancom:
         enabled: false
         language: ja
@@ -238,28 +177,12 @@ scrapers:
         base_url: "https://www.caribbeancom.com"
         use_fake_user_agent: false
         fake_user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"
-        # Optional per-scraper proxy override
-        # proxy:
-        #   enabled: true
-        #   profile: "backup"
-        # Optional per-scraper download proxy override
-        # download_proxy:
-        #   enabled: true
-        #   profile: "backup"
     fc2:
         enabled: false
         request_delay: 1000
         base_url: "https://adult.contents.fc2.com"
         use_fake_user_agent: false
         fake_user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"
-        # Optional per-scraper proxy override
-        # proxy:
-        #   enabled: true
-        #   profile: "backup"
-        # Optional per-scraper download proxy override
-        # download_proxy:
-        #   enabled: true
-        #   profile: "backup"
 metadata:
     priority:
         actress:
@@ -384,6 +307,7 @@ metadata:
         filename_template: <ID>.nfo
         first_name_order: true
         actress_language_ja: false
+        per_file: false            # Generate one NFO per multi-part file when true
         unknown_actress_text: Unknown
         actress_as_tag: false
         add_generic_role: false  # Add generic "Actress" role to all actresses
@@ -458,12 +382,17 @@ output:
     # - Enable only when you need a separate proxy just for downloads.
     download_proxy:
         enabled: false
-        url: ""  # Leave empty or set to use a different proxy than scrapers
-        username: ""
-        password: ""
+        profile: ""  # Optional: select a different named profile than scrapers.proxy.default_profile
+        flaresolverr:
+            enabled: false
+            url: "http://localhost:8191/v1"
+            timeout: 30
+            max_retries: 3
+            session_ttl: 300
 database:
     type: sqlite
     dsn: data/javinizer.db
+    log_level: silent
 logging:
     level: info
     format: text

@@ -474,9 +474,14 @@ func TestYAMLRoundTrip(t *testing.T) {
 	original.Logging.Level = "debug"
 	original.Performance.MaxWorkers = 10
 	original.Scrapers.Proxy.Enabled = true
-	original.Scrapers.Proxy.URL = "http://proxy.test:8080"
-	original.Scrapers.Proxy.Username = "user"
-	original.Scrapers.Proxy.Password = "pass"
+	original.Scrapers.Proxy.DefaultProfile = "main"
+	original.Scrapers.Proxy.Profiles = map[string]ProxyProfile{
+		"main": {
+			URL:      "http://proxy.test:8080",
+			Username: "user",
+			Password: "pass",
+		},
+	}
 
 	// Save
 	err := Save(original, cfgPath)
@@ -492,68 +497,49 @@ func TestYAMLRoundTrip(t *testing.T) {
 	assert.Equal(t, original.Logging.Level, loaded.Logging.Level)
 	assert.Equal(t, original.Performance.MaxWorkers, loaded.Performance.MaxWorkers)
 	assert.Equal(t, original.Scrapers.Proxy.Enabled, loaded.Scrapers.Proxy.Enabled)
-	assert.Equal(t, original.Scrapers.Proxy.URL, loaded.Scrapers.Proxy.URL)
-	assert.Equal(t, original.Scrapers.Proxy.Username, loaded.Scrapers.Proxy.Username)
-	assert.Equal(t, original.Scrapers.Proxy.Password, loaded.Scrapers.Proxy.Password)
+	assert.Equal(t, original.Scrapers.Proxy.DefaultProfile, loaded.Scrapers.Proxy.DefaultProfile)
+	assert.Equal(t, original.Scrapers.Proxy.Profiles["main"].URL, loaded.Scrapers.Proxy.Profiles["main"].URL)
+	assert.Equal(t, original.Scrapers.Proxy.Profiles["main"].Username, loaded.Scrapers.Proxy.Profiles["main"].Username)
+	assert.Equal(t, original.Scrapers.Proxy.Profiles["main"].Password, loaded.Scrapers.Proxy.Profiles["main"].Password)
 }
 
-// TestProxyURLValidation tests various proxy URL formats
-func TestProxyURLValidation(t *testing.T) {
+func TestProxyLegacyDirectFieldsRejectedByValidate(t *testing.T) {
 	tests := []struct {
-		name      string
-		proxyURL  string
-		shouldErr bool
+		name string
+		yaml string
 	}{
 		{
-			name:      "valid http proxy",
-			proxyURL:  "http://proxy.example.com:8080",
-			shouldErr: false,
+			name: "scrapers proxy url",
+			yaml: "scrapers:\n  proxy:\n    enabled: true\n    default_profile: \"main\"\n    profiles:\n      main:\n        url: \"http://proxy.example.com:8080\"\n    url: \"http://legacy.example.com:8080\"\n",
 		},
 		{
-			name:      "valid https proxy",
-			proxyURL:  "https://proxy.example.com:443",
-			shouldErr: false,
+			name: "scrapers proxy username",
+			yaml: "scrapers:\n  proxy:\n    enabled: true\n    default_profile: \"main\"\n    profiles:\n      main:\n        url: \"http://proxy.example.com:8080\"\n    username: \"legacy-user\"\n",
 		},
 		{
-			name:      "valid socks5 proxy",
-			proxyURL:  "socks5://localhost:1080",
-			shouldErr: false,
+			name: "download proxy url override",
+			yaml: "scrapers:\n  proxy:\n    enabled: true\n    default_profile: \"main\"\n    profiles:\n      main:\n        url: \"http://proxy.example.com:8080\"\noutput:\n  download_proxy:\n    enabled: true\n    profile: \"main\"\n    url: \"http://legacy-download.example.com:8080\"\n",
 		},
 		{
-			name:      "proxy without port",
-			proxyURL:  "http://proxy.example.com",
-			shouldErr: false,
-		},
-		{
-			name:      "proxy with IP address",
-			proxyURL:  "http://192.168.1.1:8080",
-			shouldErr: false,
-		},
-		{
-			name:      "empty proxy URL",
-			proxyURL:  "",
-			shouldErr: false, // Valid - means no proxy
+			name: "scraper override use_main_proxy",
+			yaml: "scrapers:\n  proxy:\n    enabled: true\n    default_profile: \"main\"\n    profiles:\n      main:\n        url: \"http://proxy.example.com:8080\"\n  dmm:\n    proxy:\n      enabled: true\n      use_main_proxy: true\n",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			yamlContent := "scrapers:\n  proxy:\n    enabled: true\n    url: \"" + tt.proxyURL + "\"\n"
-
 			tmpDir := t.TempDir()
 			cfgPath := filepath.Join(tmpDir, "proxy_test.yaml")
 
-			err := os.WriteFile(cfgPath, []byte(yamlContent), 0644)
+			err := os.WriteFile(cfgPath, []byte(tt.yaml), 0644)
 			require.NoError(t, err)
 
 			cfg, err := Load(cfgPath)
+			require.NoError(t, err)
 
-			if tt.shouldErr {
-				assert.Error(t, err)
-			} else {
-				require.NoError(t, err)
-				assert.Equal(t, tt.proxyURL, cfg.Scrapers.Proxy.URL)
-			}
+			err = cfg.Validate()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "no longer supported")
 		})
 	}
 }

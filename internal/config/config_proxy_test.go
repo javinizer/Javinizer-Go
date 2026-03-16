@@ -3,256 +3,211 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
-func TestProxyConfig_Loading(t *testing.T) {
+func writeProxyTestConfig(t *testing.T, yamlContent string) string {
+	t.Helper()
+
+	tmpDir := t.TempDir()
+	cfgPath := filepath.Join(tmpDir, "config.yaml")
+	if err := os.WriteFile(cfgPath, []byte(yamlContent), 0644); err != nil {
+		t.Fatalf("failed to write config: %v", err)
+	}
+	return cfgPath
+}
+
+func TestProxyConfig_ProfileBasedLoading(t *testing.T) {
 	yamlContent := `
+config_version: 2
 scrapers:
   proxy:
     enabled: true
-    url: "http://proxy.example.com:8080"
-    username: "user"
-    password: "pass"
-
+    default_profile: "main"
+    profiles:
+      main:
+        url: "http://proxy.example.com:8080"
+        username: "user"
+        password: "pass"
+        flaresolverr:
+          enabled: true
+          url: "http://flaresolverr-main:8191/v1"
+          timeout: 30
+          max_retries: 3
+          session_ttl: 300
+      download:
+        url: "socks5://localhost:1080"
+        username: "dl-user"
+        password: "dl-pass"
 output:
   download_proxy:
     enabled: true
-    url: "socks5://localhost:1080"
+    profile: "download"
 `
-	tmpDir := t.TempDir()
-	cfgPath := filepath.Join(tmpDir, "config.yaml")
 
-	if err := os.WriteFile(cfgPath, []byte(yamlContent), 0644); err != nil {
-		t.Fatalf("Failed to write config: %v", err)
-	}
-
+	cfgPath := writeProxyTestConfig(t, yamlContent)
 	cfg, err := Load(cfgPath)
 	if err != nil {
-		t.Fatalf("Failed to load config: %v", err)
+		t.Fatalf("failed to load config: %v", err)
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("expected profile-based proxy config to validate, got: %v", err)
 	}
 
-	// Verify scraper proxy
 	if !cfg.Scrapers.Proxy.Enabled {
-		t.Error("Expected scraper proxy to be enabled")
+		t.Fatal("expected scraper proxy to be enabled")
 	}
-	if cfg.Scrapers.Proxy.URL != "http://proxy.example.com:8080" {
-		t.Errorf("Expected proxy URL 'http://proxy.example.com:8080', got '%s'", cfg.Scrapers.Proxy.URL)
+	if cfg.Scrapers.Proxy.DefaultProfile != "main" {
+		t.Fatalf("expected default_profile to be main, got %q", cfg.Scrapers.Proxy.DefaultProfile)
 	}
-	if cfg.Scrapers.Proxy.Username != "user" {
-		t.Errorf("Expected username 'user', got '%s'", cfg.Scrapers.Proxy.Username)
-	}
-	if cfg.Scrapers.Proxy.Password != "pass" {
-		t.Errorf("Expected password 'pass', got '%s'", cfg.Scrapers.Proxy.Password)
+	if cfg.Output.DownloadProxy.Profile != "download" {
+		t.Fatalf("expected output.download_proxy.profile to be download, got %q", cfg.Output.DownloadProxy.Profile)
 	}
 
-	// Verify download proxy
-	if !cfg.Output.DownloadProxy.Enabled {
-		t.Error("Expected download proxy to be enabled")
+	globalResolved := ResolveGlobalProxy(cfg.Scrapers.Proxy)
+	if globalResolved.URL != "http://proxy.example.com:8080" {
+		t.Fatalf("expected resolved global proxy URL, got %q", globalResolved.URL)
 	}
-	if cfg.Output.DownloadProxy.URL != "socks5://localhost:1080" {
-		t.Errorf("Expected download proxy URL 'socks5://localhost:1080', got '%s'", cfg.Output.DownloadProxy.URL)
+	if globalResolved.Username != "user" || globalResolved.Password != "pass" {
+		t.Fatalf("expected resolved global proxy credentials, got %q/%q", globalResolved.Username, globalResolved.Password)
+	}
+
+	downloadResolved := ResolveScraperProxy(cfg.Scrapers.Proxy, &cfg.Output.DownloadProxy)
+	if downloadResolved.URL != "socks5://localhost:1080" {
+		t.Fatalf("expected resolved download proxy URL, got %q", downloadResolved.URL)
+	}
+	if downloadResolved.Username != "dl-user" || downloadResolved.Password != "dl-pass" {
+		t.Fatalf("expected resolved download proxy credentials, got %q/%q", downloadResolved.Username, downloadResolved.Password)
 	}
 }
 
 func TestProxyConfig_Disabled(t *testing.T) {
 	yamlContent := `
+config_version: 2
 scrapers:
   proxy:
     enabled: false
-
 output:
   download_proxy:
     enabled: false
 `
-	tmpDir := t.TempDir()
-	cfgPath := filepath.Join(tmpDir, "config.yaml")
 
-	if err := os.WriteFile(cfgPath, []byte(yamlContent), 0644); err != nil {
-		t.Fatalf("Failed to write config: %v", err)
-	}
-
+	cfgPath := writeProxyTestConfig(t, yamlContent)
 	cfg, err := Load(cfgPath)
 	if err != nil {
-		t.Fatalf("Failed to load config: %v", err)
+		t.Fatalf("failed to load config: %v", err)
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("expected disabled proxy config to validate, got: %v", err)
 	}
 
 	if cfg.Scrapers.Proxy.Enabled {
-		t.Error("Expected scraper proxy to be disabled")
+		t.Error("expected scraper proxy to be disabled")
 	}
 	if cfg.Output.DownloadProxy.Enabled {
-		t.Error("Expected download proxy to be disabled")
+		t.Error("expected download proxy to be disabled")
 	}
 }
 
 func TestProxyConfig_DefaultValues(t *testing.T) {
 	cfg := DefaultConfig()
 
-	// Verify default scraper proxy
 	if cfg.Scrapers.Proxy.Enabled {
-		t.Error("Expected scraper proxy to be disabled by default")
+		t.Error("expected scraper proxy to be disabled by default")
 	}
-	if cfg.Scrapers.Proxy.URL != "" {
-		t.Error("Expected scraper proxy URL to be empty by default")
+	if cfg.Scrapers.Proxy.DefaultProfile != "" {
+		t.Errorf("expected empty default profile by default, got %q", cfg.Scrapers.Proxy.DefaultProfile)
 	}
-
-	// Verify default download proxy
 	if cfg.Output.DownloadProxy.Enabled {
-		t.Error("Expected download proxy to be disabled by default")
+		t.Error("expected download proxy to be disabled by default")
 	}
-	if cfg.Output.DownloadProxy.URL != "" {
-		t.Error("Expected download proxy URL to be empty by default")
-	}
-}
-
-func TestProxyConfig_OnlyScraperProxy(t *testing.T) {
-	yamlContent := `
-scrapers:
-  proxy:
-    enabled: true
-    url: "http://proxy.example.com:8080"
-`
-	tmpDir := t.TempDir()
-	cfgPath := filepath.Join(tmpDir, "config.yaml")
-
-	if err := os.WriteFile(cfgPath, []byte(yamlContent), 0644); err != nil {
-		t.Fatalf("Failed to write config: %v", err)
-	}
-
-	cfg, err := Load(cfgPath)
-	if err != nil {
-		t.Fatalf("Failed to load config: %v", err)
-	}
-
-	// Verify scraper proxy is set
-	if !cfg.Scrapers.Proxy.Enabled {
-		t.Error("Expected scraper proxy to be enabled")
-	}
-
-	// Verify download proxy remains at default (disabled)
-	if cfg.Output.DownloadProxy.Enabled {
-		t.Error("Expected download proxy to be disabled by default")
+	if cfg.Output.DownloadProxy.Profile != "" {
+		t.Errorf("expected empty download proxy profile by default, got %q", cfg.Output.DownloadProxy.Profile)
 	}
 }
 
-func TestProxyConfig_WithAuthentication(t *testing.T) {
+func TestProxyConfig_EnabledRequiresDefaultProfile(t *testing.T) {
 	yamlContent := `
+config_version: 2
 scrapers:
   proxy:
     enabled: true
-    url: "http://proxy.example.com:8080"
-    username: "testuser"
-    password: "testpass123"
+    profiles:
+      main:
+        url: "http://proxy.example.com:8080"
 `
-	tmpDir := t.TempDir()
-	cfgPath := filepath.Join(tmpDir, "config.yaml")
 
-	if err := os.WriteFile(cfgPath, []byte(yamlContent), 0644); err != nil {
-		t.Fatalf("Failed to write config: %v", err)
-	}
-
+	cfgPath := writeProxyTestConfig(t, yamlContent)
 	cfg, err := Load(cfgPath)
 	if err != nil {
-		t.Fatalf("Failed to load config: %v", err)
+		t.Fatalf("failed to load config: %v", err)
 	}
 
-	if cfg.Scrapers.Proxy.Username != "testuser" {
-		t.Errorf("Expected username 'testuser', got '%s'", cfg.Scrapers.Proxy.Username)
+	err = cfg.Validate()
+	if err == nil {
+		t.Fatal("expected validation error when scrapers.proxy.enabled=true and default_profile is missing")
 	}
-	if cfg.Scrapers.Proxy.Password != "testpass123" {
-		t.Errorf("Expected password 'testpass123', got '%s'", cfg.Scrapers.Proxy.Password)
+	if !strings.Contains(err.Error(), "scrapers.proxy.default_profile is required") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
-func TestProxyConfig_SOCKS5Proxy(t *testing.T) {
+func TestProxyConfig_LegacyDirectFieldsRejected(t *testing.T) {
 	yamlContent := `
+config_version: 2
 scrapers:
   proxy:
     enabled: true
-    url: "socks5://localhost:1080"
-    username: "socksuser"
-    password: "sockspass"
+    default_profile: "main"
+    profiles:
+      main:
+        url: "http://proxy.example.com:8080"
+    url: "http://legacy-direct-proxy.example.com:8080"
 `
-	tmpDir := t.TempDir()
-	cfgPath := filepath.Join(tmpDir, "config.yaml")
 
-	if err := os.WriteFile(cfgPath, []byte(yamlContent), 0644); err != nil {
-		t.Fatalf("Failed to write config: %v", err)
-	}
-
+	cfgPath := writeProxyTestConfig(t, yamlContent)
 	cfg, err := Load(cfgPath)
 	if err != nil {
-		t.Fatalf("Failed to load config: %v", err)
+		t.Fatalf("failed to load config: %v", err)
 	}
 
-	if !cfg.Scrapers.Proxy.Enabled {
-		t.Error("Expected scraper proxy to be enabled")
+	err = cfg.Validate()
+	if err == nil {
+		t.Fatal("expected validation error for legacy direct proxy fields")
 	}
-	if cfg.Scrapers.Proxy.URL != "socks5://localhost:1080" {
-		t.Errorf("Expected SOCKS5 URL 'socks5://localhost:1080', got '%s'", cfg.Scrapers.Proxy.URL)
-	}
-	if cfg.Scrapers.Proxy.Username != "socksuser" {
-		t.Errorf("Expected username 'socksuser', got '%s'", cfg.Scrapers.Proxy.Username)
+	if !strings.Contains(err.Error(), "direct proxy fields (url/username/password) are no longer supported") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
-func TestProxyConfig_EmptyURL(t *testing.T) {
+func TestProxyConfig_LegacyUseMainProxyRejected(t *testing.T) {
 	yamlContent := `
+config_version: 2
 scrapers:
   proxy:
     enabled: true
-    url: ""
+    default_profile: "main"
+    profiles:
+      main:
+        url: "http://proxy.example.com:8080"
+  dmm:
+    proxy:
+      enabled: true
+      use_main_proxy: true
 `
-	tmpDir := t.TempDir()
-	cfgPath := filepath.Join(tmpDir, "config.yaml")
 
-	if err := os.WriteFile(cfgPath, []byte(yamlContent), 0644); err != nil {
-		t.Fatalf("Failed to write config: %v", err)
-	}
-
+	cfgPath := writeProxyTestConfig(t, yamlContent)
 	cfg, err := Load(cfgPath)
 	if err != nil {
-		t.Fatalf("Failed to load config: %v", err)
+		t.Fatalf("failed to load config: %v", err)
 	}
 
-	// Should still load successfully
-	if !cfg.Scrapers.Proxy.Enabled {
-		t.Error("Expected proxy enabled flag to be true")
+	err = cfg.Validate()
+	if err == nil {
+		t.Fatal("expected validation error for use_main_proxy")
 	}
-	if cfg.Scrapers.Proxy.URL != "" {
-		t.Errorf("Expected empty URL, got '%s'", cfg.Scrapers.Proxy.URL)
-	}
-}
-
-func TestProxyConfig_SeparateProxies(t *testing.T) {
-	yamlContent := `
-scrapers:
-  proxy:
-    enabled: true
-    url: "http://scraper-proxy.example.com:8080"
-
-output:
-  download_proxy:
-    enabled: true
-    url: "http://download-proxy.example.com:3128"
-`
-	tmpDir := t.TempDir()
-	cfgPath := filepath.Join(tmpDir, "config.yaml")
-
-	if err := os.WriteFile(cfgPath, []byte(yamlContent), 0644); err != nil {
-		t.Fatalf("Failed to write config: %v", err)
-	}
-
-	cfg, err := Load(cfgPath)
-	if err != nil {
-		t.Fatalf("Failed to load config: %v", err)
-	}
-
-	// Verify different proxies
-	if cfg.Scrapers.Proxy.URL != "http://scraper-proxy.example.com:8080" {
-		t.Errorf("Expected scraper proxy URL 'http://scraper-proxy.example.com:8080', got '%s'", cfg.Scrapers.Proxy.URL)
-	}
-	if cfg.Output.DownloadProxy.URL != "http://download-proxy.example.com:3128" {
-		t.Errorf("Expected download proxy URL 'http://download-proxy.example.com:3128', got '%s'", cfg.Output.DownloadProxy.URL)
+	if !strings.Contains(err.Error(), "use_main_proxy is no longer supported") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }

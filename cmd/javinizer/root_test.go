@@ -192,9 +192,12 @@ func TestInitConfig_ProxyValidation_EmptyURL(t *testing.T) {
 	testCfg.Database.DSN = filepath.Join(tmpDir, "test.db")
 	testCfg.Logging.Output = filepath.Join(tmpDir, "logs")
 
-	// Enable proxy with empty URL - initConfig should disable it
+	// Enable proxy with empty profile URL - initConfig should disable it
 	testCfg.Scrapers.Proxy.Enabled = true
-	testCfg.Scrapers.Proxy.URL = ""
+	testCfg.Scrapers.Proxy.DefaultProfile = "main"
+	testCfg.Scrapers.Proxy.Profiles = map[string]config.ProxyProfile{
+		"main": {URL: ""},
+	}
 
 	err := config.Save(testCfg, configPath)
 	require.NoError(t, err, "Failed to save test config")
@@ -221,9 +224,12 @@ func TestInitConfig_ProxyValidation_ValidURL(t *testing.T) {
 	testCfg.Database.DSN = filepath.Join(tmpDir, "test.db")
 	testCfg.Logging.Output = filepath.Join(tmpDir, "logs")
 
-	// Enable proxy with valid URL
+	// Enable proxy with valid profile URL
 	testCfg.Scrapers.Proxy.Enabled = true
-	testCfg.Scrapers.Proxy.URL = "http://proxy.example.com:8080"
+	testCfg.Scrapers.Proxy.DefaultProfile = "main"
+	testCfg.Scrapers.Proxy.Profiles = map[string]config.ProxyProfile{
+		"main": {URL: "http://proxy.example.com:8080"},
+	}
 
 	err := config.Save(testCfg, configPath)
 	require.NoError(t, err, "Failed to save test config")
@@ -249,9 +255,15 @@ func TestInitConfig_DownloadProxyValidation(t *testing.T) {
 	testCfg.Database.DSN = filepath.Join(tmpDir, "test.db")
 	testCfg.Logging.Output = filepath.Join(tmpDir, "logs")
 
-	// Test valid URL case
+	// Test valid profile case
+	testCfg.Scrapers.Proxy.Enabled = true
+	testCfg.Scrapers.Proxy.DefaultProfile = "main"
+	testCfg.Scrapers.Proxy.Profiles = map[string]config.ProxyProfile{
+		"main":     {URL: "http://proxy.example.com:8080"},
+		"download": {URL: "socks5://localhost:1080"},
+	}
 	testCfg.Output.DownloadProxy.Enabled = true
-	testCfg.Output.DownloadProxy.URL = "socks5://localhost:1080"
+	testCfg.Output.DownloadProxy.Profile = "download"
 
 	err := config.Save(testCfg, configPath)
 	require.NoError(t, err, "Failed to save test config")

@@ -278,13 +278,13 @@ type ProxyProfile struct {
 // ProxyConfig holds HTTP/SOCKS5 proxy configuration
 type ProxyConfig struct {
 	Enabled        bool                    `yaml:"enabled" json:"enabled"`                                     // Enable proxy for HTTP requests
-	UseMainProxy   bool                    `yaml:"use_main_proxy" json:"use_main_proxy"`                       // Deprecated: Reuse global scrapers.proxy settings
+	UseMainProxy   bool                    `yaml:"use_main_proxy" json:"use_main_proxy"`                       // Legacy option (rejected by validation)
 	Profile        string                  `yaml:"profile,omitempty" json:"profile,omitempty"`                 // Named profile to use (for scraper-specific overrides)
 	DefaultProfile string                  `yaml:"default_profile,omitempty" json:"default_profile,omitempty"` // Default profile name (for global scrapers.proxy)
 	Profiles       map[string]ProxyProfile `yaml:"profiles,omitempty" json:"profiles,omitempty"`               // Named proxy profiles (global scrapers.proxy)
-	URL            string                  `yaml:"url" json:"url"`                                             // Proxy URL (e.g., "http://proxy:8080" or "socks5://proxy:1080")
-	Username       string                  `yaml:"username" json:"username"`                                   // Optional proxy authentication username
-	Password       string                  `yaml:"password" json:"password"`                                   // Optional proxy authentication password
+	URL            string                  `yaml:"url" json:"url"`                                             // Legacy direct field (rejected by validation)
+	Username       string                  `yaml:"username" json:"username"`                                   // Legacy direct field (rejected by validation)
+	Password       string                  `yaml:"password" json:"password"`                                   // Legacy direct field (rejected by validation)
 	FlareSolverr   FlareSolverrConfig      `yaml:"flaresolverr" json:"flaresolverr"`                           // FlareSolverr for Cloudflare bypass
 }
 
@@ -1040,6 +1040,14 @@ func validateProxyProfileConfig(c *Config) error {
 	}
 
 	profiles := c.Scrapers.Proxy.Profiles
+
+	if err := validateNoLegacyProxyDirectFields("scrapers.proxy", &c.Scrapers.Proxy); err != nil {
+		return err
+	}
+	if c.Scrapers.Proxy.Enabled && c.Scrapers.Proxy.DefaultProfile == "" {
+		return fmt.Errorf("scrapers.proxy.default_profile is required when scrapers.proxy.enabled is true")
+	}
+
 	if c.Scrapers.Proxy.DefaultProfile != "" {
 		if _, ok := profiles[c.Scrapers.Proxy.DefaultProfile]; !ok {
 			return fmt.Errorf("scrapers.proxy.default_profile references unknown profile %q", c.Scrapers.Proxy.DefaultProfile)
@@ -1132,11 +1140,36 @@ func validateProxyProfileConfig(c *Config) error {
 }
 
 func validateProxyProfileRef(path string, proxyCfg *ProxyConfig, profiles map[string]ProxyProfile) error {
-	if proxyCfg == nil || proxyCfg.Profile == "" {
+	if proxyCfg == nil {
 		return nil
 	}
+
+	if err := validateNoLegacyProxyDirectFields(path, proxyCfg); err != nil {
+		return err
+	}
+
+	if proxyCfg.Enabled && proxyCfg.Profile == "" {
+		return fmt.Errorf("%s.profile is required when %s.enabled is true", path, path)
+	}
+	if proxyCfg.Profile == "" {
+		return nil
+	}
+
 	if _, ok := profiles[proxyCfg.Profile]; !ok {
 		return fmt.Errorf("%s.profile references unknown profile %q", path, proxyCfg.Profile)
+	}
+	return nil
+}
+
+func validateNoLegacyProxyDirectFields(path string, proxyCfg *ProxyConfig) error {
+	if proxyCfg == nil {
+		return nil
+	}
+	if proxyCfg.UseMainProxy {
+		return fmt.Errorf("%s.use_main_proxy is no longer supported; use profile/default_profile instead", path)
+	}
+	if proxyCfg.URL != "" || proxyCfg.Username != "" || proxyCfg.Password != "" {
+		return fmt.Errorf("%s direct proxy fields (url/username/password) are no longer supported; use profiles + profile/default_profile", path)
 	}
 	return nil
 }
@@ -1161,7 +1194,8 @@ func ResolveScraperUserAgent(globalUserAgent string, useFakeUserAgent bool, fake
 
 // ResolveScraperProxy returns the effective proxy config for a scraper.
 // Scraper proxy usage is opt-in: a scraper override must be present and enabled.
-// When enabled, missing URL/credentials inherit from global proxy defaults.
+// When enabled, proxy profiles are applied first, then missing URL/credentials
+// inherit from the globally resolved proxy.
 func ResolveScraperProxy(global ProxyConfig, scraperOverride *ProxyConfig) *ProxyConfig {
 	// No scraper override means scraper proxy usage is disabled.
 	if scraperOverride == nil || !scraperOverride.Enabled {
@@ -1170,18 +1204,6 @@ func ResolveScraperProxy(global ProxyConfig, scraperOverride *ProxyConfig) *Prox
 
 	globalResolved := resolveGlobalProxy(global)
 	resolved := *scraperOverride
-
-	if scraperOverride.UseMainProxy {
-		// Reuse global proxy settings but allow scraper-level FlareSolverr override.
-		resolved = globalResolved
-		if scraperOverride.Profile != "" {
-			applyNamedProxyProfile(&resolved, global.Profiles, scraperOverride.Profile)
-		}
-		if !isZeroFlareSolverrConfig(scraperOverride.FlareSolverr) {
-			resolved.FlareSolverr = scraperOverride.FlareSolverr
-		}
-		return &resolved
-	}
 
 	if resolved.Profile != "" {
 		applyNamedProxyProfile(&resolved, global.Profiles, resolved.Profile)

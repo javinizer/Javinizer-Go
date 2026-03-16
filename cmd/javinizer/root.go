@@ -139,30 +139,22 @@ func initConfig() {
 
 	// Validate proxy configuration
 	if cfg.Scrapers.Proxy.Enabled {
-		if cfg.Scrapers.Proxy.URL == "" {
-			logging.Warn("Scraper proxy is enabled but URL is empty, disabling proxy")
+		resolvedScraperProxy := config.ResolveGlobalProxy(cfg.Scrapers.Proxy)
+		if resolvedScraperProxy.URL == "" {
+			logging.Warn("Scraper proxy is enabled but resolved profile URL is empty, disabling proxy")
 			cfg.Scrapers.Proxy.Enabled = false
 		} else {
-			sanitizedURL := cfg.Scrapers.Proxy.URL
-			if u, err := url.Parse(sanitizedURL); err == nil && u.User != nil {
-				u.User = url.User("[REDACTED]")
-				sanitizedURL = u.String()
-			}
-			logging.Infof("Scraper proxy enabled: %s", sanitizedURL)
+			logging.Infof("Scraper proxy enabled: %s", sanitizeProxyURL(resolvedScraperProxy.URL))
 		}
 	}
 
 	if cfg.Output.DownloadProxy.Enabled {
-		if cfg.Output.DownloadProxy.URL == "" {
-			logging.Warn("Download proxy is enabled but URL is empty, disabling proxy")
+		resolvedDownloadProxy := config.ResolveScraperProxy(cfg.Scrapers.Proxy, &cfg.Output.DownloadProxy)
+		if resolvedDownloadProxy.URL == "" {
+			logging.Warn("Download proxy is enabled but resolved profile URL is empty, disabling proxy")
 			cfg.Output.DownloadProxy.Enabled = false
 		} else {
-			sanitizedURL := cfg.Output.DownloadProxy.URL
-			if u, err := url.Parse(sanitizedURL); err == nil && u.User != nil {
-				u.User = url.User("[REDACTED]")
-				sanitizedURL = u.String()
-			}
-			logging.Infof("Download proxy enabled: %s", sanitizedURL)
+			logging.Infof("Download proxy enabled: %s", sanitizeProxyURL(resolvedDownloadProxy.URL))
 		}
 	}
 
@@ -180,4 +172,13 @@ func initConfig() {
 			}
 		}
 	}
+}
+
+func sanitizeProxyURL(raw string) string {
+	sanitized := raw
+	if u, err := url.Parse(sanitized); err == nil && u.User != nil {
+		u.User = url.User("[REDACTED]")
+		sanitized = u.String()
+	}
+	return sanitized
 }
