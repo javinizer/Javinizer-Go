@@ -32,7 +32,7 @@ The config file now includes a `config_version` field. On startup, Javinizer app
 
 ## Server Settings
 
-Configure the REST API server (future feature):
+Configure the REST API server:
 
 ```yaml
 server:

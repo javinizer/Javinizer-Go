@@ -48,7 +48,7 @@ Javinizer Go is a modern, high-performance metadata scraper and file organizer f
 ### System Requirements
 
 - **Operating System**: Linux, macOS, or Windows
-- **Go**: Version 1.21 or higher (if building from source)
+- **Go**: Version 1.25 or higher (if building from source)
 - **Disk Space**: ~50MB for the binary, additional space for database and downloaded media
 
 ### Optional

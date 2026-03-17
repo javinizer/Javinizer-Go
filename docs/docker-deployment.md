@@ -508,8 +508,8 @@ USER_ID=$(id -u) GROUP_ID=$(id -g) docker-compose up -d
 
 ## Next Steps
 
-- [Configuration Guide](./03-configuration.md) - Detailed configuration options
-- [CLI Usage](./02-usage.md) - Command-line interface reference
+- [Configuration Guide](./02-configuration.md) - Detailed configuration options
+- [CLI Usage](./03-cli-reference.md) - Command-line interface reference
 - [API Documentation](http://localhost:8080/docs) - REST API reference (when running)
 
 ---

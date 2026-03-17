@@ -412,7 +412,7 @@ All goroutines coordinate via channels for thread safety.
 
 ## See Also
 
-- [Configuration Guide](../README.md#configuration)
-- [CLI Reference](../README.md#cli-commands)
-- [Matcher Configuration](../README.md#matching)
-- [Scraper Setup](../README.md#scrapers)
+- [Configuration Guide](./02-configuration.md)
+- [CLI Reference](./03-cli-reference.md)
+- [File Matching](./02-configuration.md#file-matching)
+- [Scraper Setup](./02-configuration.md#scraper-configuration)
