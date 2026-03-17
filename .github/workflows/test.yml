@@ -149,6 +149,16 @@ jobs:
         go-version-file: ${{ env.GO_VERSION_FILE }}
         cache: true
 
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+        cache: npm
+        cache-dependency-path: web/frontend/package-lock.json
+
+    - name: Install frontend dependencies
+      run: npm ci --prefix web/frontend
+
     - name: Download dependencies
       run: go mod download
 

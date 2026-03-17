@@ -114,7 +114,7 @@ jobs:
 
             since_ts="$(date -u -d '24 hours ago' '+%Y-%m-%dT%H:%M:%SZ')"
             changed_files="$(git log --since="${since_ts}" --name-only --pretty=format: -- . | sed '/^$/d' | sort -u)"
-            relevant_pattern='^(cmd/|internal/|Dockerfile$|go\.mod$|go\.sum$|internal/version/version\.txt$|\.github/workflows/cli-release\.yml$)'
+            relevant_pattern='^(cmd/|internal/|web/|Dockerfile$|go\.mod$|go\.sum$|Makefile$|internal/version/version\.txt$|\.github/workflows/cli-release\.yml$)'
 
             if [[ -z "${changed_files}" ]]; then
               nightly_should_run="false"
@@ -211,9 +211,42 @@ jobs:
           echo "  is_nightly=${is_nightly}"
           echo "  nightly_should_run=${nightly_should_run}"
 
+  build-web-assets:
+    name: Build web assets
+    needs: prepare-release
+    if: needs.prepare-release.outputs.is_nightly != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci --prefix web/frontend
+
+      - name: Build frontend bundle
+        run: |
+          npm run build --prefix web/frontend
+          rm -rf web/dist
+          mkdir -p web/dist
+          cp -R web/frontend/build/. web/dist/
+
+      - name: Upload web assets
+        uses: actions/upload-artifact@v6
+        with:
+          name: web-dist
+          path: web/dist
+          retention-days: 1
+
   build-linux:
     name: Build ${{ matrix.id }}
-    needs: prepare-release
+    needs: [prepare-release, build-web-assets]
     if: needs.prepare-release.outputs.is_nightly != 'true'
     runs-on: ${{ matrix.runner }}
     strategy:
@@ -242,6 +275,12 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version-file: ${{ env.GO_VERSION_FILE }}
+
+      - name: Download web assets
+        uses: actions/download-artifact@v6
+        with:
+          name: web-dist
+          path: .
 
       - name: Install build dependencies
         if: runner.os == 'Linux' && matrix.build_deps != ''
@@ -278,7 +317,7 @@ jobs:
 
   build-darwin:
     name: Build darwin binaries
-    needs: prepare-release
+    needs: [prepare-release, build-web-assets]
     if: needs.prepare-release.outputs.is_nightly != 'true'
     runs-on: macos-latest
     steps:
@@ -289,6 +328,12 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version-file: ${{ env.GO_VERSION_FILE }}
+
+      - name: Download web assets
+        uses: actions/download-artifact@v6
+        with:
+          name: web-dist
+          path: .
 
       - name: Build AMD64 and ARM64 binaries
         shell: bash
@@ -332,7 +377,7 @@ jobs:
 
   build-windows-amd64:
     name: Build windows-amd64
-    needs: prepare-release
+    needs: [prepare-release, build-web-assets]
     if: needs.prepare-release.outputs.is_nightly != 'true'
     runs-on: windows-latest
     steps:
@@ -343,6 +388,12 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version-file: ${{ env.GO_VERSION_FILE }}
+
+      - name: Download web assets
+        uses: actions/download-artifact@v6
+        with:
+          name: web-dist
+          path: .
 
       - name: Build binary
         shell: pwsh

@@ -210,24 +210,33 @@ javinizer info --scrapers  # List enabled scrapers
 javinizer info --config    # Show current configuration
 ```
 
-### API Server
+### API + Web Server (`web` Alias)
 
-Start the REST API + web server:
+Start the unified server (recommended via `web` alias):
 
 ```bash
-javinizer api
-
-# Alias
 javinizer web
 
+# Equivalent legacy command
+javinizer api
+
 # Custom port
-PORT=9000 javinizer api
+PORT=9000 javinizer web
 
 # With flags
-javinizer api --host 0.0.0.0 --port 8081
+javinizer web --host 0.0.0.0 --port 8081
 ```
 
-**Note:** `javinizer web` is an alias of `javinizer api` and starts the same server.
+`javinizer api` and `javinizer web` invoke the same backend server command, but they represent different usage intents:
+- Use `javinizer api` for backend/API-focused workflows and frontend development (`npm run dev` hot reload).
+- Use `javinizer web` when you want the embedded browser UI entrypoint from the Go binary.
+
+**What this server provides:**
+- `GET /` - Embedded Web UI (single-binary distribution)
+- `GET /api/v1/...` - REST API endpoints
+- `GET /ws/progress` - WebSocket progress stream
+- `GET /docs` - Scalar API docs UI
+- `GET /swagger/index.html` - Swagger UI
 
 ## Web UI
 
@@ -274,8 +283,8 @@ javinizer web
 
 **Option 2: Development mode (hot reload)**
 ```bash
-# Terminal 1: Start API server
-javinizer web
+# Terminal 1: Start backend API server
+javinizer api
 
 # Terminal 2: Start frontend dev server with hot reload
 make web-dev
