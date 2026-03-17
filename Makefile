@@ -39,6 +39,7 @@ help:
 	@echo "  make vet                - Run go vet"
 	@echo "  make lint               - Run golangci-lint"
 	@echo "  make swagger            - Generate Swagger API documentation"
+	@echo "  make check-swagger      - Check if Swagger docs are up to date"
 	@echo "  make mocks              - Generate mocks from interfaces (mockery v3)"
 	@echo ""
 	@echo "CI/CD:"
@@ -211,10 +212,28 @@ lint:
 
 # Generate Swagger API documentation
 swagger:
-	swag init -g cmd/javinizer/commands/api/command.go -o docs/swagger
+	@echo "Generating Swagger documentation..."
+	@export PATH=$$(go env GOPATH)/bin && swag init -g cmd/javinizer/commands/api/command.go -o docs/swagger
+	@echo "✅ Swagger documentation generated"
+	@echo "   - docs/swagger/swagger.json ($(shell wc -l < docs/swagger/swagger.json) lines)"
+	@echo "   - docs/swagger/swagger.yaml ($(shell wc -l < docs/swagger/swagger.yaml) lines)"
+	@echo "   - docs/swagger/docs.go ($(shell wc -l < docs/swagger/docs.go) lines)"
+
+# Check if swagger documentation is up to date
+check-swagger:
+	@echo "Checking Swagger documentation..."
+	@export PATH=$$(go env GOPATH)/bin && swag init -g cmd/javinizer/commands/api/command.go -o docs/swagger --instanceName javinizer-api
+	@if [ -n "$(git status docs/swagger/ --porcelain)" ]; then \
+		echo "❌ Swagger documentation is out of date"; \
+		echo "Run 'make swagger' and commit the changes"; \
+		exit 1; \
+	fi
+	@echo "✅ Swagger documentation is up to date"
 
 # Alias for backward compatibility
 docs: swagger
+	@echo "✅ Documentation up-to-date"
+	@echo "View at: http://localhost:8080/docs"
 
 # Generate mocks from interfaces using mockery v3
 # Requires: mockery v3.5+ (install: go install github.com/vektra/mockery/v3@latest)

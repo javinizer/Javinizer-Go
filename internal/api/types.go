@@ -330,8 +330,8 @@ type NFOComparisonResponse struct {
 // FieldDifference represents a difference between NFO and scraped data
 type FieldDifference struct {
 	Field        string      `json:"field" example:"title"`
-	NFOValue     interface{} `json:"nfo_value,omitempty" example:"Beautiful Woman"`
-	ScrapedValue interface{} `json:"scraped_value,omitempty" example:"Pretty Lady"`
-	MergedValue  interface{} `json:"merged_value,omitempty" example:"Beautiful Woman"`
+	NFOValue     interface{} `json:"nfo_value,omitempty"`
+	ScrapedValue interface{} `json:"scraped_value,omitempty"`
+	MergedValue  interface{} `json:"merged_value,omitempty"`
 	Reason       string      `json:"reason,omitempty" example:"NFO preferred by merge strategy"`
 }

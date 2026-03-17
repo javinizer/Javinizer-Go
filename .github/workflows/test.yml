@@ -165,6 +165,23 @@ jobs:
     - name: Build CLI
       run: make build
 
+    - name: Install swag
+      run: go install github.com/swaggo/swag/cmd/swag@latest
+
+    - name: Generate Swagger documentation
+      run: export PATH=$PATH:$(go env GOPATH)/bin && make swagger
+
+    - name: Verify swagger files are up to date
+      run: |
+        if [ -n "$(git status docs/swagger/ --porcelain)" ]; then
+          echo "⚠️  Swagger documentation is out of date"
+          echo "Run 'make swagger' and commit the changes"
+          echo ""
+          git status docs/swagger/
+          exit 1
+        fi
+      shell: bash
+
     - name: Verify binary
       run: |
         if [ ! -f bin/javinizer ]; then

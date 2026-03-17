@@ -21,9 +21,637 @@
     "host": "localhost:8080",
     "basePath": "/",
     "paths": {
+        "/api/v1/actresses/search": {
+            "get": {
+                "description": "Search for actresses by name (first, last, or Japanese)",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "actress"
+                ],
+                "summary": "Search actresses",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Search query",
+                        "name": "q",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.Actress"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/batch/scrape": {
+            "post": {
+                "description": "Scrape metadata for multiple movies in batch. Automatically discovers and includes all parts of multi-part files.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "web"
+                ],
+                "summary": "Batch scrape movies",
+                "parameters": [
+                    {
+                        "description": "Batch scrape parameters",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.BatchScrapeRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.BatchScrapeResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/batch/{id}": {
+            "get": {
+                "description": "Retrieve the status of a batch scraping job",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "web"
+                ],
+                "summary": "Get batch job status",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Job ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.BatchJobResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/batch/{id}/cancel": {
+            "post": {
+                "description": "Cancel a running batch scraping job",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "web"
+                ],
+                "summary": "Cancel batch job",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Job ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/batch/{id}/movies/{movieId}": {
+            "patch": {
+                "description": "Update a movie's metadata within a batch job's results",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "web"
+                ],
+                "summary": "Update movie in batch job",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Job ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Movie ID",
+                        "name": "movieId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Updated movie data",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.UpdateMovieRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.MovieResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/batch/{id}/movies/{movieId}/exclude": {
+            "post": {
+                "description": "Mark a movie in a batch job as excluded from file organization",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "web"
+                ],
+                "summary": "Exclude movie from batch organization",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Job ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Movie ID",
+                        "name": "movieId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/batch/{id}/movies/{movieId}/poster-crop": {
+            "post": {
+                "description": "Re-crop a temp poster for the review page using fixed-size crop coordinates",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "web"
+                ],
+                "summary": "Update manual poster crop in batch job",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Job ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Movie ID",
+                        "name": "movieId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Crop coordinates",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.PosterCropRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.PosterCropResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/batch/{id}/movies/{movieId}/preview": {
+            "post": {
+                "description": "Generate a preview of the expected output structure for a movie",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "web"
+                ],
+                "summary": "Preview organize output",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Job ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Movie ID",
+                        "name": "movieId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Preview parameters",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.OrganizePreviewRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.OrganizePreviewResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/batch/{id}/movies/{movieId}/rescrape": {
+            "post": {
+                "description": "Rescrape a movie with custom scrapers or manual search input, and regenerate temp poster",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "batch"
+                ],
+                "summary": "Rescrape a single movie within a batch job",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Batch Job ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Movie ID to rescrape",
+                        "name": "movieId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Rescrape options",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.BatchRescrapeRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.BatchRescrapeResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/batch/{id}/organize": {
+            "post": {
+                "description": "Organize files from a completed scrape job (move files, download artwork, create NFO)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "web"
+                ],
+                "summary": "Organize batch job files",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Job ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Organization parameters",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.OrganizeRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/batch/{id}/update": {
+            "post": {
+                "description": "Generate NFOs and download media files in place without moving video files",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "web"
+                ],
+                "summary": "Update batch job files",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Job ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/browse": {
+            "post": {
+                "description": "Browse a directory and list its contents",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "web"
+                ],
+                "summary": "Browse directory",
+                "parameters": [
+                    {
+                        "description": "Browse parameters",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.BrowseRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.BrowseResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/browse/autocomplete": {
+            "post": {
+                "description": "Returns directory suggestions for a partially typed path",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "web"
+                ],
+                "summary": "Autocomplete directory path",
+                "parameters": [
+                    {
+                        "description": "Autocomplete parameters",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.PathAutocompleteRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.PathAutocompleteResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/config": {
             "get": {
-                "description": "Retrieve the current server configuration",
+                "description": "Retrieve the current server configuration including all settings for scrapers, output, database, and API. Returns the active configuration with runtime file path.",
                 "produces": [
                     "application/json"
                 ],
@@ -38,13 +666,317 @@
                             "type": "object",
                             "additionalProperties": true
                         }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "description": "Update and save the server configuration. The server will reload scrapers and aggregator with the new settings.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "system"
+                ],
+                "summary": "Update configuration",
+                "parameters": [
+                    {
+                        "description": "Full configuration object",
+                        "name": "config",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/config.Config"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "message: Configuration saved and reloaded successfully",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
                     }
                 }
             }
         },
-        "/api/v1/movie/{id}": {
+        "/api/v1/cwd": {
             "get": {
-                "description": "Retrieve movie metadata from cache by ID",
+                "description": "Returns the server's default browse directory. For Docker deployments, returns the first allowed directory (typically /media). For manual deployments, returns current working directory if no allowed directories configured.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "web"
+                ],
+                "summary": "Get current working directory",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/history": {
+            "get": {
+                "description": "Get a paginated list of history records with optional filtering",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "history"
+                ],
+                "summary": "List history records",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Number of records to return (default: 50, max: 500)",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Number of records to skip (default: 0)",
+                        "name": "offset",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by operation type (scrape, organize, download, nfo)",
+                        "name": "operation",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by status (success, failed, reverted)",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by movie ID",
+                        "name": "movie_id",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.HistoryListResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "description": "Delete multiple history records based on criteria",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "history"
+                ],
+                "summary": "Delete history records in bulk",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Delete records older than N days",
+                        "name": "older_than_days",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Delete all records for a specific movie",
+                        "name": "movie_id",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.DeleteHistoryBulkResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/history/stats": {
+            "get": {
+                "description": "Get aggregated statistics about history records",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "history"
+                ],
+                "summary": "Get history statistics",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.HistoryStats"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/history/{id}": {
+            "delete": {
+                "description": "Delete a single history record by ID",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "history"
+                ],
+                "summary": "Delete a history record",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "History record ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/movies": {
+            "get": {
+                "description": "Get a paginated list of all movies cached in the database. Supports pagination via limit and offset query parameters. Returns movie count and basic metadata.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "movies"
+                ],
+                "summary": "List cached movies",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Max number of movies to return",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Number of movies to skip",
+                        "name": "offset",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.MoviesResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/movies/{id}": {
+            "get": {
+                "description": "Retrieve movie metadata from cache by ID, optionally with provenance information",
                 "produces": [
                     "application/json"
                 ],
@@ -59,45 +991,257 @@
                         "name": "id",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Include field-level provenance data",
+                        "name": "include_provenance",
+                        "in": "query"
                     }
                 ],
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/cmd_cli.MovieResponse"
+                            "$ref": "#/definitions/api.MovieResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/cmd_cli.ErrorResponse"
+                            "$ref": "#/definitions/api.ErrorResponse"
                         }
                     }
                 }
             }
         },
-        "/api/v1/movies": {
-            "get": {
-                "description": "Get a list of cached movies from the database",
+        "/api/v1/movies/{id}/compare-nfo": {
+            "post": {
+                "description": "Compare existing NFO file with freshly scraped metadata, showing differences and merge preview",
+                "consumes": [
+                    "application/json"
+                ],
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "movies"
                 ],
-                "summary": "List cached movies",
+                "summary": "Compare NFO with scraped data",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Movie ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Comparison options",
+                        "name": "request",
+                        "in": "body",
+                        "schema": {
+                            "$ref": "#/definitions/api.NFOComparisonRequest"
+                        }
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/cmd_cli.MoviesResponse"
+                            "$ref": "#/definitions/api.NFOComparisonResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/cmd_cli.ErrorResponse"
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/movies/{id}/rescrape": {
+            "post": {
+                "description": "Rescrape movie metadata using selected scrapers only",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "movies"
+                ],
+                "summary": "Rescrape movie with specific scrapers",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Movie ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Rescrape options",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.RescrapeRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.MovieResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/posters/{filename}": {
+            "get": {
+                "description": "Serves persistent cropped posters from the database. These persist across scraping sessions.",
+                "summary": "Serve cropped poster image",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filename",
+                        "name": "filename",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/proxy/test": {
+            "post": {
+                "description": "Test direct proxy or FlareSolverr access to a target URL using provided proxy settings",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "system"
+                ],
+                "summary": "Test proxy connectivity",
+                "parameters": [
+                    {
+                        "description": "Proxy test request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.ProxyTestRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.ProxyTestResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/scan": {
+            "post": {
+                "description": "Scan a directory for video files and match JAV IDs",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "web"
+                ],
+                "summary": "Scan directory for video files",
+                "parameters": [
+                    {
+                        "description": "Scan parameters",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.ScanRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.ScanResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
                         }
                     }
                 }
@@ -123,7 +1267,7 @@
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/cmd_cli.ScrapeRequest"
+                            "$ref": "#/definitions/api.ScrapeRequest"
                         }
                     }
                 ],
@@ -131,25 +1275,168 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/cmd_cli.ScrapeResponse"
+                            "$ref": "#/definitions/api.ScrapeResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/cmd_cli.ErrorResponse"
+                            "$ref": "#/definitions/api.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/cmd_cli.ErrorResponse"
+                            "$ref": "#/definitions/api.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/cmd_cli.ErrorResponse"
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/scrapers": {
+            "get": {
+                "description": "Get list of all available scrapers with their display names, enabled status, and configuration options. Scrapers are ordered by priority from config.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "system"
+                ],
+                "summary": "Get available scrapers",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.AvailableScrapersResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/temp/image": {
+            "get": {
+                "description": "Proxies remote images for preview UI, handling hotlink protection and CORS issues.",
+                "summary": "Proxy remote images",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Image URL",
+                        "name": "url",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "502": {
+                        "description": "Bad Gateway",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/temp/posters/{jobId}/{filename}": {
+            "get": {
+                "description": "Serves temporarily cropped posters from batch jobs. These are ephemeral and preserved when organization fails for retry.",
+                "summary": "Serve temporary poster image",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Job ID",
+                        "name": "jobId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filename",
+                        "name": "filename",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/translation/models": {
+            "post": {
+                "description": "Fetch available models from an OpenAI-compatible base URL",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "system"
+                ],
+                "summary": "Get translation models",
+                "parameters": [
+                    {
+                        "description": "Translation model lookup request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.TranslationModelsRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.TranslationModelsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "502": {
+                        "description": "Bad Gateway",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
                         }
                     }
                 }
@@ -157,7 +1444,7 @@
         },
         "/health": {
             "get": {
-                "description": "Check API health and list enabled scrapers",
+                "description": "Check API health status and list all enabled scrapers. Returns version information and build metadata.",
                 "produces": [
                     "application/json"
                 ],
@@ -169,7 +1456,30 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/cmd_cli.HealthResponse"
+                            "$ref": "#/definitions/api.HealthResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/ws/progress": {
+            "get": {
+                "description": "WebSocket endpoint for real-time progress updates during batch operations. Connect to receive streaming updates for batch scrape jobs, file organization, and downloads. Message format: JSON with job_id, type (progress/complete/error/cancelled), file, progress (0.0-1.0), message, and bytes_processed fields.",
+                "summary": "WebSocket progress updates",
+                "responses": {
+                    "101": {
+                        "description": "Switching Protocols"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
                         }
                     }
                 }
@@ -177,7 +1487,288 @@
         }
     },
     "definitions": {
-        "cmd_cli.ErrorResponse": {
+        "api.AvailableScrapersResponse": {
+            "type": "object",
+            "properties": {
+                "scrapers": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/api.ScraperInfo"
+                    }
+                }
+            }
+        },
+        "api.BatchFileResult": {
+            "type": "object",
+            "properties": {
+                "actress_sources": {
+                    "description": "Actress-level source by scraper/NFO",
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "data": {
+                    "description": "Movie data"
+                },
+                "ended_at": {
+                    "type": "string"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "field_sources": {
+                    "description": "Field-level source by scraper/NFO",
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "file_path": {
+                    "type": "string"
+                },
+                "is_multi_part": {
+                    "type": "boolean"
+                },
+                "movie_id": {
+                    "type": "string"
+                },
+                "part_number": {
+                    "type": "integer"
+                },
+                "part_suffix": {
+                    "type": "string"
+                },
+                "started_at": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.BatchJobResponse": {
+            "type": "object",
+            "properties": {
+                "completed": {
+                    "type": "integer"
+                },
+                "completed_at": {
+                    "type": "string"
+                },
+                "excluded": {
+                    "description": "Files excluded from organization",
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "boolean"
+                    }
+                },
+                "failed": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "progress": {
+                    "type": "number"
+                },
+                "results": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/api.BatchFileResult"
+                    }
+                },
+                "started_at": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "total_files": {
+                    "type": "integer"
+                }
+            }
+        },
+        "api.BatchRescrapeRequest": {
+            "type": "object",
+            "properties": {
+                "array_strategy": {
+                    "description": "For Update mode: merge, replace",
+                    "type": "string",
+                    "example": "merge"
+                },
+                "force": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "manual_search_input": {
+                    "type": "string",
+                    "example": "IPX-535"
+                },
+                "preset": {
+                    "description": "Merge strategy preset: conservative, gap-fill, aggressive (overrides scalar/array strategies)",
+                    "type": "string",
+                    "example": "conservative"
+                },
+                "scalar_strategy": {
+                    "description": "For Update mode: prefer-nfo, prefer-scraper, preserve-existing, fill-missing-only",
+                    "type": "string",
+                    "example": "prefer-nfo"
+                },
+                "selected_scrapers": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "example": [
+                        "r18dev",
+                        "dmm"
+                    ]
+                }
+            }
+        },
+        "api.BatchRescrapeResponse": {
+            "type": "object",
+            "properties": {
+                "actress_sources": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "field_sources": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "movie": {
+                    "$ref": "#/definitions/models.Movie"
+                }
+            }
+        },
+        "api.BatchScrapeRequest": {
+            "type": "object",
+            "required": [
+                "files"
+            ],
+            "properties": {
+                "array_strategy": {
+                    "description": "For Update mode: merge, replace",
+                    "type": "string",
+                    "example": "merge"
+                },
+                "destination": {
+                    "type": "string",
+                    "example": "/path/to/output"
+                },
+                "files": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "force": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "preset": {
+                    "description": "Merge strategy preset: conservative, gap-fill, aggressive (overrides scalar/array strategies)",
+                    "type": "string",
+                    "example": "conservative"
+                },
+                "scalar_strategy": {
+                    "description": "For Update mode: prefer-nfo, prefer-scraper, preserve-existing, fill-missing-only",
+                    "type": "string",
+                    "example": "prefer-nfo"
+                },
+                "selected_scrapers": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "example": [
+                        "r18dev",
+                        "dmm"
+                    ]
+                },
+                "strict": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "update": {
+                    "description": "Update mode: only create/update metadata files without moving video files",
+                    "type": "boolean",
+                    "example": false
+                }
+            }
+        },
+        "api.BatchScrapeResponse": {
+            "type": "object",
+            "properties": {
+                "job_id": {
+                    "type": "string",
+                    "example": "550e8400-e29b-41d4-a716-446655440000"
+                }
+            }
+        },
+        "api.BrowseRequest": {
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "example": "/path/to/directory"
+                }
+            }
+        },
+        "api.BrowseResponse": {
+            "type": "object",
+            "properties": {
+                "current_path": {
+                    "type": "string",
+                    "example": "/path/to/directory"
+                },
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/api.FileInfo"
+                    }
+                },
+                "parent_path": {
+                    "type": "string",
+                    "example": "/path/to"
+                }
+            }
+        },
+        "api.DataSource": {
+            "type": "object",
+            "properties": {
+                "confidence": {
+                    "description": "Confidence score (0.0-1.0)",
+                    "type": "number",
+                    "example": 0.9
+                },
+                "last_updated": {
+                    "description": "ISO 8601 timestamp",
+                    "type": "string",
+                    "example": "2024-01-15T10:30:00Z"
+                },
+                "source": {
+                    "description": "\"scraper\" or \"nfo\"",
+                    "type": "string",
+                    "example": "nfo"
+                }
+            }
+        },
+        "api.DeleteHistoryBulkResponse": {
+            "type": "object",
+            "properties": {
+                "deleted": {
+                    "type": "integer"
+                }
+            }
+        },
+        "api.ErrorResponse": {
             "type": "object",
             "properties": {
                 "error": {
@@ -192,9 +1783,78 @@
                 }
             }
         },
-        "cmd_cli.HealthResponse": {
+        "api.FieldDifference": {
             "type": "object",
             "properties": {
+                "field": {
+                    "type": "string",
+                    "example": "title"
+                },
+                "merged_value": {},
+                "nfo_value": {},
+                "reason": {
+                    "type": "string",
+                    "example": "NFO preferred by merge strategy"
+                },
+                "scraped_value": {}
+            }
+        },
+        "api.FileInfo": {
+            "type": "object",
+            "properties": {
+                "is_dir": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "is_multi_part": {
+                    "type": "boolean",
+                    "example": true
+                },
+                "matched": {
+                    "type": "boolean",
+                    "example": true
+                },
+                "mod_time": {
+                    "type": "string",
+                    "example": "2024-01-15T10:30:00Z"
+                },
+                "movie_id": {
+                    "type": "string",
+                    "example": "IPX-535"
+                },
+                "name": {
+                    "type": "string",
+                    "example": "video.mp4"
+                },
+                "part_number": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "part_suffix": {
+                    "type": "string",
+                    "example": "-pt1"
+                },
+                "path": {
+                    "type": "string",
+                    "example": "/path/to/video.mp4"
+                },
+                "size": {
+                    "type": "integer",
+                    "example": 1024000000
+                }
+            }
+        },
+        "api.HealthResponse": {
+            "type": "object",
+            "properties": {
+                "build_date": {
+                    "type": "string",
+                    "example": "2026-02-23T00:00:00Z"
+                },
+                "commit": {
+                    "type": "string",
+                    "example": "abc123def456"
+                },
                 "scrapers": {
                     "type": "array",
                     "items": {
@@ -208,18 +1868,145 @@
                 "status": {
                     "type": "string",
                     "example": "ok"
+                },
+                "version": {
+                    "type": "string",
+                    "example": "v1.2.3"
                 }
             }
         },
-        "cmd_cli.MovieResponse": {
+        "api.HistoryListResponse": {
             "type": "object",
             "properties": {
-                "movie": {
-                    "$ref": "#/definitions/github_com_javinizer_javinizer-go_internal_models.Movie"
+                "limit": {
+                    "type": "integer"
+                },
+                "offset": {
+                    "type": "integer"
+                },
+                "records": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/api.HistoryRecord"
+                    }
+                },
+                "total": {
+                    "type": "integer"
                 }
             }
         },
-        "cmd_cli.MoviesResponse": {
+        "api.HistoryRecord": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "dry_run": {
+                    "type": "boolean"
+                },
+                "error_message": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "metadata": {
+                    "type": "string"
+                },
+                "movie_id": {
+                    "type": "string"
+                },
+                "new_path": {
+                    "type": "string"
+                },
+                "operation": {
+                    "type": "string"
+                },
+                "original_path": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.HistoryStats": {
+            "type": "object",
+            "properties": {
+                "by_operation": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "integer",
+                        "format": "int64"
+                    }
+                },
+                "failed": {
+                    "type": "integer"
+                },
+                "reverted": {
+                    "type": "integer"
+                },
+                "success": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "api.MergeStatistics": {
+            "type": "object",
+            "properties": {
+                "conflicts_resolved": {
+                    "type": "integer",
+                    "example": 5
+                },
+                "empty_fields": {
+                    "type": "integer",
+                    "example": 2
+                },
+                "from_nfo": {
+                    "type": "integer",
+                    "example": 3
+                },
+                "from_scraper": {
+                    "type": "integer",
+                    "example": 10
+                },
+                "merged_arrays": {
+                    "type": "integer",
+                    "example": 2
+                },
+                "total_fields": {
+                    "type": "integer",
+                    "example": 15
+                }
+            }
+        },
+        "api.MovieResponse": {
+            "type": "object",
+            "properties": {
+                "merge_stats": {
+                    "description": "Merge statistics when NFO merging occurred",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/api.MergeStatistics"
+                        }
+                    ]
+                },
+                "movie": {
+                    "$ref": "#/definitions/models.Movie"
+                },
+                "provenance": {
+                    "description": "Field-level data source tracking",
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/api.DataSource"
+                    }
+                }
+            }
+        },
+        "api.MoviesResponse": {
             "type": "object",
             "properties": {
                 "count": {
@@ -229,24 +2016,449 @@
                 "movies": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/github_com_javinizer_javinizer-go_internal_models.Movie"
+                        "$ref": "#/definitions/models.Movie"
                     }
                 }
             }
         },
-        "cmd_cli.ScrapeRequest": {
+        "api.NFOComparisonRequest": {
+            "type": "object",
+            "properties": {
+                "array_strategy": {
+                    "description": "Array field merge strategy: merge or replace",
+                    "type": "string",
+                    "example": "merge"
+                },
+                "merge_strategy": {
+                    "description": "Deprecated: prefer-scraper, prefer-nfo, merge-arrays (use preset or scalar/array strategies instead)",
+                    "type": "string",
+                    "example": "prefer-scraper"
+                },
+                "nfo_path": {
+                    "description": "Optional: explicit NFO path",
+                    "type": "string",
+                    "example": "/path/to/movie.nfo"
+                },
+                "preset": {
+                    "description": "Merge strategy preset: conservative, gap-fill, or aggressive (overrides scalar/array strategies)",
+                    "type": "string",
+                    "example": "conservative"
+                },
+                "scalar_strategy": {
+                    "description": "Scalar field merge strategy: prefer-nfo, prefer-scraper, preserve-existing, or fill-missing-only",
+                    "type": "string",
+                    "example": "prefer-nfo"
+                },
+                "selected_scrapers": {
+                    "description": "Optional: custom scrapers for comparison",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "example": [
+                        "r18dev",
+                        "dmm"
+                    ]
+                }
+            }
+        },
+        "api.NFOComparisonResponse": {
+            "type": "object",
+            "properties": {
+                "differences": {
+                    "description": "List of fields that differ",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/api.FieldDifference"
+                    }
+                },
+                "merge_stats": {
+                    "description": "Merge statistics",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/api.MergeStatistics"
+                        }
+                    ]
+                },
+                "merged_data": {
+                    "description": "Result of merging",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/models.Movie"
+                        }
+                    ]
+                },
+                "movie_id": {
+                    "type": "string",
+                    "example": "IPX-535"
+                },
+                "nfo_data": {
+                    "description": "Data from NFO file",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/models.Movie"
+                        }
+                    ]
+                },
+                "nfo_exists": {
+                    "type": "boolean",
+                    "example": true
+                },
+                "nfo_path": {
+                    "description": "Returns filename only for security",
+                    "type": "string",
+                    "example": "movie.nfo"
+                },
+                "provenance": {
+                    "description": "Field-level provenance",
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/api.DataSource"
+                    }
+                },
+                "scraped_data": {
+                    "description": "Fresh scraped data",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/models.Movie"
+                        }
+                    ]
+                }
+            }
+        },
+        "api.OrganizePreviewRequest": {
+            "type": "object",
+            "required": [
+                "destination"
+            ],
+            "properties": {
+                "copy_only": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "destination": {
+                    "type": "string",
+                    "example": "/path/to/output"
+                },
+                "link_mode": {
+                    "type": "string",
+                    "enum": [
+                        "hard",
+                        "soft"
+                    ],
+                    "example": "hard"
+                }
+            }
+        },
+        "api.OrganizePreviewResponse": {
+            "type": "object",
+            "properties": {
+                "extrafanart_path": {
+                    "type": "string",
+                    "example": "/path/to/output/IPX-535 [IdeaPocket] - Beautiful Woman (2021)/extrafanart"
+                },
+                "fanart_path": {
+                    "type": "string",
+                    "example": "/path/to/output/IPX-535 [IdeaPocket] - Beautiful Woman (2021)/IPX-535-fanart.jpg"
+                },
+                "file_name": {
+                    "type": "string",
+                    "example": "IPX-535"
+                },
+                "folder_name": {
+                    "type": "string",
+                    "example": "IPX-535 [IdeaPocket] - Beautiful Woman (2021)"
+                },
+                "full_path": {
+                    "type": "string",
+                    "example": "/path/to/output/IPX-535 [IdeaPocket] - Beautiful Woman (2021)/IPX-535.mp4"
+                },
+                "nfo_path": {
+                    "description": "Single NFO (backward compatibility)",
+                    "type": "string",
+                    "example": "/path/to/output/IPX-535 [IdeaPocket] - Beautiful Woman (2021)/IPX-535.nfo"
+                },
+                "nfo_paths": {
+                    "description": "For per_file=true multi-part: all NFO file paths",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "poster_path": {
+                    "type": "string",
+                    "example": "/path/to/output/IPX-535 [IdeaPocket] - Beautiful Woman (2021)/IPX-535-poster.jpg"
+                },
+                "screenshots": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "example": [
+                        "fanart1.jpg",
+                        "fanart2.jpg",
+                        "fanart3.jpg"
+                    ]
+                },
+                "video_files": {
+                    "description": "For multi-part files: all video file paths",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "api.OrganizeRequest": {
+            "type": "object",
+            "required": [
+                "destination"
+            ],
+            "properties": {
+                "copy_only": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "destination": {
+                    "type": "string",
+                    "example": "/path/to/output"
+                },
+                "link_mode": {
+                    "type": "string",
+                    "enum": [
+                        "hard",
+                        "soft"
+                    ],
+                    "example": "hard"
+                }
+            }
+        },
+        "api.PathAutocompleteRequest": {
+            "type": "object",
+            "required": [
+                "path"
+            ],
+            "properties": {
+                "limit": {
+                    "type": "integer",
+                    "example": 10
+                },
+                "path": {
+                    "type": "string",
+                    "example": "/path/to/vid"
+                }
+            }
+        },
+        "api.PathAutocompleteResponse": {
+            "type": "object",
+            "properties": {
+                "base_path": {
+                    "type": "string",
+                    "example": "/path/to"
+                },
+                "input_path": {
+                    "type": "string",
+                    "example": "/path/to/vid"
+                },
+                "suggestions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/api.PathAutocompleteSuggestion"
+                    }
+                }
+            }
+        },
+        "api.PathAutocompleteSuggestion": {
+            "type": "object",
+            "properties": {
+                "is_dir": {
+                    "type": "boolean",
+                    "example": true
+                },
+                "name": {
+                    "type": "string",
+                    "example": "videos"
+                },
+                "path": {
+                    "type": "string",
+                    "example": "/path/to/videos"
+                }
+            }
+        },
+        "api.PosterCropRequest": {
+            "type": "object",
+            "properties": {
+                "height": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "width": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "x": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "y": {
+                    "type": "integer",
+                    "minimum": 0
+                }
+            }
+        },
+        "api.PosterCropResponse": {
+            "type": "object",
+            "properties": {
+                "cropped_poster_url": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.ProxyTestRequest": {
+            "type": "object",
+            "required": [
+                "mode"
+            ],
+            "properties": {
+                "mode": {
+                    "description": "direct or flaresolverr",
+                    "type": "string",
+                    "enum": [
+                        "direct",
+                        "flaresolverr"
+                    ]
+                },
+                "proxy": {
+                    "$ref": "#/definitions/config.ProxyConfig"
+                },
+                "target_url": {
+                    "description": "Optional override target URL",
+                    "type": "string"
+                }
+            }
+        },
+        "api.ProxyTestResponse": {
+            "type": "object",
+            "properties": {
+                "duration_ms": {
+                    "type": "integer"
+                },
+                "flaresolverr_url": {
+                    "description": "FlareSolverr endpoint used",
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "mode": {
+                    "type": "string"
+                },
+                "proxy_url": {
+                    "description": "Redacted proxy URL",
+                    "type": "string"
+                },
+                "status_code": {
+                    "type": "integer"
+                },
+                "success": {
+                    "type": "boolean"
+                },
+                "target_url": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.RescrapeRequest": {
+            "type": "object",
+            "required": [
+                "selected_scrapers"
+            ],
+            "properties": {
+                "force": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "selected_scrapers": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "example": [
+                        "r18dev",
+                        "dmm"
+                    ]
+                }
+            }
+        },
+        "api.ScanRequest": {
+            "type": "object",
+            "required": [
+                "path"
+            ],
+            "properties": {
+                "filter": {
+                    "description": "Filter folder/file names (case-insensitive substring match)",
+                    "type": "string",
+                    "example": "STSK"
+                },
+                "path": {
+                    "type": "string",
+                    "example": "/path/to/videos"
+                },
+                "recursive": {
+                    "type": "boolean",
+                    "example": true
+                }
+            }
+        },
+        "api.ScanResponse": {
+            "type": "object",
+            "properties": {
+                "count": {
+                    "type": "integer",
+                    "example": 10
+                },
+                "files": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/api.FileInfo"
+                    }
+                },
+                "skipped": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "api.ScrapeRequest": {
             "type": "object",
             "required": [
                 "id"
             ],
             "properties": {
+                "force": {
+                    "type": "boolean",
+                    "example": false
+                },
                 "id": {
                     "type": "string",
                     "example": "IPX-535"
+                },
+                "selected_scrapers": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "example": [
+                        "r18dev",
+                        "dmm"
+                    ]
                 }
             }
         },
-        "cmd_cli.ScrapeResponse": {
+        "api.ScrapeResponse": {
             "type": "object",
             "properties": {
                 "cached": {
@@ -260,7 +2472,7 @@
                     }
                 },
                 "movie": {
-                    "$ref": "#/definitions/github_com_javinizer_javinizer-go_internal_models.Movie"
+                    "$ref": "#/definitions/models.Movie"
                 },
                 "sources_used": {
                     "type": "integer",
@@ -268,7 +2480,1588 @@
                 }
             }
         },
-        "github_com_javinizer_javinizer-go_internal_models.Actress": {
+        "api.ScraperChoice": {
+            "type": "object",
+            "properties": {
+                "label": {
+                    "type": "string",
+                    "example": "English"
+                },
+                "value": {
+                    "type": "string",
+                    "example": "en"
+                }
+            }
+        },
+        "api.ScraperInfo": {
+            "type": "object",
+            "properties": {
+                "display_name": {
+                    "type": "string",
+                    "example": "R18.dev"
+                },
+                "enabled": {
+                    "type": "boolean",
+                    "example": true
+                },
+                "name": {
+                    "type": "string",
+                    "example": "r18dev"
+                },
+                "options": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/api.ScraperOption"
+                    }
+                }
+            }
+        },
+        "api.ScraperOption": {
+            "type": "object",
+            "properties": {
+                "choices": {
+                    "description": "For select type: available choices",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/api.ScraperChoice"
+                    }
+                },
+                "description": {
+                    "type": "string",
+                    "example": "Enable detailed actress data scraping from DMM (may be slower)"
+                },
+                "key": {
+                    "type": "string",
+                    "example": "scrape_actress"
+                },
+                "label": {
+                    "type": "string",
+                    "example": "Scrape Actress Information"
+                },
+                "max": {
+                    "type": "integer",
+                    "example": 120
+                },
+                "min": {
+                    "type": "integer",
+                    "example": 5
+                },
+                "type": {
+                    "description": "boolean, string, number, select",
+                    "type": "string",
+                    "example": "boolean"
+                },
+                "unit": {
+                    "type": "string",
+                    "example": "seconds"
+                }
+            }
+        },
+        "api.TranslationModelsRequest": {
+            "type": "object",
+            "required": [
+                "base_url",
+                "provider"
+            ],
+            "properties": {
+                "api_key": {
+                    "description": "Provider API key",
+                    "type": "string"
+                },
+                "base_url": {
+                    "description": "API base URL (e.g., https://api.openai.com/v1)",
+                    "type": "string"
+                },
+                "provider": {
+                    "description": "openai (OpenAI-compatible only for now)",
+                    "type": "string"
+                }
+            }
+        },
+        "api.TranslationModelsResponse": {
+            "type": "object",
+            "properties": {
+                "models": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "api.UpdateMovieRequest": {
+            "type": "object",
+            "required": [
+                "movie"
+            ],
+            "properties": {
+                "movie": {
+                    "$ref": "#/definitions/models.Movie"
+                }
+            }
+        },
+        "config.APIConfig": {
+            "type": "object",
+            "properties": {
+                "security": {
+                    "$ref": "#/definitions/config.SecurityConfig"
+                }
+            }
+        },
+        "config.AVEntertainmentConfig": {
+            "type": "object",
+            "properties": {
+                "base_url": {
+                    "description": "Base URL for AVEntertainment",
+                    "type": "string"
+                },
+                "download_proxy": {
+                    "description": "Optional scraper-specific download proxy override",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/config.ProxyConfig"
+                        }
+                    ]
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "fake_user_agent": {
+                    "description": "Optional custom fake User-Agent (defaults to built-in browser UA)",
+                    "type": "string"
+                },
+                "language": {
+                    "description": "Language code: en, ja (default: en)",
+                    "type": "string"
+                },
+                "proxy": {
+                    "description": "Optional scraper-specific proxy override",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/config.ProxyConfig"
+                        }
+                    ]
+                },
+                "request_delay": {
+                    "description": "Delay between requests in milliseconds (0 = no delay)",
+                    "type": "integer"
+                },
+                "scrape_bonus_screens": {
+                    "description": "Append bonus image files (e.g., \"特典ファイル\") to screenshot URLs",
+                    "type": "boolean"
+                },
+                "use_fake_user_agent": {
+                    "description": "Use browser-like User-Agent header for this scraper",
+                    "type": "boolean"
+                }
+            }
+        },
+        "config.ActressDatabaseConfig": {
+            "type": "object",
+            "properties": {
+                "auto_add": {
+                    "description": "Automatically add new actresses to database",
+                    "type": "boolean"
+                },
+                "convert_alias": {
+                    "description": "Convert actress names using alias database",
+                    "type": "boolean"
+                },
+                "enabled": {
+                    "description": "Enable actress image lookup from database",
+                    "type": "boolean"
+                }
+            }
+        },
+        "config.CaribbeancomConfig": {
+            "type": "object",
+            "properties": {
+                "base_url": {
+                    "description": "Base URL for Caribbeancom",
+                    "type": "string"
+                },
+                "download_proxy": {
+                    "description": "Optional scraper-specific download proxy override",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/config.ProxyConfig"
+                        }
+                    ]
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "fake_user_agent": {
+                    "description": "Optional custom fake User-Agent (defaults to built-in browser UA)",
+                    "type": "string"
+                },
+                "language": {
+                    "description": "Language code: ja, en (default: ja)",
+                    "type": "string"
+                },
+                "proxy": {
+                    "description": "Optional scraper-specific proxy override",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/config.ProxyConfig"
+                        }
+                    ]
+                },
+                "request_delay": {
+                    "description": "Delay between requests in milliseconds (0 = no delay)",
+                    "type": "integer"
+                },
+                "use_fake_user_agent": {
+                    "description": "Use browser-like User-Agent header for this scraper",
+                    "type": "boolean"
+                }
+            }
+        },
+        "config.Config": {
+            "type": "object",
+            "properties": {
+                "api": {
+                    "$ref": "#/definitions/config.APIConfig"
+                },
+                "config_version": {
+                    "type": "integer"
+                },
+                "database": {
+                    "$ref": "#/definitions/config.DatabaseConfig"
+                },
+                "file_matching": {
+                    "$ref": "#/definitions/config.MatchingConfig"
+                },
+                "logging": {
+                    "$ref": "#/definitions/config.LoggingConfig"
+                },
+                "mediainfo": {
+                    "$ref": "#/definitions/config.MediaInfoConfig"
+                },
+                "metadata": {
+                    "$ref": "#/definitions/config.MetadataConfig"
+                },
+                "output": {
+                    "$ref": "#/definitions/config.OutputConfig"
+                },
+                "performance": {
+                    "$ref": "#/definitions/config.PerformanceConfig"
+                },
+                "scrapers": {
+                    "$ref": "#/definitions/config.ScrapersConfig"
+                },
+                "server": {
+                    "$ref": "#/definitions/config.ServerConfig"
+                },
+                "system": {
+                    "$ref": "#/definitions/config.SystemConfig"
+                }
+            }
+        },
+        "config.DLGetchuConfig": {
+            "type": "object",
+            "properties": {
+                "base_url": {
+                    "description": "Base URL for DLgetchu",
+                    "type": "string"
+                },
+                "download_proxy": {
+                    "description": "Optional scraper-specific download proxy override",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/config.ProxyConfig"
+                        }
+                    ]
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "fake_user_agent": {
+                    "description": "Optional custom fake User-Agent (defaults to built-in browser UA)",
+                    "type": "string"
+                },
+                "proxy": {
+                    "description": "Optional scraper-specific proxy override",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/config.ProxyConfig"
+                        }
+                    ]
+                },
+                "request_delay": {
+                    "description": "Delay between requests in milliseconds (0 = no delay)",
+                    "type": "integer"
+                },
+                "use_fake_user_agent": {
+                    "description": "Use browser-like User-Agent header for this scraper",
+                    "type": "boolean"
+                }
+            }
+        },
+        "config.DMMConfig": {
+            "type": "object",
+            "properties": {
+                "browser_timeout": {
+                    "description": "Timeout in seconds for browser operations (default: 30)",
+                    "type": "integer"
+                },
+                "download_proxy": {
+                    "description": "Optional scraper-specific download proxy override",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/config.ProxyConfig"
+                        }
+                    ]
+                },
+                "enable_browser": {
+                    "description": "Enable browser mode for video.dmm.co.jp (JavaScript rendering)",
+                    "type": "boolean"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "fake_user_agent": {
+                    "description": "Optional custom fake User-Agent (defaults to built-in browser UA)",
+                    "type": "string"
+                },
+                "proxy": {
+                    "description": "Optional scraper-specific proxy override",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/config.ProxyConfig"
+                        }
+                    ]
+                },
+                "scrape_actress": {
+                    "type": "boolean"
+                },
+                "use_fake_user_agent": {
+                    "description": "Use browser-like User-Agent header for this scraper",
+                    "type": "boolean"
+                }
+            }
+        },
+        "config.DatabaseConfig": {
+            "type": "object",
+            "properties": {
+                "dsn": {
+                    "description": "Data Source Name",
+                    "type": "string"
+                },
+                "log_level": {
+                    "description": "Database query logging: silent, error, warn, info (default: silent)",
+                    "type": "string"
+                },
+                "type": {
+                    "description": "sqlite (currently only supported backend)",
+                    "type": "string"
+                }
+            }
+        },
+        "config.DeepLTranslationConfig": {
+            "type": "object",
+            "properties": {
+                "api_key": {
+                    "description": "DeepL API key",
+                    "type": "string"
+                },
+                "base_url": {
+                    "description": "Optional override (defaults to mode-specific endpoint)",
+                    "type": "string"
+                },
+                "mode": {
+                    "description": "free or pro",
+                    "type": "string"
+                }
+            }
+        },
+        "config.FC2Config": {
+            "type": "object",
+            "properties": {
+                "base_url": {
+                    "description": "Base URL for FC2",
+                    "type": "string"
+                },
+                "download_proxy": {
+                    "description": "Optional scraper-specific download proxy override",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/config.ProxyConfig"
+                        }
+                    ]
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "fake_user_agent": {
+                    "description": "Optional custom fake User-Agent (defaults to built-in browser UA)",
+                    "type": "string"
+                },
+                "proxy": {
+                    "description": "Optional scraper-specific proxy override",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/config.ProxyConfig"
+                        }
+                    ]
+                },
+                "request_delay": {
+                    "description": "Delay between requests in milliseconds (0 = no delay)",
+                    "type": "integer"
+                },
+                "use_fake_user_agent": {
+                    "description": "Use browser-like User-Agent header for this scraper",
+                    "type": "boolean"
+                }
+            }
+        },
+        "config.FlareSolverrConfig": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "description": "Enable FlareSolverr for bypassing Cloudflare",
+                    "type": "boolean"
+                },
+                "max_retries": {
+                    "description": "Max retry attempts for FlareSolverr calls (default: 3)",
+                    "type": "integer"
+                },
+                "session_ttl": {
+                    "description": "Session TTL in seconds (default: 300)",
+                    "type": "integer"
+                },
+                "timeout": {
+                    "description": "Request timeout in seconds (default: 30)",
+                    "type": "integer"
+                },
+                "url": {
+                    "description": "FlareSolverr endpoint (default: http://localhost:8191/v1)",
+                    "type": "string"
+                }
+            }
+        },
+        "config.GenreReplacementConfig": {
+            "type": "object",
+            "properties": {
+                "auto_add": {
+                    "description": "Automatically add new genres to database (identity mapping)",
+                    "type": "boolean"
+                },
+                "enabled": {
+                    "description": "Enable genre replacement from database",
+                    "type": "boolean"
+                }
+            }
+        },
+        "config.GoogleTranslationConfig": {
+            "type": "object",
+            "properties": {
+                "api_key": {
+                    "description": "Required for paid mode",
+                    "type": "string"
+                },
+                "base_url": {
+                    "description": "Optional override",
+                    "type": "string"
+                },
+                "mode": {
+                    "description": "free or paid",
+                    "type": "string"
+                }
+            }
+        },
+        "config.Jav321Config": {
+            "type": "object",
+            "properties": {
+                "base_url": {
+                    "description": "Base URL for Jav321",
+                    "type": "string"
+                },
+                "download_proxy": {
+                    "description": "Optional scraper-specific download proxy override",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/config.ProxyConfig"
+                        }
+                    ]
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "fake_user_agent": {
+                    "description": "Optional custom fake User-Agent (defaults to built-in browser UA)",
+                    "type": "string"
+                },
+                "proxy": {
+                    "description": "Optional scraper-specific proxy override",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/config.ProxyConfig"
+                        }
+                    ]
+                },
+                "request_delay": {
+                    "description": "Delay between requests in milliseconds (0 = no delay)",
+                    "type": "integer"
+                },
+                "use_fake_user_agent": {
+                    "description": "Use browser-like User-Agent header for this scraper",
+                    "type": "boolean"
+                }
+            }
+        },
+        "config.JavBusConfig": {
+            "type": "object",
+            "properties": {
+                "base_url": {
+                    "description": "Base URL for JavBus",
+                    "type": "string"
+                },
+                "download_proxy": {
+                    "description": "Optional scraper-specific download proxy override",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/config.ProxyConfig"
+                        }
+                    ]
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "fake_user_agent": {
+                    "description": "Optional custom fake User-Agent (defaults to built-in browser UA)",
+                    "type": "string"
+                },
+                "language": {
+                    "description": "Language code: en, ja, zh (default: zh)",
+                    "type": "string"
+                },
+                "proxy": {
+                    "description": "Optional scraper-specific proxy override",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/config.ProxyConfig"
+                        }
+                    ]
+                },
+                "request_delay": {
+                    "description": "Delay between requests in milliseconds (0 = no delay)",
+                    "type": "integer"
+                },
+                "use_fake_user_agent": {
+                    "description": "Use browser-like User-Agent header for this scraper",
+                    "type": "boolean"
+                }
+            }
+        },
+        "config.JavDBConfig": {
+            "type": "object",
+            "properties": {
+                "base_url": {
+                    "description": "Base URL for JavDB",
+                    "type": "string"
+                },
+                "download_proxy": {
+                    "description": "Optional scraper-specific download proxy override",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/config.ProxyConfig"
+                        }
+                    ]
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "fake_user_agent": {
+                    "description": "Optional custom fake User-Agent (defaults to built-in browser UA)",
+                    "type": "string"
+                },
+                "proxy": {
+                    "description": "Optional scraper-specific proxy override",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/config.ProxyConfig"
+                        }
+                    ]
+                },
+                "request_delay": {
+                    "description": "Delay between requests in milliseconds (0 = no delay)",
+                    "type": "integer"
+                },
+                "use_fake_user_agent": {
+                    "description": "Use browser-like User-Agent header for this scraper",
+                    "type": "boolean"
+                },
+                "use_flaresolverr": {
+                    "description": "Enable FlareSolverr for Cloudflare bypass",
+                    "type": "boolean"
+                }
+            }
+        },
+        "config.JavLibraryConfig": {
+            "type": "object",
+            "properties": {
+                "base_url": {
+                    "description": "Base URL for JavLibrary",
+                    "type": "string"
+                },
+                "cf_bm": {
+                    "description": "Cloudflare Bot Management cookie (deprecated)",
+                    "type": "string"
+                },
+                "cf_clearance": {
+                    "description": "Cloudflare clearance cookie (deprecated, use FlareSolverr)",
+                    "type": "string"
+                },
+                "download_proxy": {
+                    "description": "Optional scraper-specific download proxy override",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/config.ProxyConfig"
+                        }
+                    ]
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "fake_user_agent": {
+                    "description": "Optional custom fake User-Agent (defaults to built-in browser UA)",
+                    "type": "string"
+                },
+                "language": {
+                    "description": "Language code: en, ja, cn, tw (default: en)",
+                    "type": "string"
+                },
+                "proxy": {
+                    "description": "Optional scraper-specific proxy override",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/config.ProxyConfig"
+                        }
+                    ]
+                },
+                "request_delay": {
+                    "description": "Delay between requests in milliseconds (0 = no delay)",
+                    "type": "integer"
+                },
+                "use_fake_user_agent": {
+                    "description": "Use browser-like User-Agent header for this scraper",
+                    "type": "boolean"
+                },
+                "use_flaresolverr": {
+                    "description": "Enable FlareSolverr for Cloudflare bypass",
+                    "type": "boolean"
+                },
+                "user_agent": {
+                    "description": "Custom user agent (optional)",
+                    "type": "string"
+                }
+            }
+        },
+        "config.LibreDMMConfig": {
+            "type": "object",
+            "properties": {
+                "base_url": {
+                    "description": "Base URL for LibreDMM",
+                    "type": "string"
+                },
+                "download_proxy": {
+                    "description": "Optional scraper-specific download proxy override",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/config.ProxyConfig"
+                        }
+                    ]
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "fake_user_agent": {
+                    "description": "Optional custom fake User-Agent (defaults to built-in browser UA)",
+                    "type": "string"
+                },
+                "proxy": {
+                    "description": "Optional scraper-specific proxy override",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/config.ProxyConfig"
+                        }
+                    ]
+                },
+                "request_delay": {
+                    "description": "Delay between requests in milliseconds (0 = no delay)",
+                    "type": "integer"
+                },
+                "use_fake_user_agent": {
+                    "description": "Use browser-like User-Agent header for this scraper",
+                    "type": "boolean"
+                }
+            }
+        },
+        "config.LoggingConfig": {
+            "type": "object",
+            "properties": {
+                "format": {
+                    "description": "json, text",
+                    "type": "string"
+                },
+                "level": {
+                    "description": "debug, info, warn, error",
+                    "type": "string"
+                },
+                "output": {
+                    "description": "stdout, file path",
+                    "type": "string"
+                }
+            }
+        },
+        "config.MGStageConfig": {
+            "type": "object",
+            "properties": {
+                "download_proxy": {
+                    "description": "Optional scraper-specific download proxy override",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/config.ProxyConfig"
+                        }
+                    ]
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "fake_user_agent": {
+                    "description": "Optional custom fake User-Agent (defaults to built-in browser UA)",
+                    "type": "string"
+                },
+                "proxy": {
+                    "description": "Optional scraper-specific proxy override",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/config.ProxyConfig"
+                        }
+                    ]
+                },
+                "request_delay": {
+                    "description": "Delay between requests in milliseconds (0 = no delay)",
+                    "type": "integer"
+                },
+                "use_fake_user_agent": {
+                    "description": "Use browser-like User-Agent header for this scraper",
+                    "type": "boolean"
+                }
+            }
+        },
+        "config.MatchingConfig": {
+            "type": "object",
+            "properties": {
+                "exclude_patterns": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "extensions": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "min_size_mb": {
+                    "type": "integer"
+                },
+                "regex_enabled": {
+                    "type": "boolean"
+                },
+                "regex_pattern": {
+                    "type": "string"
+                }
+            }
+        },
+        "config.MediaInfoConfig": {
+            "type": "object",
+            "properties": {
+                "cli_enabled": {
+                    "description": "Enable MediaInfo CLI fallback (default: false)",
+                    "type": "boolean"
+                },
+                "cli_path": {
+                    "description": "Path to mediainfo binary (default: \"mediainfo\")",
+                    "type": "string"
+                },
+                "cli_timeout": {
+                    "description": "Timeout in seconds for CLI execution (default: 30)",
+                    "type": "integer"
+                }
+            }
+        },
+        "config.MetadataConfig": {
+            "type": "object",
+            "properties": {
+                "actress_database": {
+                    "description": "Actress image database (SQLite-backed)",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/config.ActressDatabaseConfig"
+                        }
+                    ]
+                },
+                "genre_replacement": {
+                    "description": "Genre replacement/normalization (SQLite-backed)",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/config.GenreReplacementConfig"
+                        }
+                    ]
+                },
+                "ignore_genres": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "nfo": {
+                    "$ref": "#/definitions/config.NFOConfig"
+                },
+                "priority": {
+                    "$ref": "#/definitions/config.PriorityConfig"
+                },
+                "required_fields": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "tag_database": {
+                    "description": "Per-movie tag database (SQLite-backed)",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/config.TagDatabaseConfig"
+                        }
+                    ]
+                },
+                "translation": {
+                    "description": "Metadata translation pipeline",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/config.TranslationConfig"
+                        }
+                    ]
+                }
+            }
+        },
+        "config.NFOConfig": {
+            "type": "object",
+            "properties": {
+                "actress_as_tag": {
+                    "type": "boolean"
+                },
+                "actress_language_ja": {
+                    "type": "boolean"
+                },
+                "add_generic_role": {
+                    "description": "Add generic \"Actress\" role to all actresses",
+                    "type": "boolean"
+                },
+                "alt_name_role": {
+                    "description": "Use alternate name (Japanese) in role field",
+                    "type": "boolean"
+                },
+                "credits": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "display_name": {
+                    "type": "string"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "filename_template": {
+                    "type": "string"
+                },
+                "first_name_order": {
+                    "type": "boolean"
+                },
+                "include_fanart": {
+                    "type": "boolean"
+                },
+                "include_originalpath": {
+                    "description": "Include source filename in NFO",
+                    "type": "boolean"
+                },
+                "include_stream_details": {
+                    "type": "boolean"
+                },
+                "include_trailer": {
+                    "type": "boolean"
+                },
+                "per_file": {
+                    "description": "Create separate NFO for each multi-part file",
+                    "type": "boolean"
+                },
+                "rating_source": {
+                    "type": "string"
+                },
+                "tag": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "tagline": {
+                    "type": "string"
+                },
+                "unknown_actress_text": {
+                    "type": "string"
+                }
+            }
+        },
+        "config.OpenAITranslationConfig": {
+            "type": "object",
+            "properties": {
+                "api_key": {
+                    "description": "API key for the provider",
+                    "type": "string"
+                },
+                "base_url": {
+                    "description": "OpenAI-compatible base URL (e.g., https://api.openai.com/v1)",
+                    "type": "string"
+                },
+                "model": {
+                    "description": "Model name (e.g., gpt-4o-mini)",
+                    "type": "string"
+                }
+            }
+        },
+        "config.OutputConfig": {
+            "type": "object",
+            "properties": {
+                "actress_folder": {
+                    "type": "string"
+                },
+                "actress_format": {
+                    "type": "string"
+                },
+                "delimiter": {
+                    "type": "string"
+                },
+                "download_actress": {
+                    "type": "boolean"
+                },
+                "download_cover": {
+                    "type": "boolean"
+                },
+                "download_extrafanart": {
+                    "type": "boolean"
+                },
+                "download_poster": {
+                    "type": "boolean"
+                },
+                "download_proxy": {
+                    "description": "Separate proxy for downloads (optional)",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/config.ProxyConfig"
+                        }
+                    ]
+                },
+                "download_timeout": {
+                    "description": "Timeout in seconds for HTTP downloads (default: 60)",
+                    "type": "integer"
+                },
+                "download_trailer": {
+                    "type": "boolean"
+                },
+                "fanart_format": {
+                    "type": "string"
+                },
+                "file_format": {
+                    "type": "string"
+                },
+                "folder_format": {
+                    "type": "string"
+                },
+                "group_actress": {
+                    "description": "Replace multiple actresses with \"@Group\" in templates (default: false)",
+                    "type": "boolean"
+                },
+                "max_path_length": {
+                    "type": "integer"
+                },
+                "max_title_length": {
+                    "type": "integer"
+                },
+                "move_subtitles": {
+                    "type": "boolean"
+                },
+                "move_to_folder": {
+                    "description": "Move/copy files to organized folders (default: true)",
+                    "type": "boolean"
+                },
+                "poster_format": {
+                    "type": "string"
+                },
+                "rename_file": {
+                    "description": "Rename files using file_format template (default: true)",
+                    "type": "boolean"
+                },
+                "rename_folder_in_place": {
+                    "type": "boolean"
+                },
+                "screenshot_folder": {
+                    "type": "string"
+                },
+                "screenshot_format": {
+                    "type": "string"
+                },
+                "screenshot_padding": {
+                    "type": "integer"
+                },
+                "subfolder_format": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "subtitle_extensions": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "trailer_format": {
+                    "type": "string"
+                }
+            }
+        },
+        "config.PerformanceConfig": {
+            "type": "object",
+            "properties": {
+                "buffer_size": {
+                    "description": "Channel buffer size (default: 100)",
+                    "type": "integer"
+                },
+                "max_workers": {
+                    "description": "Maximum concurrent workers (default: 5)",
+                    "type": "integer"
+                },
+                "update_interval": {
+                    "description": "UI update interval in milliseconds (default: 100)",
+                    "type": "integer"
+                },
+                "worker_timeout": {
+                    "description": "Timeout per task in seconds (default: 300)",
+                    "type": "integer"
+                }
+            }
+        },
+        "config.PriorityConfig": {
+            "type": "object",
+            "properties": {
+                "actress": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "content_id": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "cover_url": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "description": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "director": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "genre": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "id": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "label": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "maker": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "original_title": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "poster_url": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "rating": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "release_date": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "runtime": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "screenshot_url": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "series": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "title": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "trailer_url": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "config.ProxyConfig": {
+            "type": "object",
+            "properties": {
+                "default_profile": {
+                    "description": "Default profile name (for global scrapers.proxy)",
+                    "type": "string"
+                },
+                "enabled": {
+                    "description": "Enable proxy for HTTP requests",
+                    "type": "boolean"
+                },
+                "flaresolverr": {
+                    "description": "FlareSolverr for Cloudflare bypass",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/config.FlareSolverrConfig"
+                        }
+                    ]
+                },
+                "password": {
+                    "description": "Legacy direct field (rejected by validation)",
+                    "type": "string"
+                },
+                "profile": {
+                    "description": "Named profile to use (for scraper-specific overrides)",
+                    "type": "string"
+                },
+                "profiles": {
+                    "description": "Named proxy profiles (global scrapers.proxy)",
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/config.ProxyProfile"
+                    }
+                },
+                "url": {
+                    "description": "Legacy direct field (rejected by validation)",
+                    "type": "string"
+                },
+                "use_main_proxy": {
+                    "description": "Legacy option (rejected by validation)",
+                    "type": "boolean"
+                },
+                "username": {
+                    "description": "Legacy direct field (rejected by validation)",
+                    "type": "string"
+                }
+            }
+        },
+        "config.ProxyProfile": {
+            "type": "object",
+            "properties": {
+                "flaresolverr": {
+                    "$ref": "#/definitions/config.FlareSolverrConfig"
+                },
+                "password": {
+                    "type": "string"
+                },
+                "url": {
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "config.R18DevConfig": {
+            "type": "object",
+            "properties": {
+                "download_proxy": {
+                    "description": "Optional scraper-specific download proxy override",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/config.ProxyConfig"
+                        }
+                    ]
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "fake_user_agent": {
+                    "description": "Optional custom fake User-Agent (defaults to built-in browser UA)",
+                    "type": "string"
+                },
+                "language": {
+                    "description": "Language code: en, ja (default: en)",
+                    "type": "string"
+                },
+                "max_retries": {
+                    "description": "Maximum number of retry attempts for rate-limited requests",
+                    "type": "integer"
+                },
+                "proxy": {
+                    "description": "Optional scraper-specific proxy override",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/config.ProxyConfig"
+                        }
+                    ]
+                },
+                "request_delay": {
+                    "description": "Delay between requests in milliseconds (0 = no delay)",
+                    "type": "integer"
+                },
+                "respect_retry_after": {
+                    "description": "Whether to respect Retry-After header from server",
+                    "type": "boolean"
+                },
+                "use_fake_user_agent": {
+                    "description": "Use browser-like User-Agent header for this scraper",
+                    "type": "boolean"
+                }
+            }
+        },
+        "config.ScrapersConfig": {
+            "type": "object",
+            "properties": {
+                "aventertainment": {
+                    "$ref": "#/definitions/config.AVEntertainmentConfig"
+                },
+                "caribbeancom": {
+                    "$ref": "#/definitions/config.CaribbeancomConfig"
+                },
+                "dlgetchu": {
+                    "$ref": "#/definitions/config.DLGetchuConfig"
+                },
+                "dmm": {
+                    "$ref": "#/definitions/config.DMMConfig"
+                },
+                "fc2": {
+                    "$ref": "#/definitions/config.FC2Config"
+                },
+                "jav321": {
+                    "$ref": "#/definitions/config.Jav321Config"
+                },
+                "javbus": {
+                    "$ref": "#/definitions/config.JavBusConfig"
+                },
+                "javdb": {
+                    "$ref": "#/definitions/config.JavDBConfig"
+                },
+                "javlibrary": {
+                    "$ref": "#/definitions/config.JavLibraryConfig"
+                },
+                "libredmm": {
+                    "$ref": "#/definitions/config.LibreDMMConfig"
+                },
+                "mgstage": {
+                    "$ref": "#/definitions/config.MGStageConfig"
+                },
+                "priority": {
+                    "description": "Global scraper priority order",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "proxy": {
+                    "description": "Default HTTP/SOCKS5 proxy for scraper requests",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/config.ProxyConfig"
+                        }
+                    ]
+                },
+                "r18dev": {
+                    "$ref": "#/definitions/config.R18DevConfig"
+                },
+                "referer": {
+                    "description": "Referer header for CDN compatibility (default: https://www.dmm.co.jp/)",
+                    "type": "string"
+                },
+                "request_timeout_seconds": {
+                    "description": "Overall request timeout in seconds (default: 60)",
+                    "type": "integer"
+                },
+                "timeout_seconds": {
+                    "description": "HTTP client timeout in seconds (default: 30)",
+                    "type": "integer"
+                },
+                "tokyohot": {
+                    "$ref": "#/definitions/config.TokyoHotConfig"
+                },
+                "user_agent": {
+                    "type": "string"
+                }
+            }
+        },
+        "config.SecurityConfig": {
+            "type": "object",
+            "properties": {
+                "allowed_directories": {
+                    "description": "Allowed directories for scanning/browsing (empty = no allowlist restriction)",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "allowed_origins": {
+                    "description": "Allowed origins for CORS and WebSocket connections (empty = same-origin only, \"*\" = allow all)",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "denied_directories": {
+                    "description": "Denied directories (in addition to built-in system directories)",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "max_files_per_scan": {
+                    "description": "Maximum number of files to return in a scan",
+                    "type": "integer"
+                },
+                "scan_timeout_seconds": {
+                    "description": "Timeout for scan operations in seconds",
+                    "type": "integer"
+                }
+            }
+        },
+        "config.ServerConfig": {
+            "type": "object",
+            "properties": {
+                "host": {
+                    "type": "string"
+                },
+                "port": {
+                    "type": "integer"
+                }
+            }
+        },
+        "config.SystemConfig": {
+            "type": "object",
+            "properties": {
+                "umask": {
+                    "description": "Umask for file creation (e.g., \"002\" for rwxrwxr-x)\nCan be overridden with UMASK environment variable",
+                    "type": "string"
+                }
+            }
+        },
+        "config.TagDatabaseConfig": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "description": "Enable per-movie tag lookup from database",
+                    "type": "boolean"
+                }
+            }
+        },
+        "config.TokyoHotConfig": {
+            "type": "object",
+            "properties": {
+                "base_url": {
+                    "description": "Base URL for TokyoHot",
+                    "type": "string"
+                },
+                "download_proxy": {
+                    "description": "Optional scraper-specific download proxy override",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/config.ProxyConfig"
+                        }
+                    ]
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "fake_user_agent": {
+                    "description": "Optional custom fake User-Agent (defaults to built-in browser UA)",
+                    "type": "string"
+                },
+                "language": {
+                    "description": "Language code: en, ja, zh (default: en)",
+                    "type": "string"
+                },
+                "proxy": {
+                    "description": "Optional scraper-specific proxy override",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/config.ProxyConfig"
+                        }
+                    ]
+                },
+                "request_delay": {
+                    "description": "Delay between requests in milliseconds (0 = no delay)",
+                    "type": "integer"
+                },
+                "use_fake_user_agent": {
+                    "description": "Use browser-like User-Agent header for this scraper",
+                    "type": "boolean"
+                }
+            }
+        },
+        "config.TranslationConfig": {
+            "type": "object",
+            "properties": {
+                "apply_to_primary": {
+                    "description": "Replace primary movie metadata with translated text",
+                    "type": "boolean"
+                },
+                "deepl": {
+                    "description": "DeepL provider settings",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/config.DeepLTranslationConfig"
+                        }
+                    ]
+                },
+                "enabled": {
+                    "description": "Enable metadata translation after aggregation",
+                    "type": "boolean"
+                },
+                "fields": {
+                    "description": "Per-field translation controls",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/config.TranslationFieldsConfig"
+                        }
+                    ]
+                },
+                "google": {
+                    "description": "Google provider settings",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/config.GoogleTranslationConfig"
+                        }
+                    ]
+                },
+                "openai": {
+                    "description": "OpenAI/OpenAI-compatible provider settings",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/config.OpenAITranslationConfig"
+                        }
+                    ]
+                },
+                "overwrite_existing_target": {
+                    "description": "Overwrite target-language translation if already present",
+                    "type": "boolean"
+                },
+                "provider": {
+                    "description": "openai, deepl, google",
+                    "type": "string"
+                },
+                "source_language": {
+                    "description": "Source language code (e.g., en, ja, auto)",
+                    "type": "string"
+                },
+                "target_language": {
+                    "description": "Target language code (e.g., en, ja, zh)",
+                    "type": "string"
+                },
+                "timeout_seconds": {
+                    "description": "Request timeout in seconds",
+                    "type": "integer"
+                }
+            }
+        },
+        "config.TranslationFieldsConfig": {
+            "type": "object",
+            "properties": {
+                "actresses": {
+                    "type": "boolean"
+                },
+                "description": {
+                    "type": "boolean"
+                },
+                "director": {
+                    "type": "boolean"
+                },
+                "genres": {
+                    "type": "boolean"
+                },
+                "label": {
+                    "type": "boolean"
+                },
+                "maker": {
+                    "type": "boolean"
+                },
+                "original_title": {
+                    "type": "boolean"
+                },
+                "series": {
+                    "type": "boolean"
+                },
+                "title": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "models.Actress": {
             "type": "object",
             "properties": {
                 "aliases": {
@@ -277,6 +4070,10 @@
                 },
                 "created_at": {
                     "type": "string"
+                },
+                "dmm_id": {
+                    "description": "DMM actress ID for unique identification",
+                    "type": "integer"
                 },
                 "first_name": {
                     "type": "string"
@@ -298,7 +4095,7 @@
                 }
             }
         },
-        "github_com_javinizer_javinizer-go_internal_models.Genre": {
+        "models.Genre": {
             "type": "object",
             "properties": {
                 "id": {
@@ -309,26 +4106,28 @@
                 }
             }
         },
-        "github_com_javinizer_javinizer-go_internal_models.Movie": {
+        "models.Movie": {
             "type": "object",
             "properties": {
                 "actresses": {
                     "description": "Relationships",
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/github_com_javinizer_javinizer-go_internal_models.Actress"
+                        "$ref": "#/definitions/models.Actress"
                     }
-                },
-                "alternate_title": {
-                    "type": "string"
                 },
                 "content_id": {
                     "type": "string"
                 },
                 "cover_url": {
+                    "description": "Landscape/fanart image",
                     "type": "string"
                 },
                 "created_at": {
+                    "type": "string"
+                },
+                "cropped_poster_url": {
+                    "description": "URL to the cropped poster (persisted)",
                     "type": "string"
                 },
                 "description": {
@@ -343,7 +4142,7 @@
                 "genres": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/github_com_javinizer_javinizer-go_internal_models.Genre"
+                        "$ref": "#/definitions/models.Genre"
                     }
                 },
                 "id": {
@@ -360,8 +4159,19 @@
                 "original_filename": {
                     "type": "string"
                 },
-                "rating": {
-                    "$ref": "#/definitions/github_com_javinizer_javinizer-go_internal_models.Rating"
+                "original_title": {
+                    "description": "Japanese/original language title",
+                    "type": "string"
+                },
+                "poster_url": {
+                    "description": "Portrait/box art image",
+                    "type": "string"
+                },
+                "rating_score": {
+                    "type": "number"
+                },
+                "rating_votes": {
+                    "type": "integer"
                 },
                 "release_date": {
                     "type": "string"
@@ -383,6 +4193,10 @@
                     "description": "Series name",
                     "type": "string"
                 },
+                "should_crop_poster": {
+                    "description": "Whether poster needs cropping from cover",
+                    "type": "boolean"
+                },
                 "source_name": {
                     "description": "Metadata",
                     "type": "string"
@@ -400,7 +4214,7 @@
                     "description": "Translations",
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/github_com_javinizer_javinizer-go_internal_models.MovieTranslation"
+                        "$ref": "#/definitions/models.MovieTranslation"
                     }
                 },
                 "updated_at": {
@@ -408,12 +4222,9 @@
                 }
             }
         },
-        "github_com_javinizer_javinizer-go_internal_models.MovieTranslation": {
+        "models.MovieTranslation": {
             "type": "object",
             "properties": {
-                "alternate_title": {
-                    "type": "string"
-                },
                 "created_at": {
                     "type": "string"
                 },
@@ -439,6 +4250,10 @@
                 "movie_id": {
                     "type": "string"
                 },
+                "original_title": {
+                    "description": "Japanese/original language title",
+                    "type": "string"
+                },
                 "series": {
                     "type": "string"
                 },
@@ -451,17 +4266,6 @@
                 },
                 "updated_at": {
                     "type": "string"
-                }
-            }
-        },
-        "github_com_javinizer_javinizer-go_internal_models.Rating": {
-            "type": "object",
-            "properties": {
-                "score": {
-                    "type": "number"
-                },
-                "votes": {
-                    "type": "integer"
                 }
             }
         }

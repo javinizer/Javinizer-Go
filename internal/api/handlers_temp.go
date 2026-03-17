@@ -15,6 +15,13 @@ import (
 
 // serveTempPoster serves temporarily cropped posters from data/temp/posters/
 // These are created during batch scraping for preview in the review page
+// @Router /api/v1/temp/posters/{jobId}/{filename} [get]
+// @Summary Serve temporary poster image
+// @Description Serves temporarily cropped posters from batch jobs. These are ephemeral and preserved when organization fails for retry.
+// @Param jobId path string true "Job ID"
+// @Param filename path string true "Filename"
+// @Success 200 {file} binary
+// @Failure 404 {object} ErrorResponse
 func serveTempPoster() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		jobID := c.Param("jobId")
@@ -58,6 +65,12 @@ func serveTempPoster() gin.HandlerFunc {
 
 // serveCroppedPoster serves persistent cropped posters from data/posters/
 // These are stored in the database and persist across scraping sessions
+// @Router /api/v1/posters/{filename} [get]
+// @Summary Serve cropped poster image
+// @Description Serves persistent cropped posters from the database. These persist across scraping sessions.
+// @Param filename path string true "Filename"
+// @Success 200 {file} binary
+// @Failure 404 {object} ErrorResponse
 func serveCroppedPoster() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		filename := c.Param("filename")
@@ -95,6 +108,13 @@ func serveCroppedPoster() gin.HandlerFunc {
 
 // serveTempImage proxies remote images for preview UI.
 // This is used for hotlink-protected sources (e.g., JavBus) where direct browser loads may return 403.
+// @Router /api/v1/temp/image [get]
+// @Summary Proxy remote images
+// @Description Proxies remote images for preview UI, handling hotlink protection and CORS issues.
+// @Param url query string true "Image URL"
+// @Success 200 {file} binary
+// @Failure 400 {object} ErrorResponse
+// @Failure 502 {object} ErrorResponse
 func serveTempImage(deps *ServerDependencies) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		rawURL := strings.TrimSpace(c.Query("url"))

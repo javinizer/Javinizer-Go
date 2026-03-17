@@ -49,7 +49,7 @@ echo -e "${GREEN}✓ Tests passed${NC}"
 echo ""
 
 # Check 4: Build verification
-echo -e "${BLUE}[4/4] Verifying build...${NC}"
+echo -e "${BLUE}[4/5] Verifying build...${NC}"
 if ! go build -o /tmp/javinizer-test ./cmd/javinizer 2>&1; then
     echo -e "${RED}✗ Build failed${NC}"
     exit 1
@@ -58,10 +58,32 @@ rm -f /tmp/javinizer-test
 echo -e "${GREEN}✓ Build successful${NC}"
 echo ""
 
+# Check 5: Swagger documentation
+echo -e "${BLUE}[5/5] Checking Swagger documentation...${NC}"
+if ! command -v swag &> /dev/null; then
+    echo -e "${YELLOW}⚠️  swag not installed, installing...${NC}"
+    go install github.com/swaggo/swag/cmd/swag@latest
+fi
+export PATH=$PATH:$(go env GOPATH)/bin
+if ! make swagger &> /dev/null; then
+    echo -e "${RED}✗ Swagger generation failed${NC}"
+    exit 1
+fi
+if [ -n "$(git status docs/swagger/ --porcelain)" ]; then
+    echo -e "${RED}✗ Swagger documentation is out of date${NC}"
+    echo -e "${YELLOW}Run 'make swagger' and commit the changes${NC}"
+    echo ""
+    git status docs/swagger/
+    exit 1
+fi
+echo -e "${GREEN}✓ Swagger documentation up to date${NC}"
+echo ""
+
 echo -e "${GREEN}========================================${NC}"
 echo -e "${GREEN}All pre-commit checks passed!${NC}"
 echo -e "${GREEN}========================================${NC}"
 echo ""
+echo -e "${YELLOW}Tip: Run 'make swagger' if you modified handler files${NC}"
 echo -e "${YELLOW}Tip: Run 'make coverage-check' before pushing to ensure coverage threshold is met${NC}"
 
 exit 0

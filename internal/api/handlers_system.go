@@ -43,7 +43,7 @@ const defaultProxyTestURL = "https://javdb.com"
 
 // healthCheck godoc
 // @Summary Health check
-// @Description Check API health and list enabled scrapers
+// @Description Check API health status and list all enabled scrapers. Returns version information and build metadata.
 // @Tags system
 // @Produce json
 // @Success 200 {object} HealthResponse
@@ -68,10 +68,11 @@ func healthCheck(deps *ServerDependencies) gin.HandlerFunc {
 
 // getConfig godoc
 // @Summary Get configuration
-// @Description Retrieve the current server configuration
+// @Description Retrieve the current server configuration including all settings for scrapers, output, database, and API. Returns the active configuration with runtime file path.
 // @Tags system
 // @Produce json
 // @Success 200 {object} map[string]interface{}
+// @Failure 500 {object} ErrorResponse
 // @Router /api/v1/config [get]
 func getConfig(deps *ServerDependencies) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -89,10 +90,11 @@ func getConfig(deps *ServerDependencies) gin.HandlerFunc {
 
 // getAvailableScrapers godoc
 // @Summary Get available scrapers
-// @Description Get list of all available scrapers with their display names and enabled status
+// @Description Get list of all available scrapers with their display names, enabled status, and configuration options. Scrapers are ordered by priority from config.
 // @Tags system
 // @Produce json
 // @Success 200 {object} AvailableScrapersResponse
+// @Failure 500 {object} ErrorResponse
 // @Router /api/v1/scrapers [get]
 func getAvailableScrapers(deps *ServerDependencies) gin.HandlerFunc {
 	return func(c *gin.Context) {

@@ -188,9 +188,11 @@ func getMovie(deps *ServerDependencies) gin.HandlerFunc {
 
 // listMovies godoc
 // @Summary List cached movies
-// @Description Get a list of cached movies from the database
+// @Description Get a paginated list of all movies cached in the database. Supports pagination via limit and offset query parameters. Returns movie count and basic metadata.
 // @Tags movies
 // @Produce json
+// @Param limit query int false "Max number of movies to return" example:"20"
+// @Param offset query int false "Number of movies to skip" example:"0"
 // @Success 200 {object} MoviesResponse
 // @Failure 500 {object} ErrorResponse
 // @Router /api/v1/movies [get]

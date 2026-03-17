@@ -125,10 +125,11 @@ func scanDirectory(deps *ServerDependencies) gin.HandlerFunc {
 
 // getCurrentWorkingDirectory godoc
 // @Summary Get current working directory
-// @Description Returns the server's default browse directory (first allowed directory if configured, otherwise current working directory)
+// @Description Returns the server's default browse directory. For Docker deployments, returns the first allowed directory (typically /media). For manual deployments, returns current working directory if no allowed directories configured.
 // @Tags web
 // @Produce json
 // @Success 200 {object} map[string]string
+// @Failure 500 {object} ErrorResponse
 // @Router /api/v1/cwd [get]
 func getCurrentWorkingDirectory(deps *ServerDependencies) gin.HandlerFunc {
 	return func(c *gin.Context) {
