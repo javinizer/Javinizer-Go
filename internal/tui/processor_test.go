@@ -153,6 +153,77 @@ func TestSetOptions(t *testing.T) {
 	}
 }
 
+// TestSetOptionsFromConfig verifies SetOptionsFromConfig applies config values
+func TestSetOptionsFromConfig(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name             string
+		nfoEnabled       bool
+		expectedScrape   bool
+		expectedDownload bool
+		expectedOrganize bool
+		expectedNFO      bool
+	}{
+		{
+			name:             "nfo enabled in config",
+			nfoEnabled:       true,
+			expectedScrape:   true,
+			expectedDownload: true,
+			expectedOrganize: true,
+			expectedNFO:      true,
+		},
+		{
+			name:             "nfo disabled in config",
+			nfoEnabled:       false,
+			expectedScrape:   true,
+			expectedDownload: true,
+			expectedOrganize: true,
+			expectedNFO:      false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &config.Config{
+				Metadata: config.MetadataConfig{
+					NFO: config.NFOConfig{
+						Enabled: tt.nfoEnabled,
+					},
+				},
+			}
+
+			pc := &ProcessingCoordinator{}
+			pc.SetOptionsFromConfig(cfg)
+
+			assert.Equal(t, tt.expectedScrape, pc.scrapeEnabled)
+			assert.Equal(t, tt.expectedDownload, pc.downloadEnabled)
+			assert.Equal(t, tt.expectedOrganize, pc.organizeEnabled)
+			assert.Equal(t, tt.expectedNFO, pc.nfoEnabled)
+		})
+	}
+}
+
+// TestSetOptionsFromConfig_NilConfig verifies nil config is handled safely
+func TestSetOptionsFromConfig_NilConfig(t *testing.T) {
+	t.Parallel()
+
+	// Create coordinator with specific default values
+	pc := NewProcessingCoordinator(
+		nil, nil, nil, nil, nil, nil, nil, nil,
+		"/dest", true,
+	)
+
+	// Should not panic with nil config
+	pc.SetOptionsFromConfig(nil)
+
+	// State should remain unchanged (nil config doesn't modify defaults)
+	assert.True(t, pc.scrapeEnabled)
+	assert.True(t, pc.downloadEnabled)
+	assert.True(t, pc.organizeEnabled)
+	assert.True(t, pc.nfoEnabled)
+}
+
 // TestSetDryRun verifies dry-run flag is set correctly
 func TestSetDryRun(t *testing.T) {
 	t.Parallel()

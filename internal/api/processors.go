@@ -503,23 +503,28 @@ func processUpdateMode(job *worker.BatchJob, cfg *config.Config, db *database.DB
 		// Note: partSuffix already computed above for NFO template lookup
 
 		// Generate NFO in source directory (with merged data if applicable)
-		nfoErr := nfoGen.Generate(movieToWrite, sourceDir, partSuffix, filePath)
-		if nfoErr != nil {
-			logging.Warnf("Failed to generate NFO for %s: %v", movieToWrite.ID, nfoErr)
-			hasErrors = true
-			errorMsg = fmt.Sprintf("NFO generation failed: %v", nfoErr)
-		} else {
-			if mergeStats != nil {
-				logging.Infof("Generated merged NFO in: %s (%d fields from scraper, %d from existing NFO)",
-					sourceDir, mergeStats.FromScraper, mergeStats.FromNFO)
+		// Only generate NFO if enabled in config
+		if cfg.Metadata.NFO.Enabled {
+			nfoErr := nfoGen.Generate(movieToWrite, sourceDir, partSuffix, filePath)
+			if nfoErr != nil {
+				logging.Warnf("Failed to generate NFO for %s: %v", movieToWrite.ID, nfoErr)
+				hasErrors = true
+				errorMsg = fmt.Sprintf("NFO generation failed: %v", nfoErr)
 			} else {
-				logging.Infof("Generated NFO in: %s", sourceDir)
+				if mergeStats != nil {
+					logging.Infof("Generated merged NFO in: %s (%d fields from scraper, %d from existing NFO)",
+						sourceDir, mergeStats.FromScraper, mergeStats.FromNFO)
+				} else {
+					logging.Infof("Generated NFO in: %s", sourceDir)
+				}
 			}
-		}
 
-		// Log NFO generation to history
-		if logErr := historyLogger.LogNFO(movie.ID, nfoPath, nfoErr); logErr != nil {
-			logging.Warnf("Failed to log NFO history for %s: %v", movie.ID, logErr)
+			// Log NFO generation to history
+			if logErr := historyLogger.LogNFO(movie.ID, nfoPath, nfoErr); logErr != nil {
+				logging.Warnf("Failed to log NFO history for %s: %v", movie.ID, logErr)
+			}
+		} else {
+			logging.Infof("NFO generation disabled in config, skipping for %s", movie.ID)
 		}
 
 		// Download all media files to source directory
@@ -709,7 +714,7 @@ func processOrganizeJob(job *worker.BatchJob, mat *matcher.Matcher, destination 
 		}
 
 		// Generate NFO file
-		if result.Moved {
+		if result.Moved && cfg.Metadata.NFO.Enabled {
 			// Determine part suffix for multi-part files (only if per_file is enabled)
 			partSuffix := ""
 			if cfg.Metadata.NFO.PerFile && match.IsMultiPart {
@@ -732,6 +737,8 @@ func processOrganizeJob(job *worker.BatchJob, mat *matcher.Matcher, destination 
 			if logErr := historyLogger.LogNFO(movie.ID, nfoPath, nfoErr); logErr != nil {
 				logging.Warnf("Failed to log NFO history for %s: %v", movie.ID, logErr)
 			}
+		} else if result.Moved && !cfg.Metadata.NFO.Enabled {
+			logging.Debugf("NFO generation disabled in config, skipping for %s", movie.ID)
 		}
 
 		organized++

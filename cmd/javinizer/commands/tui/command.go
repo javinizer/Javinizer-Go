@@ -291,6 +291,7 @@ func run(cmd *cobra.Command, args []string) error {
 		moveFiles,
 	)
 	processor.SetConfig(cfg)
+	processor.SetOptionsFromConfig(cfg) // Apply metadata.nfo.enabled from config
 	processor.SetLinkMode(linkMode)
 	processor.SetUpdateMode(updateMode)
 	processor.SetMergeStrategies(scalarStrategy, arrayStrategy)

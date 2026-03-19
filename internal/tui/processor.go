@@ -92,6 +92,18 @@ func (pc *ProcessingCoordinator) SetOptions(scrape, download, organize, nfo bool
 	pc.nfoEnabled = nfo
 }
 
+// SetOptionsFromConfig configures which operations to perform based on the application config
+// This should be called after SetConfig to apply metadata.nfo.enabled setting
+func (pc *ProcessingCoordinator) SetOptionsFromConfig(cfg *config.Config) {
+	if cfg == nil {
+		return
+	}
+	pc.scrapeEnabled = true   // Always enabled by default
+	pc.downloadEnabled = true // Always enabled by default
+	pc.organizeEnabled = true // Always enabled by default
+	pc.nfoEnabled = cfg.Metadata.NFO.Enabled
+}
+
 // SetDryRun sets whether to run in dry-run mode (preview only)
 func (pc *ProcessingCoordinator) SetDryRun(dryRun bool) {
 	pc.dryRun = dryRun
