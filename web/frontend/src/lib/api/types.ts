@@ -287,12 +287,12 @@ export interface OrganizePreviewResponse {
 	file_name: string;
 	full_path: string;
 	video_files?: string[]; // For multi-part files: all video file paths
-	nfo_path: string; // Single NFO (backward compatibility)
+	nfo_path?: string; // Single NFO (backward compatibility) - empty if NFO disabled
 	nfo_paths?: string[]; // For per_file=true multi-part: all NFO file paths
-	poster_path: string;
-	fanart_path: string;
-	extrafanart_path: string;
-	screenshots: string[];
+	poster_path?: string; // Empty if cover/poster download disabled
+	fanart_path?: string; // Empty if fanart download disabled
+	extrafanart_path?: string; // Empty if extrafanart download disabled
+	screenshots?: string[]; // Empty if extrafanart download disabled
 }
 
 export interface ScraperOption {

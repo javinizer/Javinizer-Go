@@ -1589,18 +1589,25 @@
 												<!-- Single video file -->
 												<div class="break-all" style="margin-left: {fileIndent + 4}px">🎬 {preview.file_name}.mp4</div>
 											{/if}
-											{#if preview.nfo_paths && preview.nfo_paths.length > 0}
-												<!-- Multi-part NFO files (per_file enabled) -->
-												{#each preview.nfo_paths as nfoFile, index}
-													{@const fileName = nfoFile.split(/[\\/]/).pop()}
-													<div class="break-all" style="margin-left: {fileIndent + 4}px">📄 {fileName}</div>
-												{/each}
-											{:else}
-												<!-- Single NFO file -->
-												<div class="break-all" style="margin-left: {fileIndent + 4}px">📄 {preview.file_name}.nfo</div>
+											{#if preview.nfo_path || (preview.nfo_paths && preview.nfo_paths.length > 0)}
+												<!-- NFO files (only show if NFO is enabled) -->
+												{#if preview.nfo_paths && preview.nfo_paths.length > 0}
+													<!-- Multi-part NFO files (per_file enabled) -->
+													{#each preview.nfo_paths as nfoFile, index}
+														{@const fileName = nfoFile.split(/[\\/]/).pop()}
+														<div class="break-all" style="margin-left: {fileIndent + 4}px">📄 {fileName}</div>
+													{/each}
+												{:else}
+													<!-- Single NFO file -->
+													<div class="break-all" style="margin-left: {fileIndent + 4}px">📄 {preview.nfo_path.split(/[\\/]/).pop()}</div>
+												{/if}
 											{/if}
-											<div class="break-all" style="margin-left: {fileIndent + 4}px">🖼️ {preview.file_name}-poster.jpg</div>
-											<div class="break-all" style="margin-left: {fileIndent + 4}px">🖼️ {preview.file_name}-fanart.jpg</div>
+											{#if preview.poster_path}
+												<div class="break-all" style="margin-left: {fileIndent + 4}px">🖼️ {preview.poster_path.split(/[\\/]/).pop()}</div>
+											{/if}
+											{#if preview.fanart_path}
+												<div class="break-all" style="margin-left: {fileIndent + 4}px">🖼️ {preview.fanart_path.split(/[\\/]/).pop()}</div>
+											{/if}
 											{#if preview.screenshots && preview.screenshots.length > 0}
 												<div class="text-muted-foreground break-all" style="margin-left: {fileIndent + 4}px">📁 extrafanart/</div>
 												{#each (showAllPreviewScreenshots ? preview.screenshots : preview.screenshots.slice(0, 3)) as screenshot}
