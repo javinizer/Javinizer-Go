@@ -180,6 +180,8 @@ func TestExtractGenres(t *testing.T) {
 }
 
 // TestExtractScreenshots tests screenshot extraction with table-driven tests
+// Note: regex pattern is: "(/data/item_img/[^\"']+\.(?:jpg|jpeg|webp))"\s+class="highslide"
+// The URL must be in quotes directly followed by class="highslide"
 func TestExtractScreenshots(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -189,13 +191,13 @@ func TestExtractScreenshots(t *testing.T) {
 	}{
 		{
 			name:     "Single screenshot",
-			html:     `<a href="/data/item_img/demo/s1.jpg" class="highslide"></a>`,
+			html:     `"/data/item_img/demo/s1.jpg" class="highslide"`,
 			baseURL:  "https://dl.getchu.com",
 			expected: []string{"https://dl.getchu.com/data/item_img/demo/s1.jpg"},
 		},
 		{
 			name:     "Multiple screenshots",
-			html:     `<a href="/data/item_img/demo/s1.jpg" class="highslide"></a><a href="/data/item_img/demo/s2.jpg" class="highslide"></a>`,
+			html:     `"/data/item_img/demo/s1.jpg" class="highslide" "/data/item_img/demo/s2.jpg" class="highslide"`,
 			baseURL:  "https://dl.getchu.com",
 			expected: []string{"https://dl.getchu.com/data/item_img/demo/s1.jpg", "https://dl.getchu.com/data/item_img/demo/s2.jpg"},
 		},
@@ -207,7 +209,7 @@ func TestExtractScreenshots(t *testing.T) {
 		},
 		{
 			name:     "Non-highslide links",
-			html:     `<a href="/data/item_img/demo/s1.jpg"></a>`,
+			html:     `"/data/item_img/demo/s1.jpg"`,
 			baseURL:  "https://dl.getchu.com",
 			expected: []string{},
 		},
@@ -216,6 +218,12 @@ func TestExtractScreenshots(t *testing.T) {
 			html:     ``,
 			baseURL:  "https://dl.getchu.com",
 			expected: []string{},
+		},
+		{
+			name:     "WebP format",
+			html:     `"/data/item_img/demo/s1.webp" class="highslide"`,
+			baseURL:  "https://dl.getchu.com",
+			expected: []string{"https://dl.getchu.com/data/item_img/demo/s1.webp"},
 		},
 	}
 
