@@ -462,7 +462,7 @@ func TestDeleteActress(t *testing.T) {
 
 			// Pre-populate with one actress for delete existing test
 			if tt.setupRepo != nil && tt.actressID == "1" {
-				mockRepo.Create(&models.Actress{
+				_ = mockRepo.Create(&models.Actress{
 					DMMID:     100,
 					FirstName: "Test",
 					LastName:  "Actress",
