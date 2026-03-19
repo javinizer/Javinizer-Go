@@ -160,3 +160,69 @@ func TestProcessOrganizeJob_InvalidLinkModeMarksFailed(t *testing.T) {
 	status := job.GetStatus()
 	assert.Equal(t, worker.JobStatusFailed, status.Status)
 }
+
+func TestProcessUpdateMode_SuccessfulResults(t *testing.T) {
+	initTestWebSocket(t)
+
+	cfg := config.DefaultConfig()
+	deps := createTestDeps(t, cfg, "")
+	job := deps.JobQueue.CreateJob([]string{"/tmp/test.mp4"})
+
+	// Simulate a successful scrape with movie data
+	movie := &models.Movie{
+		ID:       "IPX-123",
+		Title:    "Test Movie IPX-123",
+		CoverURL: "https://example.com/cover.jpg",
+	}
+	job.UpdateFileResult("/tmp/test.mp4", &worker.FileResult{
+		FilePath: "/tmp/test.mp4",
+		Status:   worker.JobStatusCompleted,
+		Data:     movie,
+	})
+
+	cfg.Output.DownloadCover = false
+	cfg.Output.DownloadPoster = false
+
+	processUpdateMode(job, cfg, deps.DB, deps.Registry, context.Background())
+
+	status := job.GetStatus()
+	assert.Equal(t, worker.JobStatusCompleted, status.Status)
+	assert.Equal(t, 100.0, status.Progress)
+}
+
+func TestProcessUpdateMode_MixedResults(t *testing.T) {
+	initTestWebSocket(t)
+
+	cfg := config.DefaultConfig()
+	deps := createTestDeps(t, cfg, "")
+	job := deps.JobQueue.CreateJob([]string{"/tmp/success.mp4", "/tmp/fail.mp4"})
+
+	// First file successful
+	movie := &models.Movie{
+		ID:       "IPX-123",
+		Title:    "Test Movie IPX-123",
+		CoverURL: "https://example.com/cover.jpg",
+	}
+	job.UpdateFileResult("/tmp/success.mp4", &worker.FileResult{
+		FilePath: "/tmp/success.mp4",
+		Status:   worker.JobStatusCompleted,
+		Data:     movie,
+	})
+
+	// Second file failed
+	job.UpdateFileResult("/tmp/fail.mp4", &worker.FileResult{
+		FilePath: "/tmp/fail.mp4",
+		Status:   worker.JobStatusFailed,
+		Error:    "scrape failed",
+	})
+
+	cfg.Output.DownloadCover = false
+	cfg.Output.DownloadPoster = false
+
+	processUpdateMode(job, cfg, deps.DB, deps.Registry, context.Background())
+
+	status := job.GetStatus()
+	assert.Equal(t, worker.JobStatusCompleted, status.Status)
+	// Should complete with partial success
+	assert.Equal(t, 100.0, status.Progress)
+}

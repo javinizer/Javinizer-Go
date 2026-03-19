@@ -448,6 +448,67 @@ func TestMovieRepository_Upsert(t *testing.T) {
 		require.NoError(t, err)
 		assert.Len(t, found.Translations, 2)
 	})
+
+	t.Run("Upsert with ContentID derived from ID", func(t *testing.T) {
+		movie := &models.Movie{
+			ID:        "TEST-derive-001",
+			ContentID: "",
+			Title:     "Test Derive ContentID",
+		}
+
+		err := repo.Upsert(movie)
+		require.NoError(t, err)
+
+		found, err := repo.FindByID("TEST-derive-001")
+		require.NoError(t, err)
+		assert.NotEmpty(t, found.ContentID)
+		assert.Equal(t, "testderive001", found.ContentID)
+	})
+
+	t.Run("Upsert updates actress data when gaps filled", func(t *testing.T) {
+		// First: Create movie with minimal actress data
+		movie1 := createTestMovie("IPX-UPD-001")
+		movie1.Actresses = []models.Actress{
+			{DMMID: 66666, JapaneseName: "Updated Actress"},
+		}
+		err := repo.Upsert(movie1)
+		require.NoError(t, err)
+
+		// Second: Add more data to same actress
+		movie2 := createTestMovie("IPX-UPD-002")
+		movie2.Actresses = []models.Actress{
+			{DMMID: 66666, JapaneseName: "Updated Actress", FirstName: "Updated", LastName: "Actress2"},
+		}
+		err = repo.Upsert(movie2)
+		require.NoError(t, err)
+
+		// Verify actress data was updated
+		found, err := repo.FindByID("IPX-UPD-002")
+		require.NoError(t, err)
+		assert.Len(t, found.Actresses, 1)
+		assert.Equal(t, "Updated", found.Actresses[0].FirstName)
+		assert.Equal(t, "Actress2", found.Actresses[0].LastName)
+	})
+
+	t.Run("Upsert with duplicate ContentID race condition", func(t *testing.T) {
+		// This tests the race condition handling in Upsert
+		// When another transaction inserts the same record
+		movie1 := createTestMovie("IPX-RACE-001")
+		movie1.ContentID = "race-condition-test"
+		err := repo.Create(movie1)
+		require.NoError(t, err)
+
+		// Try to upsert the same movie
+		movie2 := createTestMovie("IPX-RACE-001")
+		movie2.ContentID = "race-condition-test"
+		movie2.Title = "Updated After Race"
+		err = repo.Upsert(movie2)
+		require.NoError(t, err)
+
+		found, err := repo.FindByID("IPX-RACE-001")
+		require.NoError(t, err)
+		assert.Equal(t, "Updated After Race", found.Title)
+	})
 }
 
 func TestMovieRepository_EnsureGenresExist(t *testing.T) {
@@ -507,6 +568,39 @@ func TestMovieRepository_EnsureGenresExist(t *testing.T) {
 			}
 			assert.True(t, foundGenre, "SharedGenreTest should exist in database")
 		}
+	})
+
+	t.Run("Actress creation race condition handling", func(t *testing.T) {
+		// This tests the race condition path where the actress is created
+		// by another transaction after our Initial check but before we insert
+		movie1 := createTestMovie("IPX-RACE-002")
+		movie1.Actresses = []models.Actress{
+			{DMMID: 77777, JapaneseName: "Race Condition Actress", FirstName: "Race", LastName: "Condition"},
+		}
+		err := repo.Upsert(movie1)
+		require.NoError(t, err)
+
+		// Verify the actress was created and is accessible
+		found, err := repo.FindByID("IPX-RACE-002")
+		require.NoError(t, err)
+		assert.Len(t, found.Actresses, 1)
+		assert.Equal(t, "Race Condition Actress", found.Actresses[0].JapaneseName)
+	})
+
+	t.Run("Actress with all fallback strategies", func(t *testing.T) {
+		// Test fallback to FirstName + LastName when neither DMMID nor JapaneseName available
+		movie := createTestMovie("IPX-FALLBACK-001")
+		movie.Actresses = []models.Actress{
+			{FirstName: "Fallback", LastName: "Test"},
+		}
+		err := repo.Upsert(movie)
+		require.NoError(t, err)
+
+		found, err := repo.FindByID("IPX-FALLBACK-001")
+		require.NoError(t, err)
+		assert.Len(t, found.Actresses, 1)
+		assert.Equal(t, "Fallback", found.Actresses[0].FirstName)
+		assert.Equal(t, "Test", found.Actresses[0].LastName)
 	})
 }
 

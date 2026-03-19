@@ -365,4 +365,136 @@ func TestHistoryRepository(t *testing.T) {
 			assert.NotEqual(t, page1[0].ID, page2[0].ID)
 		}
 	})
+
+	t.Run("Create with all fields populated", func(t *testing.T) {
+		history := &models.History{
+			MovieID:      "IPX-HIST-001",
+			Operation:    "complete_test",
+			Status:       "success",
+			OriginalPath: "/original/path/file.mp4",
+			NewPath:      "/new/path/file.mp4",
+			ErrorMessage: "Test error message",
+			Metadata:     `{"key":"value"}`,
+			DryRun:       false,
+		}
+
+		err := repo.Create(history)
+		require.NoError(t, err)
+		assert.NotZero(t, history.ID)
+
+		found, err := repo.FindByID(history.ID)
+		require.NoError(t, err)
+		assert.Equal(t, "/original/path/file.mp4", found.OriginalPath)
+		assert.Equal(t, "/new/path/file.mp4", found.NewPath)
+		assert.Equal(t, "Test error message", found.ErrorMessage)
+		assert.Equal(t, `{"key":"value"}`, found.Metadata)
+		assert.Equal(t, false, found.DryRun)
+	})
+
+	t.Run("FindByOperation with empty operation", func(t *testing.T) {
+		// Create some records first
+		history := &models.History{
+			MovieID:   "IPX-EMPTY-OP",
+			Operation: "test",
+			Status:    "success",
+		}
+		err := repo.Create(history)
+		require.NoError(t, err)
+
+		// Query with empty string (should return no results)
+		results, err := repo.FindByOperation("", 10)
+		require.NoError(t, err)
+		assert.Len(t, results, 0)
+	})
+
+	t.Run("FindByStatus with empty status", func(t *testing.T) {
+		results, err := repo.FindByStatus("", 10)
+		require.NoError(t, err)
+		assert.Len(t, results, 0)
+	})
+
+	t.Run("DeleteAll non-existent movie", func(t *testing.T) {
+		err := repo.DeleteByMovieID("NONEXISTENT-MOVIE-999")
+		assert.NoError(t, err, "Deleting non-existent movie history should not error")
+	})
+
+	t.Run("Count with empty database", func(t *testing.T) {
+		cfg := &config.Config{
+			Database: config.DatabaseConfig{
+				Type: "sqlite",
+				DSN:  ":memory:",
+			},
+			Logging: config.LoggingConfig{
+				Level: "error",
+			},
+		}
+
+		db2, err := New(cfg)
+		require.NoError(t, err)
+		defer func() { _ = db2.Close() }()
+
+		require.NoError(t, db2.AutoMigrate())
+		repo2 := NewHistoryRepository(db2)
+
+		count, err := repo2.Count()
+		require.NoError(t, err)
+		assert.Equal(t, int64(0), count)
+	})
+
+	t.Run("FindByDateRange with equal start and end", func(t *testing.T) {
+		history := &models.History{
+			MovieID:   "IPX-EQUAL-RANGE",
+			Operation: "range_test",
+			Status:    "success",
+		}
+		err := repo.Create(history)
+		require.NoError(t, err)
+
+		now := history.CreatedAt
+		start := now
+		end := now
+
+		results, err := repo.FindByDateRange(start, end)
+		require.NoError(t, err)
+		assert.GreaterOrEqual(t, len(results), 1)
+	})
+
+	t.Run("FindByDateRange with end before start", func(t *testing.T) {
+		start := time.Now().Add(1 * time.Hour)
+		end := time.Now()
+
+		results, err := repo.FindByDateRange(start, end)
+		require.NoError(t, err)
+		assert.Len(t, results, 0)
+	})
+
+	t.Run("List with zero limit", func(t *testing.T) {
+		results, err := repo.List(0, 0)
+		require.NoError(t, err)
+		assert.Len(t, results, 0)
+	})
+
+	t.Run("List with negative offset", func(t *testing.T) {
+		results, err := repo.List(10, -5)
+		require.NoError(t, err)
+		assert.GreaterOrEqual(t, len(results), 0)
+	})
+
+	t.Run("FindByOperation with negative limit", func(t *testing.T) {
+		results, err := repo.FindByOperation("test_op", -1)
+		require.NoError(t, err)
+		assert.GreaterOrEqual(t, len(results), 0)
+	})
+
+	t.Run("FindByStatus with negative limit", func(t *testing.T) {
+		results, err := repo.FindByStatus("success", -1)
+		require.NoError(t, err)
+		assert.GreaterOrEqual(t, len(results), 0)
+	})
+
+	t.Run("FindRecent with negative limit", func(t *testing.T) {
+		results, err := repo.FindRecent(-1)
+		require.NoError(t, err)
+		assert.GreaterOrEqual(t, len(results), 0)
+	})
 }

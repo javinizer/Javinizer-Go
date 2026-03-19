@@ -238,4 +238,20 @@ func TestMovieTranslationRepository(t *testing.T) {
 		assert.Equal(t, "Spanish Series", found.Series)
 		assert.Equal(t, "test_scraper", found.SourceName)
 	})
+
+	t.Run("FindAllByMovie with nonexistent movie", func(t *testing.T) {
+		results, err := repo.FindAllByMovie("NONEXISTENT-MOVIE-999")
+		require.NoError(t, err)
+		assert.Len(t, results, 0)
+	})
+
+	t.Run("FindByMovieAndLanguage with nonexistent movie", func(t *testing.T) {
+		_, err := repo.FindByMovieAndLanguage("NONEXISTENT-MOVIE-999", "en")
+		assert.Error(t, err)
+	})
+
+	t.Run("Delete nonexistent translation", func(t *testing.T) {
+		err := repo.Delete("NONEXISTENT-MOVIE", "xx")
+		assert.NoError(t, err, "Deleting non-existent translation should not error")
+	})
 }

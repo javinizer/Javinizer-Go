@@ -269,4 +269,72 @@ func TestGenreReplacementRepository(t *testing.T) {
 		require.NoError(t, err)
 		assert.Len(t, replMap, 0)
 	})
+
+	t.Run("Create and List and Update", func(t *testing.T) {
+		// Create replacement
+		replacement := &models.GenreReplacement{
+			Original:    "OriginalGenre",
+			Replacement: "ReplacedGenre",
+		}
+		err := repo.Create(replacement)
+		require.NoError(t, err)
+
+		// List and verify we can update
+		replacements, err := repo.List()
+		require.NoError(t, err)
+		assert.GreaterOrEqual(t, len(replacements), 1)
+
+		// Update the first replacement using its ID
+		for i := range replacements {
+			if replacements[i].Original == "OriginalGenre" {
+				replacements[i].Replacement = "Updated After List"
+				err = repo.Upsert(&replacements[i])
+				require.NoError(t, err)
+				break
+			}
+		}
+
+		// Verify update persisted
+		found, err := repo.FindByOriginal("OriginalGenre")
+		require.NoError(t, err)
+		assert.Equal(t, "Updated After List", found.Replacement)
+	})
+
+	t.Run("GetReplacementMap preserves all entries", func(t *testing.T) {
+		// Create a fresh database to avoid test pollution
+		cfg := &config.Config{
+			Database: config.DatabaseConfig{
+				Type: "sqlite",
+				DSN:  ":memory:",
+			},
+			Logging: config.LoggingConfig{
+				Level: "error",
+			},
+		}
+
+		db2, err := New(cfg)
+		require.NoError(t, err)
+		defer func() { _ = db2.Close() }()
+
+		require.NoError(t, db2.AutoMigrate())
+		repo2 := NewGenreReplacementRepository(db2)
+
+		// Create multiple replacements
+		replacements := []*models.GenreReplacement{
+			{Original: "MapTest1", Replacement: "Replaced1"},
+			{Original: "MapTest2", Replacement: "Replaced2"},
+		}
+
+		for _, r := range replacements {
+			err := repo2.Create(r)
+			require.NoError(t, err)
+		}
+
+		// Get map
+		replMap, err := repo2.GetReplacementMap()
+		require.NoError(t, err)
+		assert.Equal(t, 2, len(replMap))
+		assert.Equal(t, "Replaced1", replMap["MapTest1"])
+		assert.Equal(t, "Replaced2", replMap["MapTest2"])
+	})
 }

@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"net/http"
 	"net/http/httptest"
 	"strconv"
 	"testing"
@@ -408,6 +409,83 @@ func TestActressCRUDHandlers(t *testing.T) {
 	assert.Equal(t, 404, getAfterDeleteW.Code)
 }
 
+func TestDeleteActress(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	tests := []struct {
+		name           string
+		actressID      string
+		setupRepo      func(*database.ActressRepository)
+		expectedStatus int
+		expectedBody   string
+	}{
+		{
+			name:           "delete existing actress",
+			actressID:      "1",
+			setupRepo:      func(repo *database.ActressRepository) {},
+			expectedStatus: 200,
+			expectedBody:   "actress deleted",
+		},
+		{
+			name:           "delete non-existent actress",
+			actressID:      "999",
+			setupRepo:      func(repo *database.ActressRepository) {},
+			expectedStatus: 404,
+			expectedBody:   "actress not found",
+		},
+		{
+			name:           "invalid actress ID - letters",
+			actressID:      "abc",
+			setupRepo:      func(repo *database.ActressRepository) {},
+			expectedStatus: 400,
+			expectedBody:   "invalid actress id",
+		},
+		{
+			name:           "invalid actress ID - zero",
+			actressID:      "0",
+			setupRepo:      func(repo *database.ActressRepository) {},
+			expectedStatus: 400,
+			expectedBody:   "invalid actress id",
+		},
+		{
+			name:           "invalid actress ID - negative",
+			actressID:      "-1",
+			setupRepo:      func(repo *database.ActressRepository) {},
+			expectedStatus: 400,
+			expectedBody:   "invalid actress id",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockRepo := newMockActressRepo()
+
+			// Pre-populate with one actress for delete existing test
+			if tt.setupRepo != nil && tt.actressID == "1" {
+				mockRepo.Create(&models.Actress{
+					DMMID:     100,
+					FirstName: "Test",
+					LastName:  "Actress",
+				})
+			}
+
+			router := gin.New()
+			router.DELETE("/actresses/:id", deleteActress(mockRepo))
+
+			req := httptest.NewRequest(http.MethodDelete, "/actresses/"+tt.actressID, nil)
+			w := httptest.NewRecorder()
+
+			router.ServeHTTP(w, req)
+
+			assert.Equal(t, tt.expectedStatus, w.Code)
+
+			if tt.expectedBody != "" {
+				assert.Contains(t, w.Body.String(), tt.expectedBody)
+			}
+		})
+	}
+}
+
 func TestCreateActress_Validation(t *testing.T) {
 	mockRepo := newMockActressRepo()
 
@@ -457,4 +535,38 @@ func TestListActresses_Sorting(t *testing.T) {
 
 func toString(id uint) string {
 	return strconv.FormatUint(uint64(id), 10)
+}
+
+func TestParseActressID(t *testing.T) {
+	tests := []struct {
+		name       string
+		param      string
+		expectedID uint
+		expectedOK bool
+	}{
+		{"valid ID", "123", 123, true},
+		{"valid ID zero-padded", "007", 7, true},
+		{"valid ID one", "1", 1, true},
+		{"invalid ID - letters", "abc", 0, false},
+		{"invalid ID - empty", "", 0, false},
+		{"invalid ID - negative", "-1", 0, false},
+		{"invalid ID - special chars", "123!", 0, false},
+		{"invalid ID - float", "12.3", 0, false},
+		{"invalid ID - zero", "0", 0, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Params = append(c.Params, gin.Param{
+				Key:   "id",
+				Value: tt.param,
+			})
+
+			id, ok := parseActressID(c)
+
+			assert.Equal(t, tt.expectedOK, ok, "ok should match expected")
+			assert.Equal(t, tt.expectedID, id, "id should match expected")
+		})
+	}
 }

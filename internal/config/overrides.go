@@ -70,6 +70,29 @@ func ApplyEnvironmentOverrides(cfg *Config) {
 		cfg.Metadata.Translation.Google.APIKey = strings.TrimSpace(googleKey)
 	}
 
+	// Translation provider settings (separate from credentials)
+	if provider := os.Getenv("METADATA_TRANSLATION_PROVIDER"); provider != "" {
+		cfg.Metadata.Translation.Provider = strings.ToLower(strings.TrimSpace(provider))
+	}
+	if srcLang := os.Getenv("METADATA_TRANSLATION_SOURCE_LANGUAGE"); srcLang != "" {
+		cfg.Metadata.Translation.SourceLanguage = strings.TrimSpace(srcLang)
+	}
+	if targetLang := os.Getenv("METADATA_TRANSLATION_TARGET_LANGUAGE"); targetLang != "" {
+		cfg.Metadata.Translation.TargetLanguage = strings.TrimSpace(targetLang)
+	}
+	if timeout := os.Getenv("METADATA_TRANSLATION_TIMEOUT_SECONDS"); timeout != "" {
+		cfg.Metadata.Translation.TimeoutSeconds = 60
+	}
+	if applyPrimary := os.Getenv("METADATA_TRANSLATION_APPLY_TO_PRIMARY"); applyPrimary != "" {
+		cfg.Metadata.Translation.ApplyToPrimary = applyPrimary == "true"
+	}
+	if overwrite := os.Getenv("METADATA_TRANSLATION_OVERWRITE_EXISTING_TARGET"); overwrite != "" {
+		cfg.Metadata.Translation.OverwriteExistingTarget = overwrite == "true"
+	}
+	if provider := os.Getenv("TRANSLATION_PROVIDER"); provider != "" {
+		cfg.Metadata.Translation.Provider = strings.ToLower(strings.TrimSpace(provider))
+	}
+
 	// Docker auto-detection
 	if len(cfg.API.Security.AllowedDirectories) == 0 {
 		if _, err := os.Stat("/media"); err == nil {

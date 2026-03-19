@@ -28,11 +28,9 @@ help:
 	@echo "  make bench              - Run benchmarks"
 	@echo ""
 	@echo "Coverage:"
-	@echo "  make coverage           - Generate strict coverage report for CI/release (coverage.out)"
-	@echo "  make coverage-fast      - Generate faster local coverage report (coverage.out)"
-	@echo "  make coverage-html      - Open coverage report in browser"
-	@echo "  make coverage-func      - Display Go statement coverage by function (80.6%)"
-	@echo "  make coverage-func-line - Display Codecov line coverage by function (75.5%)"
+	@echo "  make coverage           - Run tests and display line coverage summary"
+	@echo "  make coverage-html      - Generate HTML coverage report (coverage.html)"
+	@echo "  make coverage-pkg       - Display per-package coverage breakdown"
 	@echo "  make coverage-check     - Enforce 75%% Codecov-compatible line coverage"
 	@echo ""
 	@echo "Code Quality:"
@@ -140,32 +138,29 @@ test-verbose:
 bench:
 	go test -bench=. -benchmem ./...
 
-# Generate strict coverage report using go-acc (used by CI/release)
-# Uses go run to execute go-acc from project dependencies (no global install needed)
-# Version is pinned to match go.mod for reproducible builds
+# Generate coverage report using Go's built-in coverage
+# Uses -coverpkg to aggregate coverage across all packages in a single run
 # Excludes: mocks (generated), tui (interactive UI), docs (generated API docs), testutil (test helpers), coveragecheck (coverage utility), coverage (coverage utility), web (frontend)
+# Output: coverage.out (compatible with go tool cover and Codecov)
+# Shows: per-package test output, then displays clean line coverage summary
 coverage:
-	@rm -f coverage.out
-	@go run github.com/ory/go-acc@v0.2.8 --covermode count --ignore mocks,tui,docs,testutil,coveragecheck,coverage,web -o coverage.out ./... -- -count=1
-
-# Generate faster local coverage report (package-level, short mode)
-# This is optimized for iteration speed and is not used for CI threshold enforcement.
-coverage-fast:
+	@echo "Running tests and generating coverage report..."
 	@rm -f coverage.out
 	@pkgs=$$(go list ./... | grep -Ev '/(mocks|tui|docs|testutil)(/|$$)'); \
-	go test -short -covermode=count -coverprofile=coverage.out -count=1 $$pkgs
+	go test -covermode=atomic -coverprofile=coverage.out -coverpkg=$$(echo $$pkgs | tr ' ' ',') -count=1 $$pkgs 2>&1 | grep -E "^ok|^github"
+	@echo ""
+	@go run ./cmd/coveragecheck --metric line --profile coverage.out 2>/dev/null
 
-# Open coverage report in browser
+# Generate HTML coverage report from coverage.out
 coverage-html: coverage
-	go tool cover -html=coverage.out
+	@go tool cover -html=coverage.out -o coverage.html
+	@echo "Coverage HTML report: coverage.html"
+	@echo "Open in browser: open coverage.html"
 
-# Display coverage function-by-function breakdown (statement coverage)
-coverage-func: coverage
-	go tool cover -func=coverage.out
-
-# Display Codecov-compatible line coverage by function
-coverage-func-line: coverage
-	go run ./cmd/coveragecheck --metric line --profile coverage.out
+# Display per-package coverage breakdown
+coverage-pkg: coverage
+	@echo "Per-package coverage breakdown:"
+	@./scripts/coverage_by_pkg.sh
 
 # Check if coverage meets minimum threshold using Codecov-compatible line coverage.
 coverage-check: coverage

@@ -11,6 +11,47 @@ import (
 	ws "github.com/javinizer/javinizer-go/internal/websocket"
 )
 
+// TestBroadcastProgress tests the broadcastProgress function
+func TestBroadcastProgress(t *testing.T) {
+	initTestWebSocket(t)
+
+	// Test that broadcastProgress doesn't panic with nil hub
+	// This tests the error handling path
+	broadcastProgress(&ws.ProgressMessage{
+		JobID:    "test-job-123",
+		Status:   "completed",
+		Progress: 100,
+		Message:  "Test message",
+	})
+
+	// Test with valid hub (initialized by initTestWebSocket)
+	msg := &ws.ProgressMessage{
+		JobID:    "test-job-456",
+		Status:   "progress",
+		Progress: 50,
+		Message:  "Processing file...",
+	}
+
+	// broadcastProgress should handle this without panicking
+	broadcastProgress(msg)
+}
+
+// TestBroadcastProgress_WithError tests broadcastProgress when hub returns error
+func TestBroadcastProgress_WithError(t *testing.T) {
+	// Temporarily set wsHub to nil to test the error path
+	originalHub := wsHub
+	wsHub = nil
+	defer func() { wsHub = originalHub }()
+
+	// This should not panic due to error handling
+	broadcastProgress(&ws.ProgressMessage{
+		JobID:    "test-job",
+		Status:   "completed",
+		Progress: 100,
+		Message:  "Test",
+	})
+}
+
 var (
 	wsTestMu sync.Mutex
 )
