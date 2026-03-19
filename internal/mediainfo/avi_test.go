@@ -386,7 +386,7 @@ func TestParseHdrlList(t *testing.T) {
 
 	info := &VideoInfo{}
 	// Skip LIST header and list type
-	f.Seek(12, 0) // Skip "LIST" + size + "hdrl"
+	_, _ = f.Seek(12, 0) // Skip "LIST" + size + "hdrl"
 
 	err = parseHdrlList(f, info, 12, 80)
 	require.NoError(t, err)
@@ -419,7 +419,7 @@ func TestParseHdrlList_InvalidChunkSize(t *testing.T) {
 	defer func() { _ = f.Close() }()
 
 	info := &VideoInfo{}
-	f.Seek(8, 0)
+	_, _ = f.Seek(8, 0)
 
 	// Should handle gracefully without crashing
 	err = parseHdrlList(f, info, 8, 100)
@@ -485,7 +485,7 @@ func TestParseStrlList(t *testing.T) {
 	defer func() { _ = f.Close() }()
 
 	// Skip LIST header and list type
-	f.Seek(12, 0)
+	_, _ = f.Seek(12, 0)
 
 	stream, err := parseStrlList(f, 12, 110)
 	require.NoError(t, err)
@@ -548,7 +548,7 @@ func TestParseStrlList_Audio(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = f.Close() }()
 
-	f.Seek(12, 0) // Skip LIST header and list type
+	_, _ = f.Seek(12, 0) // Skip LIST header and list type
 
 	stream, err := parseStrlList(f, 12, 70)
 	require.NoError(t, err)
@@ -580,7 +580,7 @@ func TestParseStrlList_InvalidChunkSize(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = f.Close() }()
 
-	f.Seek(8, 0)
+	_, _ = f.Seek(8, 0)
 
 	// Should handle gracefully
 	stream, err := parseStrlList(f, 8, 100)
