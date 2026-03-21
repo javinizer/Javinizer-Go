@@ -1597,10 +1597,10 @@
 														{@const fileName = nfoFile.split(/[\\/]/).pop()}
 														<div class="break-all" style="margin-left: {fileIndent + 4}px">📄 {fileName}</div>
 													{/each}
-												{:else}
-													<!-- Single NFO file -->
-													<div class="break-all" style="margin-left: {fileIndent + 4}px">📄 {preview.nfo_path.split(/[\\/]/).pop()}</div>
-												{/if}
+													{:else if preview.nfo_path}
+														<!-- Single NFO file -->
+														<div class="break-all" style="margin-left: {fileIndent + 4}px">📄 {preview.nfo_path.split(/[\\/]/).pop()}</div>
+													{/if}
 											{/if}
 											{#if preview.poster_path}
 												<div class="break-all" style="margin-left: {fileIndent + 4}px">🖼️ {preview.poster_path.split(/[\\/]/).pop()}</div>
