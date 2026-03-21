@@ -48,12 +48,6 @@
 	}
 
 	.route-content {
-		will-change: transform, opacity;
-	}
-
-	@media (prefers-reduced-motion: reduce) {
-		.route-content {
-			will-change: auto;
-		}
+		will-change: auto;
 	}
 </style>

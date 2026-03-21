@@ -65,26 +65,26 @@
 			</p>
 		</div>
 
-		<div class="space-y-3">
-			<label class="flex items-center gap-2">
-				<input type="checkbox" bind:checked={config.file_matching.regex_enabled} class="rounded" />
-				<span>Enable Custom Regex Pattern</span>
-			</label>
-		</div>
-
-		{#if config.file_matching.regex_enabled}
-			<div>
-				<label class="block text-sm font-medium mb-2" for="regex-pattern">Regex Pattern</label>
-				<input
-					id="regex-pattern"
-					type="text"
-					bind:value={config.file_matching.regex_pattern}
-					class="{inputClass} font-mono text-sm"
-				/>
-				<p class="text-xs text-muted-foreground mt-1">
-					Custom regex pattern to extract movie IDs from filenames
-				</p>
+			<div class="space-y-3">
+				<label class="flex items-center gap-2">
+					<input type="checkbox" bind:checked={config.file_matching.regex_enabled} class="rounded" />
+					<span>Enable Custom Regex Pattern</span>
+				</label>
 			</div>
-		{/if}
-	</div>
-</SettingsSection>
+
+			<fieldset disabled={!config.file_matching.regex_enabled} class={`${!config.file_matching.regex_enabled ? 'opacity-60' : ''}`}>
+				<div>
+					<label class="block text-sm font-medium mb-2" for="regex-pattern">Regex Pattern</label>
+					<input
+						id="regex-pattern"
+						type="text"
+						bind:value={config.file_matching.regex_pattern}
+						class="{inputClass} font-mono text-sm"
+					/>
+					<p class="text-xs text-muted-foreground mt-1">
+						Custom regex pattern to extract movie IDs from filenames
+					</p>
+				</div>
+			</fieldset>
+		</div>
+	</SettingsSection>

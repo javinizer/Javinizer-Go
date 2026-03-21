@@ -255,7 +255,7 @@
 
 		<div class="grid grid-cols-1 xl:grid-cols-5 gap-6" in:fade|local={{ duration: 240 }}>
 			<div class="xl:col-span-2">
-				<div in:fly|local={{ x: -14, duration: 260, easing: cubicOut }}>
+				<div in:fade|local={{ duration: 220 }}>
 					<Card class="p-5 space-y-4 sticky top-20">
 						<h2 class="text-lg font-semibold">{editingId ? 'Edit Actress' : 'Create Actress'}</h2>
 
@@ -350,7 +350,7 @@
 				<div in:fly|local={{ x: 14, duration: 260, easing: cubicOut }}>
 					<Card class="p-4">
 						<div class="flex flex-wrap items-center gap-2">
-						<div class="flex-1 min-w-[220px]">
+						<div class="flex-1 min-w-55">
 							<label class="sr-only" for="search">Search actresses</label>
 							<div class="relative">
 								<Search class="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
