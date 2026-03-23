@@ -197,6 +197,12 @@ Main CI checks include:
 - Linting/static analysis
 - Build and Docker verification
 
+### Internal API Structure
+
+For `internal/api` file organization conventions and size guardrails, see:
+
+- [Internal API Organization](./15-internal-api-organization.md)
+
 ## Contributing
 
 ### Workflow

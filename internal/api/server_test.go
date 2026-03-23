@@ -1,6 +1,7 @@
 package api
 
 import (
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -89,6 +90,139 @@ func TestNewServer(t *testing.T) {
 	for _, route := range expectedRoutes {
 		assert.True(t, routePaths[route], "Route %s should be registered", route)
 	}
+}
+
+func TestNewServer_RouteParity(t *testing.T) {
+	cfg := &config.Config{
+		Logging: config.LoggingConfig{
+			Level: "info",
+		},
+		Matching: config.MatchingConfig{
+			RegexEnabled: false,
+		},
+	}
+
+	registry := models.NewScraperRegistry()
+	mat, err := matcher.NewMatcher(&cfg.Matching)
+	require.NoError(t, err)
+
+	deps := &ServerDependencies{
+		ConfigFile:  "/tmp/config.yaml",
+		Registry:    registry,
+		Aggregator:  aggregator.New(cfg),
+		MovieRepo:   newMockMovieRepo(),
+		ActressRepo: newMockActressRepo(),
+		Matcher:     mat,
+		JobQueue:    worker.NewJobQueue(),
+	}
+	deps.SetConfig(cfg)
+
+	router := NewServer(deps)
+	defer cleanupServerHub(t, deps)
+
+	actual := make([]string, 0, len(router.Routes()))
+	for _, route := range router.Routes() {
+		actual = append(actual, route.Method+" "+route.Path)
+	}
+
+	expected := []string{
+		"DELETE /api/v1/actresses/:id",
+		"DELETE /api/v1/history",
+		"DELETE /api/v1/history/:id",
+		"GET /api/v1/actresses",
+		"GET /api/v1/actresses/:id",
+		"GET /api/v1/actresses/search",
+		"GET /api/v1/auth/status",
+		"GET /api/v1/batch/:id",
+		"GET /api/v1/config",
+		"GET /api/v1/cwd",
+		"GET /api/v1/history",
+		"GET /api/v1/history/stats",
+		"GET /api/v1/movies",
+		"GET /api/v1/movies/:id",
+		"GET /api/v1/posters/:filename",
+		"GET /api/v1/scrapers",
+		"GET /api/v1/temp/image",
+		"GET /api/v1/temp/posters/:jobId/:filename",
+		"GET /api/v1/version",
+		"GET /docs",
+		"GET /docs/openapi.json",
+		"GET /health",
+		"GET /swagger/*any",
+		"GET /ws/progress",
+		"HEAD /docs/openapi.json",
+		"PATCH /api/v1/batch/:id/movies/:movieId",
+		"POST /api/v1/actresses",
+		"POST /api/v1/actresses/merge",
+		"POST /api/v1/actresses/merge/preview",
+		"POST /api/v1/auth/login",
+		"POST /api/v1/auth/logout",
+		"POST /api/v1/auth/setup",
+		"POST /api/v1/batch/:id/cancel",
+		"POST /api/v1/batch/:id/movies/:movieId/exclude",
+		"POST /api/v1/batch/:id/movies/:movieId/poster-crop",
+		"POST /api/v1/batch/:id/movies/:movieId/preview",
+		"POST /api/v1/batch/:id/movies/:movieId/rescrape",
+		"POST /api/v1/batch/:id/organize",
+		"POST /api/v1/batch/:id/update",
+		"POST /api/v1/batch/scrape",
+		"POST /api/v1/browse",
+		"POST /api/v1/browse/autocomplete",
+		"POST /api/v1/movies/:id/compare-nfo",
+		"POST /api/v1/movies/:id/rescrape",
+		"POST /api/v1/proxy/test",
+		"POST /api/v1/scan",
+		"POST /api/v1/scrape",
+		"POST /api/v1/translation/models",
+		"POST /api/v1/version/check",
+		"PUT /api/v1/actresses/:id",
+		"PUT /api/v1/config",
+	}
+
+	optionalStaticRoutes := map[string]struct{}{
+		"GET /_app/*filepath":  {},
+		"HEAD /_app/*filepath": {},
+		"GET /robots.txt":      {},
+		"GET /favicon.ico":     {},
+	}
+
+	expectedSet := make(map[string]struct{}, len(expected))
+	for _, route := range expected {
+		expectedSet[route] = struct{}{}
+	}
+
+	actualSet := make(map[string]struct{}, len(actual))
+	for _, route := range actual {
+		actualSet[route] = struct{}{}
+	}
+
+	for _, route := range expected {
+		_, ok := actualSet[route]
+		assert.True(t, ok, "missing expected route: %s", route)
+	}
+
+	for _, route := range actual {
+		_, expectedRoute := expectedSet[route]
+		_, optionalRoute := optionalStaticRoutes[route]
+		if !expectedRoute && !optionalRoute {
+			assert.Failf(t, "unexpected route", "route %s was registered but is not in expected parity list", route)
+		}
+	}
+}
+
+func TestNewServer_PublicAndProtectedSmoke(t *testing.T) {
+	router, deps := setupAuthenticatedTestServer(t)
+	defer cleanupServerHub(t, deps)
+
+	publicReq := httptest.NewRequest(http.MethodGet, "/health", nil)
+	publicW := httptest.NewRecorder()
+	router.ServeHTTP(publicW, publicReq)
+	assert.Equal(t, http.StatusOK, publicW.Code)
+
+	protectedReq := httptest.NewRequest(http.MethodGet, "/api/v1/config", nil)
+	protectedW := httptest.NewRecorder()
+	router.ServeHTTP(protectedW, protectedReq)
+	assert.Equal(t, http.StatusServiceUnavailable, protectedW.Code)
 }
 
 func TestNewServer_CORSHeaders(t *testing.T) {

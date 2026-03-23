@@ -3,7 +3,6 @@ package api
 import (
 	"context"
 	"fmt"
-	"io/fs"
 	"net"
 	"net/http"
 	"net/url"
@@ -23,9 +22,6 @@ import (
 	"github.com/javinizer/javinizer-go/internal/models"
 	ws "github.com/javinizer/javinizer-go/internal/websocket"
 	"github.com/javinizer/javinizer-go/internal/worker"
-	webui "github.com/javinizer/javinizer-go/web"
-	swaggerFiles "github.com/swaggo/files"
-	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
 var (
@@ -295,232 +291,20 @@ func NewServer(deps *ServerDependencies) *gin.Engine {
 		},
 	}
 
-	// Setup Gin router
 	if deps.GetConfig().Logging.Level != "debug" {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
 	router := gin.Default()
+	webAssets := loadWebUIAssets()
 
-	var (
-		webDistFS      fs.FS
-		webUIAvailable bool
-		webStaticFS    http.FileSystem
-		webIndexHTML   []byte
-	)
-
-	distFS, distErr := webui.DistFS()
-	if distErr != nil {
-		logging.Warnf("Web UI assets unavailable: %v", distErr)
-	} else {
-		webDistFS = distFS
-		webStaticFS = http.FS(webDistFS)
-		if _, err := fs.Stat(webDistFS, "index.html"); err == nil {
-			indexBytes, readErr := fs.ReadFile(webDistFS, "index.html")
-			if readErr != nil {
-				logging.Warnf("Failed to read embedded Web UI index.html: %v", readErr)
-			} else {
-				webIndexHTML = indexBytes
-				webUIAvailable = true
-			}
-		} else {
-			logging.Warnf("Web UI index.html not found in embedded assets: %v", err)
-		}
-	}
-
-	// Enable CORS for web UI with dynamic origin validation
-	// Read allowedOrigins from deps.GetConfig() each time to respect config reloads
-	router.Use(func(c *gin.Context) {
-		origin := c.Request.Header.Get("Origin")
-
-		// Read current allowed origins from config (respects config reloads)
-		allowedOrigins := deps.GetConfig().API.Security.AllowedOrigins
-
-		// Handle CORS based on configuration
-		if len(allowedOrigins) == 0 {
-			// Empty config → allow same-origin only
-			if isSameOrigin(origin, c.Request) {
-				c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
-				c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
-				c.Writer.Header().Add("Vary", "Origin")
-			}
-		} else {
-			// Check for exact origin match only
-			// Note: Wildcard "*" is NOT supported for security reasons
-			if isOriginAllowed(origin, allowedOrigins) {
-				// Specific origin allowed
-				c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
-				c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
-				c.Writer.Header().Add("Vary", "Origin")
-			}
-		}
-
-		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-
-		// Allow specific headers - whitelist approach for security
-		// Only allow headers that are known to be safe and necessary
-		allowedHeaders := []string{
-			"Content-Type",
-			"Authorization",
-			"Accept",
-			"Origin",
-			"X-Requested-With",
-		}
-		c.Writer.Header().Set("Access-Control-Allow-Headers", strings.Join(allowedHeaders, ", "))
-
-		if c.Request.Method == "OPTIONS" {
-			c.AbortWithStatus(204)
-			return
-		}
-		c.Next()
-	})
-
-	// Serve OpenAPI spec directly for Scalar
-	router.StaticFile("/docs/openapi.json", resolveSwaggerPath())
-
-	// Scalar API documentation (modern, beautiful UI)
-	router.GET("/docs", serveScalarDocs)
-
-	// Also provide traditional Swagger UI as fallback
-	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
-
-	// Health check endpoint
-	router.GET("/health", healthCheck(deps))
-
-	// WebSocket endpoint for progress updates
-	router.GET("/ws/progress", requireAuthenticated(deps), handleWebSocket(wsHub))
-
-	// API v1 routes (define BEFORE static files to ensure API takes precedence)
-	v1 := router.Group("/api/v1")
-	{
-		// Authentication endpoints (must remain public for first-run setup/login).
-		v1.GET("/auth/status", getAuthStatus(deps))
-		v1.POST("/auth/setup", setupAuth(deps))
-		v1.POST("/auth/login", loginAuth(deps))
-		v1.POST("/auth/logout", logoutAuth(deps))
-
-		protected := v1.Group("")
-		protected.Use(requireAuthenticated(deps))
-		{
-			// Movie endpoints
-			protected.POST("/scrape", scrapeMovie(deps))
-			protected.GET("/movies/:id", getMovie(deps))
-			protected.GET("/movies", listMovies(deps))
-			protected.POST("/movies/:id/rescrape", rescrapeMovie(deps))
-			protected.POST("/movies/:id/compare-nfo", compareNFO(deps))
-
-			// Actress endpoints
-			protected.GET("/actresses", listActresses(deps.ActressRepo))
-			protected.GET("/actresses/:id", getActress(deps.ActressRepo))
-			protected.POST("/actresses", createActress(deps.ActressRepo))
-			protected.PUT("/actresses/:id", updateActress(deps.ActressRepo))
-			protected.DELETE("/actresses/:id", deleteActress(deps.ActressRepo))
-			protected.GET("/actresses/search", searchActresses(deps.ActressRepo))
-			protected.POST("/actresses/merge/preview", previewActressMerge(deps.ActressRepo))
-			protected.POST("/actresses/merge", mergeActresses(deps.ActressRepo))
-
-			// System endpoints
-			protected.GET("/config", getConfig(deps))
-			protected.PUT("/config", updateConfig(deps))
-			protected.GET("/scrapers", getAvailableScrapers(deps))
-			protected.POST("/proxy/test", testProxy(deps))
-			protected.POST("/translation/models", getTranslationModels(deps))
-
-			// Version endpoints
-			protected.GET("/version", versionStatus(deps))
-			protected.POST("/version/check", versionCheck(deps))
-
-			// File endpoints
-			protected.GET("/cwd", getCurrentWorkingDirectory(deps))
-			protected.POST("/scan", scanDirectory(deps))
-			protected.POST("/browse", browseDirectory(deps))
-			protected.POST("/browse/autocomplete", autocompletePath(deps))
-
-			// Batch endpoints
-			protected.POST("/batch/scrape", batchScrape(deps))
-			protected.GET("/batch/:id", getBatchJob(deps))
-			protected.POST("/batch/:id/cancel", cancelBatchJob(deps))
-			protected.PATCH("/batch/:id/movies/:movieId", updateBatchMovie(deps))
-			protected.POST("/batch/:id/movies/:movieId/poster-crop", updateBatchMoviePosterCrop(deps))
-			protected.POST("/batch/:id/movies/:movieId/exclude", excludeBatchMovie(deps))
-			protected.POST("/batch/:id/movies/:movieId/preview", previewOrganize(deps))
-			protected.POST("/batch/:id/movies/:movieId/rescrape", rescrapeBatchMovie(deps))
-			protected.POST("/batch/:id/organize", organizeJob(deps))
-			protected.POST("/batch/:id/update", updateBatchJob(deps))
-			// Temp resource endpoints (for review page preview)
-			protected.GET("/temp/posters/:jobId/:filename", serveTempPoster())
-			protected.GET("/temp/image", serveTempImage(deps))
-			// Persistent resource endpoints (for cropped posters stored in database)
-			protected.GET("/posters/:filename", serveCroppedPoster())
-
-			// History endpoints
-			protected.GET("/history", getHistory(deps.HistoryRepo))
-			protected.GET("/history/stats", getHistoryStats(deps.HistoryRepo))
-			protected.DELETE("/history/:id", deleteHistory(deps.HistoryRepo))
-			protected.DELETE("/history", deleteHistoryBulk(deps.HistoryRepo))
-		}
-	}
-
-	// Serve frontend static files from embedded web bundle.
-	// Define AFTER API routes so API takes precedence.
-	if webUIAvailable {
-		if appFS, err := fs.Sub(webDistFS, "_app"); err == nil {
-			router.StaticFS("/_app", http.FS(appFS))
-		} else {
-			logging.Warnf("Web UI _app assets unavailable: %v", err)
-		}
-
-		if _, err := fs.Stat(webDistFS, "favicon.ico"); err == nil {
-			router.GET("/favicon.ico", func(c *gin.Context) {
-				c.FileFromFS("favicon.ico", webStaticFS)
-			})
-		}
-
-		if _, err := fs.Stat(webDistFS, "robots.txt"); err == nil {
-			router.GET("/robots.txt", func(c *gin.Context) {
-				c.FileFromFS("robots.txt", webStaticFS)
-			})
-		}
-	}
-
-	// Fallback: serve index.html for browser SPA routing only
-	// API requests to non-existent endpoints should return proper 404 JSON
-	router.NoRoute(func(c *gin.Context) {
-		// Log unmatched routes for debugging
-		logging.Debugf("NoRoute hit: %s %s (Accept: %s)",
-			c.Request.Method,
-			c.Request.URL.Path,
-			c.Request.Header.Get("Accept"))
-
-		// Handle requests that accept HTML (browser traffic)
-		method := c.Request.Method
-		if webUIAvailable && acceptsHTML(c) {
-			// HEAD requests should not return a body per HTTP semantics
-			if method == http.MethodHead {
-				c.Status(http.StatusNoContent)
-				return
-			}
-			// Serve SPA for GET requests
-			if method == http.MethodGet {
-				c.Data(http.StatusOK, "text/html; charset=utf-8", webIndexHTML)
-				return
-			}
-		}
-
-		// Return proper 404 JSON for API requests
-		c.JSON(http.StatusNotFound, gin.H{
-			"error":   "Not Found",
-			"message": "The requested resource does not exist",
-			"path":    c.Request.URL.Path,
-			"method":  c.Request.Method,
-		})
-	})
-
-	// Print all registered routes for debugging
-	logging.Debugf("Registered routes:")
-	for _, route := range router.Routes() {
-		logging.Debugf("  %s %s", route.Method, route.Path)
-	}
+	registerCORSMiddleware(router, deps)
+	registerDocumentationRoutes(router)
+	registerCoreRoutes(router, deps)
+	registerAPIV1Routes(router, deps)
+	registerStaticWebRoutes(router, webAssets)
+	registerNoRouteHandler(router, webAssets)
+	logRegisteredRoutes(router)
 
 	return router
 }
