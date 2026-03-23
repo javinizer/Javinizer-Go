@@ -162,7 +162,7 @@
 	function startEdit(actress: Actress) {
 		editingId = actress.id ?? null;
 		form = {
-			dmm_id: actress.dmm_id?.toString() ?? '',
+			dmm_id: actress.dmm_id && actress.dmm_id > 0 ? actress.dmm_id.toString() : '',
 			first_name: actress.first_name ?? '',
 			last_name: actress.last_name ?? '',
 			japanese_name: actress.japanese_name ?? '',
@@ -486,6 +486,7 @@
 								placeholder="e.g. 1092662"
 								class="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
 							/>
+							<p class="mt-1 text-xs text-muted-foreground">Optional. Leave blank if unknown.</p>
 						</div>
 
 						<div class="grid grid-cols-2 gap-3">
