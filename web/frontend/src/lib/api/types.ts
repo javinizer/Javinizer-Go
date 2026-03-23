@@ -258,6 +258,17 @@ export interface ErrorResponse {
 	errors?: string[];
 }
 
+export interface AuthStatusResponse {
+	initialized: boolean;
+	authenticated: boolean;
+	username?: string;
+}
+
+export interface AuthCredentialsRequest {
+	username: string;
+	password: string;
+}
+
 export interface HealthResponse {
 	status: string;
 	scrapers: string[];

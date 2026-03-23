@@ -448,7 +448,7 @@ The default configuration binds to `0.0.0.0:8080` (all interfaces). For producti
    ports:
      - "127.0.0.1:8080:8080"
    ```
-3. **Add authentication** (currently not built-in)
+3. **Complete first-run authentication setup** in Web UI (built-in single-user auth)
 
 ---
 

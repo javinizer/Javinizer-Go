@@ -50,6 +50,7 @@ type ServerDependencies struct {
 	HistoryRepo *database.HistoryRepository
 	Matcher     *matcher.Matcher
 	JobQueue    *worker.JobQueue
+	Auth        *AuthManager
 	wsCancel    context.CancelFunc // Cancel function for WebSocket hub context
 }
 
@@ -387,65 +388,75 @@ func NewServer(deps *ServerDependencies) *gin.Engine {
 	router.GET("/health", healthCheck(deps))
 
 	// WebSocket endpoint for progress updates
-	router.GET("/ws/progress", handleWebSocket(wsHub))
+	router.GET("/ws/progress", requireAuthenticated(deps), handleWebSocket(wsHub))
 
 	// API v1 routes (define BEFORE static files to ensure API takes precedence)
 	v1 := router.Group("/api/v1")
 	{
-		// Movie endpoints
-		v1.POST("/scrape", scrapeMovie(deps))
-		v1.GET("/movies/:id", getMovie(deps))
-		v1.GET("/movies", listMovies(deps))
-		v1.POST("/movies/:id/rescrape", rescrapeMovie(deps))
-		v1.POST("/movies/:id/compare-nfo", compareNFO(deps))
+		// Authentication endpoints (must remain public for first-run setup/login).
+		v1.GET("/auth/status", getAuthStatus(deps))
+		v1.POST("/auth/setup", setupAuth(deps))
+		v1.POST("/auth/login", loginAuth(deps))
+		v1.POST("/auth/logout", logoutAuth(deps))
 
-		// Actress endpoints
-		v1.GET("/actresses", listActresses(deps.ActressRepo))
-		v1.GET("/actresses/:id", getActress(deps.ActressRepo))
-		v1.POST("/actresses", createActress(deps.ActressRepo))
-		v1.PUT("/actresses/:id", updateActress(deps.ActressRepo))
-		v1.DELETE("/actresses/:id", deleteActress(deps.ActressRepo))
-		v1.GET("/actresses/search", searchActresses(deps.ActressRepo))
+		protected := v1.Group("")
+		protected.Use(requireAuthenticated(deps))
+		{
+			// Movie endpoints
+			protected.POST("/scrape", scrapeMovie(deps))
+			protected.GET("/movies/:id", getMovie(deps))
+			protected.GET("/movies", listMovies(deps))
+			protected.POST("/movies/:id/rescrape", rescrapeMovie(deps))
+			protected.POST("/movies/:id/compare-nfo", compareNFO(deps))
 
-		// System endpoints
-		v1.GET("/config", getConfig(deps))
-		v1.PUT("/config", updateConfig(deps))
-		v1.GET("/scrapers", getAvailableScrapers(deps))
-		v1.POST("/proxy/test", testProxy(deps))
-		v1.POST("/translation/models", getTranslationModels(deps))
+			// Actress endpoints
+			protected.GET("/actresses", listActresses(deps.ActressRepo))
+			protected.GET("/actresses/:id", getActress(deps.ActressRepo))
+			protected.POST("/actresses", createActress(deps.ActressRepo))
+			protected.PUT("/actresses/:id", updateActress(deps.ActressRepo))
+			protected.DELETE("/actresses/:id", deleteActress(deps.ActressRepo))
+			protected.GET("/actresses/search", searchActresses(deps.ActressRepo))
 
-		// Version endpoints
-		v1.GET("/version", versionStatus(deps))
-		v1.POST("/version/check", versionCheck(deps))
+			// System endpoints
+			protected.GET("/config", getConfig(deps))
+			protected.PUT("/config", updateConfig(deps))
+			protected.GET("/scrapers", getAvailableScrapers(deps))
+			protected.POST("/proxy/test", testProxy(deps))
+			protected.POST("/translation/models", getTranslationModels(deps))
 
-		// File endpoints
-		v1.GET("/cwd", getCurrentWorkingDirectory(deps))
-		v1.POST("/scan", scanDirectory(deps))
-		v1.POST("/browse", browseDirectory(deps))
-		v1.POST("/browse/autocomplete", autocompletePath(deps))
+			// Version endpoints
+			protected.GET("/version", versionStatus(deps))
+			protected.POST("/version/check", versionCheck(deps))
 
-		// Batch endpoints
-		v1.POST("/batch/scrape", batchScrape(deps))
-		v1.GET("/batch/:id", getBatchJob(deps))
-		v1.POST("/batch/:id/cancel", cancelBatchJob(deps))
-		v1.PATCH("/batch/:id/movies/:movieId", updateBatchMovie(deps))
-		v1.POST("/batch/:id/movies/:movieId/poster-crop", updateBatchMoviePosterCrop(deps))
-		v1.POST("/batch/:id/movies/:movieId/exclude", excludeBatchMovie(deps))
-		v1.POST("/batch/:id/movies/:movieId/preview", previewOrganize(deps))
-		v1.POST("/batch/:id/movies/:movieId/rescrape", rescrapeBatchMovie(deps))
-		v1.POST("/batch/:id/organize", organizeJob(deps))
-		v1.POST("/batch/:id/update", updateBatchJob(deps))
-		// Temp resource endpoints (for review page preview)
-		v1.GET("/temp/posters/:jobId/:filename", serveTempPoster())
-		v1.GET("/temp/image", serveTempImage(deps))
-		// Persistent resource endpoints (for cropped posters stored in database)
-		v1.GET("/posters/:filename", serveCroppedPoster())
+			// File endpoints
+			protected.GET("/cwd", getCurrentWorkingDirectory(deps))
+			protected.POST("/scan", scanDirectory(deps))
+			protected.POST("/browse", browseDirectory(deps))
+			protected.POST("/browse/autocomplete", autocompletePath(deps))
 
-		// History endpoints
-		v1.GET("/history", getHistory(deps.HistoryRepo))
-		v1.GET("/history/stats", getHistoryStats(deps.HistoryRepo))
-		v1.DELETE("/history/:id", deleteHistory(deps.HistoryRepo))
-		v1.DELETE("/history", deleteHistoryBulk(deps.HistoryRepo))
+			// Batch endpoints
+			protected.POST("/batch/scrape", batchScrape(deps))
+			protected.GET("/batch/:id", getBatchJob(deps))
+			protected.POST("/batch/:id/cancel", cancelBatchJob(deps))
+			protected.PATCH("/batch/:id/movies/:movieId", updateBatchMovie(deps))
+			protected.POST("/batch/:id/movies/:movieId/poster-crop", updateBatchMoviePosterCrop(deps))
+			protected.POST("/batch/:id/movies/:movieId/exclude", excludeBatchMovie(deps))
+			protected.POST("/batch/:id/movies/:movieId/preview", previewOrganize(deps))
+			protected.POST("/batch/:id/movies/:movieId/rescrape", rescrapeBatchMovie(deps))
+			protected.POST("/batch/:id/organize", organizeJob(deps))
+			protected.POST("/batch/:id/update", updateBatchJob(deps))
+			// Temp resource endpoints (for review page preview)
+			protected.GET("/temp/posters/:jobId/:filename", serveTempPoster())
+			protected.GET("/temp/image", serveTempImage(deps))
+			// Persistent resource endpoints (for cropped posters stored in database)
+			protected.GET("/posters/:filename", serveCroppedPoster())
+
+			// History endpoints
+			protected.GET("/history", getHistory(deps.HistoryRepo))
+			protected.GET("/history/stats", getHistoryStats(deps.HistoryRepo))
+			protected.DELETE("/history/:id", deleteHistory(deps.HistoryRepo))
+			protected.DELETE("/history", deleteHistoryBulk(deps.HistoryRepo))
+		}
 	}
 
 	// Serve frontend static files from embedded web bundle.

@@ -238,6 +238,12 @@ javinizer web --host 0.0.0.0 --port 8081
 - `GET /docs` - Scalar API docs UI
 - `GET /swagger/index.html` - Swagger UI
 
+**Authentication (built-in):**
+- On first startup, open Web UI and create default username/password.
+- Credentials are stored in `auth.credentials.json` next to your `config.yaml`.
+- API and WebSocket endpoints require a session cookie after setup.
+- To reset password: stop server, delete `auth.credentials.json`, restart, and run setup again.
+
 ## Web UI
 
 The web application provides a modern interface for managing your JAV library.

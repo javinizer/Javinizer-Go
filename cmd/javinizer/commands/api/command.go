@@ -79,6 +79,12 @@ func Run(cmd *cobra.Command, configFile string, hostFlag string, portFlag int) (
 
 	logging.Infof("Loaded configuration from %s", configFile)
 
+	// Initialize single-user authentication manager (credentials file next to config).
+	authManager, err := api.NewAuthManager(configFile, api.DefaultSessionTTL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize authentication: %w", err)
+	}
+
 	// Ensure data directory exists
 	dataDir := filepath.Dir(cfg.Database.DSN)
 	if err := os.MkdirAll(dataDir, 0777); err != nil {
@@ -149,6 +155,7 @@ func Run(cmd *cobra.Command, configFile string, hostFlag string, portFlag int) (
 		HistoryRepo: historyRepo,
 		Matcher:     mat,
 		JobQueue:    jobQueue,
+		Auth:        authManager,
 	}
 	// Initialize atomic config pointer
 	apiDeps.SetConfig(cfg)

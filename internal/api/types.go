@@ -14,6 +14,19 @@ type HealthResponse struct {
 	BuildDate string   `json:"build_date" example:"2026-02-23T00:00:00Z"`
 }
 
+// AuthStatusResponse represents authentication state for first-run/login gating.
+type AuthStatusResponse struct {
+	Initialized   bool   `json:"initialized" example:"true"`
+	Authenticated bool   `json:"authenticated" example:"false"`
+	Username      string `json:"username,omitempty" example:"admin"`
+}
+
+// AuthCredentialsRequest represents username/password login/setup payload.
+type AuthCredentialsRequest struct {
+	Username string `json:"username" binding:"required" example:"admin"`
+	Password string `json:"password" binding:"required" example:"your-password"`
+}
+
 // ScrapeRequest represents the scrape request payload
 type ScrapeRequest struct {
 	ID               string   `json:"id" binding:"required" example:"IPX-535"`

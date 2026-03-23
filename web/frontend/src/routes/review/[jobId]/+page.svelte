@@ -211,8 +211,7 @@
 
 	async function fetchConfig() {
 		try {
-			const response = await fetch('/api/v1/config');
-			config = await response.json();
+			config = await apiClient.getConfig();
 		} catch (e) {
 			console.error('Failed to fetch config:', e);
 		}

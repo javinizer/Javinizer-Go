@@ -30,6 +30,7 @@ function createWebSocketStore() {
 
 	let ws: WebSocket | null = null;
 	let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
+	let shouldReconnect = false;
 
 	function connect() {
 		if (!browser) {
@@ -37,7 +38,14 @@ function createWebSocketStore() {
 			return;
 		}
 
-		if (ws?.readyState === WebSocket.OPEN) {
+		shouldReconnect = true;
+
+		if (reconnectTimeout) {
+			clearTimeout(reconnectTimeout);
+			reconnectTimeout = null;
+		}
+
+		if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
 			return;
 		}
 
@@ -54,6 +62,11 @@ function createWebSocketStore() {
 			ws.onclose = () => {
 				console.log('WebSocket disconnected');
 				update((state) => ({ ...state, connected: false }));
+				ws = null;
+
+				if (!shouldReconnect) {
+					return;
+				}
 
 				// Attempt to reconnect after 3 seconds
 				reconnectTimeout = setTimeout(() => {
@@ -96,12 +109,18 @@ function createWebSocketStore() {
 	}
 
 	function disconnect() {
+		shouldReconnect = false;
+
 		if (reconnectTimeout) {
 			clearTimeout(reconnectTimeout);
 			reconnectTimeout = null;
 		}
 
 		if (ws) {
+			ws.onclose = null;
+			ws.onerror = null;
+			ws.onopen = null;
+			ws.onmessage = null;
 			ws.close();
 			ws = null;
 		}

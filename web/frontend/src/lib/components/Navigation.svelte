@@ -2,7 +2,15 @@
 	import { page } from '$app/stores';
 	import { cubicOut } from 'svelte/easing';
 	import { fly } from 'svelte/transition';
-	import { House, FolderOpen, Settings, History, Film, Users } from 'lucide-svelte';
+	import { House, FolderOpen, Settings, History, Film, Users, LogOut } from 'lucide-svelte';
+
+	interface Props {
+		authenticated?: boolean;
+		username?: string;
+		onLogout?: () => Promise<void> | void;
+	}
+
+	let { authenticated = false, username = '', onLogout }: Props = $props();
 
 	const navItems = [
 		{ href: '/', label: 'Home', icon: House },
@@ -42,6 +50,17 @@
 						<span class="hidden md:inline">{item.label}</span>
 					</a>
 				{/each}
+				{#if authenticated}
+					<button
+						type="button"
+						class="flex items-center gap-2 px-4 py-2 rounded-md transition-all duration-200 hover:bg-accent hover:-translate-y-px"
+						onclick={() => onLogout?.()}
+						title="Logout"
+					>
+						<LogOut class="h-4 w-4" />
+						<span class="hidden md:inline">{username ? `${username} · Logout` : 'Logout'}</span>
+					</button>
+				{/if}
 			</div>
 		</div>
 	</div>

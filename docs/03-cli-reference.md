@@ -687,6 +687,9 @@ javinizer api --verbose
 **API Endpoints:**
 
 - `GET /health` - Health check and scraper status
+- `GET /api/v1/auth/status` - Authentication/setup status
+- `POST /api/v1/auth/setup` - First-run username/password setup
+- `POST /api/v1/auth/login` - Login and issue session cookie
 - `POST /api/v1/scrape` - Scrape metadata for a movie ID
 - `GET /api/v1/movie/:id` - Get movie metadata by ID
 - `GET /api/v1/movies` - List cached movies
@@ -698,8 +701,15 @@ javinizer api --verbose
 # Health check
 curl http://localhost:8080/health
 
+# First-run setup (stores cookie for authenticated requests)
+curl -X POST http://localhost:8080/api/v1/auth/setup \
+  -H "Content-Type: application/json" \
+  -c cookies.txt \
+  -d '{"username":"admin","password":"password123"}'
+
 # Scrape a movie
 curl -X POST http://localhost:8080/api/v1/scrape \
+  -b cookies.txt \
   -H "Content-Type: application/json" \
   -d '{"id": "IPX-535"}'
 

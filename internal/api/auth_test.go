@@ -1,194 +1,390 @@
 package api
 
 import (
+	"bytes"
+	"crypto/tls"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"path/filepath"
 	"testing"
+	"time"
+
+	"github.com/gin-gonic/gin"
+	"github.com/javinizer/javinizer-go/internal/config"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-// =============================================================================
-// Authentication and Authorization Tests
-// =============================================================================
-//
-// **CURRENT STATUS (2025-11-18):**
-// Authentication and authorization are NOT currently implemented in the API.
-//
-// **Investigation Findings:**
-// - NO JWT libraries in go.mod (checked for github.com/golang-jwt/jwt, github.com/dgrijalva/jwt-go)
-// - NO authentication middleware in internal/api/server.go
-// - NO auth-related configuration in internal/config/config.go (only CORS settings exist)
-// - Security focus: CORS origin validation, input sanitization, error message safety
-// - Existing security tests in handlers_security_test.go cover CORS but not auth/authz
-//
-// **Test Coverage Impact:**
-// - internal/api coverage remains at 61.5% (from Stories 3.1 and 3.2)
-// - Placeholder tests add minimal lines but provide foundation for future implementation
-//
-// =============================================================================
+func setupAuthenticatedTestServer(t *testing.T) (*gin.Engine, *ServerDependencies) {
+	t.Helper()
 
-// TestAuthenticationNotImplemented documents that authentication is not currently
-// implemented in the API and provides a structure for future authentication tests.
-//
-// This test is intentionally skipped as it serves as documentation and a placeholder
-// for future implementation. When authentication is added, this test should be
-// replaced with comprehensive authentication test suites.
-//
-// **Future Implementation Checklist:**
-//
-// When authentication is implemented, this file should include tests for:
-//
-// 1. **JWT/Token Authentication (if JWT-based):**
-//   - Valid token grants access (200 OK)
-//   - Expired token denied (401 Unauthorized)
-//   - Invalid signature denied (401)
-//   - Missing Authorization header (401)
-//   - Malformed token (400 Bad Request or 401)
-//   - Token extraction from "Authorization: Bearer <token>" header
-//   - Case-insensitive header matching
-//
-// 2. **API Key Authentication (if API key-based):**
-//   - Valid API key grants access (200 OK)
-//   - Invalid API key denied (401 Unauthorized)
-//   - Missing X-API-Key header (401)
-//   - Malformed API key (400 or 401)
-//   - API key validation from SecurityConfig
-//
-// 3. **Role-Based Access Control (if RBAC implemented):**
-//   - Admin role can access admin endpoints (200 OK)
-//   - Regular user denied access to admin endpoints (403 Forbidden)
-//   - Unauthenticated user denied access to protected endpoints (401)
-//   - Role extraction from JWT claims or context
-//   - Role assignment mocking in tests (c.Set("user_role", "admin"))
-//
-// 4. **Security Validation:**
-//   - Error messages don't leak token details
-//   - Error messages don't expose internal logic
-//   - Timing attack prevention (constant-time comparison if applicable)
-//   - No sensitive data in logs
-//
-// 5. **Integration with Handlers:**
-//   - Auth middleware applied to protected endpoints
-//   - Public endpoints (e.g., /health, /swagger) don't require auth
-//   - Middleware order in Gin router is correct
-//   - Middleware error handling doesn't leak information
-//
-// 6. **Concurrent Safety:**
-//   - Tests pass with `-race` flag
-//   - Middleware handles concurrent requests safely
-//   - No race conditions in token validation or role checking
-//
-// **Test Pattern Reference:**
-// Follow table-driven test structure from handlers_security_test.go:
-//
-// ```go
-//
-//	func TestAuthMiddleware(t *testing.T) {
-//	    tests := []struct {
-//	        name           string
-//	        setupAuth      func(*gin.Context)
-//	        expectedStatus int
-//	    }{
-//	        {
-//	            name: "valid token grants access",
-//	            setupAuth: func(c *gin.Context) {
-//	                c.Request.Header.Set("Authorization", "Bearer valid-token")
-//	            },
-//	            expectedStatus: 200,
-//	        },
-//	        {
-//	            name: "missing token denied",
-//	            setupAuth: func(c *gin.Context) {
-//	                // No Authorization header
-//	            },
-//	            expectedStatus: 401,
-//	        },
-//	        // ... more test cases
-//	    }
-//
-//	    for _, tt := range tests {
-//	        t.Run(tt.name, func(t *testing.T) {
-//	            gin.SetMode(gin.TestMode)
-//	            recorder := httptest.NewRecorder()
-//	            ctx, _ := gin.CreateTestContext(recorder)
-//
-//	            tt.setupAuth(ctx)
-//	            authMiddleware(ctx) // Call middleware under test
-//
-//	            assert.Equal(t, tt.expectedStatus, recorder.Code)
-//	        })
-//	    }
-//	}
-//
-// ```
-//
-// **Middleware Pattern Reference:**
-// When auth middleware is implemented, follow standard Gin middleware pattern:
-//
-// ```go
-// // internal/api/middleware/auth.go (DOES NOT EXIST YET)
-//
-//	func AuthMiddleware() gin.HandlerFunc {
-//	    return func(c *gin.Context) {
-//	        // 1. Extract token from header
-//	        authHeader := c.GetHeader("Authorization")
-//	        if authHeader == "" {
-//	            c.AbortWithStatusJSON(401, gin.H{"error": "missing authorization header"})
-//	            return
-//	        }
-//
-//	        // 2. Parse Bearer token
-//	        token := strings.TrimPrefix(authHeader, "Bearer ")
-//	        if token == authHeader {
-//	            c.AbortWithStatusJSON(400, gin.H{"error": "invalid authorization format"})
-//	            return
-//	        }
-//
-//	        // 3. Validate token (mock in tests)
-//	        // claims, err := validateToken(token)
-//	        // if err != nil {
-//	        //     c.AbortWithStatusJSON(401, gin.H{"error": "invalid token"})
-//	        //     return
-//	        // }
-//
-//	        // 4. Set user context
-//	        // c.Set("user_id", claims.UserID)
-//	        // c.Set("user_role", claims.Role)
-//
-//	        c.Next()
-//	    }
-//	}
-//
-// ```
-//
-// **Dependencies to Add (when auth is implemented):**
-// - JWT library: github.com/golang-jwt/jwt (v5 recommended)
-// - Mock JWT validation via mockery-generated mocks
-// - SecurityConfig extension for APIKey, JWTSecret, TokenExpiryMinutes
-//
-// **Related Files:**
-// - internal/api/server.go - Register middleware: router.Use(middleware.AuthMiddleware())
-// - internal/config/config.go - Add auth config to SecurityConfig struct
-// - internal/api/handlers_security_test.go - Reference for test patterns
-// - internal/api/handlers_test_helpers.go - Reuse createTestDeps() helper
-//
-// **Acceptance Criteria Coverage:**
-// This placeholder test satisfies AC-3.3.1: "If no auth exists, document in test
-// file and create placeholder structure." Comprehensive tests will be needed when
-// authentication is implemented to satisfy AC-3.3.2 through AC-3.3.5.
-func TestAuthenticationNotImplemented(t *testing.T) {
-	t.Skip("Authentication is not currently implemented in the API. " +
-		"See documentation above for comprehensive test checklist when auth is added. " +
-		"Related epic: Epic 3 - Security-Critical Package Testing")
+	cfg := config.DefaultConfig()
+	configFile := filepath.Join(t.TempDir(), "config.yaml")
+	deps := createTestDeps(t, cfg, configFile)
+
+	manager, err := NewAuthManager(configFile, time.Hour)
+	require.NoError(t, err)
+	deps.Auth = manager
+
+	router := NewServer(deps)
+	t.Cleanup(func() {
+		cleanupServerHub(t, deps)
+		_ = deps.DB.Close()
+	})
+
+	return router, deps
 }
 
-// TestAuthenticationTestsPassRaceDetector verifies that placeholder auth tests
-// pass the race detector. When authentication is implemented, this ensures that
-// the comprehensive test suite will be race-safe.
-//
-// This test always passes to satisfy AC-3.3.5 requirement: "Tests pass with -race flag"
-func TestAuthenticationTestsPassRaceDetector(t *testing.T) {
-	// No concurrent operations in placeholder tests
-	// When auth middleware is implemented, tests must verify:
-	// - Middleware handles concurrent requests safely
-	// - Token validation has no race conditions
-	// - Role checking is thread-safe
-	// Run: go test -race -v ./internal/api/... to verify
+func newJSONRequest(t *testing.T, method, path string, payload any, cookie *http.Cookie) *http.Request {
+	t.Helper()
+
+	var body []byte
+	if payload != nil {
+		encoded, err := json.Marshal(payload)
+		require.NoError(t, err)
+		body = encoded
+	}
+
+	req := httptest.NewRequest(method, path, bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	if cookie != nil {
+		req.AddCookie(cookie)
+	}
+	return req
+}
+
+func parseAuthStatus(t *testing.T, recorder *httptest.ResponseRecorder) AuthStatusResponse {
+	t.Helper()
+	var status AuthStatusResponse
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &status))
+	return status
+}
+
+func extractSessionCookie(t *testing.T, recorder *httptest.ResponseRecorder) *http.Cookie {
+	t.Helper()
+	resp := recorder.Result()
+	for _, cookie := range resp.Cookies() {
+		if cookie.Name == sessionCookieName {
+			return cookie
+		}
+	}
+	t.Fatalf("session cookie %q not set", sessionCookieName)
+	return nil
+}
+
+func TestAuth_FirstRunBlocksProtectedRoutes(t *testing.T) {
+	router, _ := setupAuthenticatedTestServer(t)
+
+	// Protected API route should require initialization first.
+	req := newJSONRequest(t, http.MethodGet, "/api/v1/config", nil, nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
+
+	// Status route remains public and should report uninitialized state.
+	statusReq := newJSONRequest(t, http.MethodGet, "/api/v1/auth/status", nil, nil)
+	statusW := httptest.NewRecorder()
+	router.ServeHTTP(statusW, statusReq)
+	assert.Equal(t, http.StatusOK, statusW.Code)
+
+	status := parseAuthStatus(t, statusW)
+	assert.False(t, status.Initialized)
+	assert.False(t, status.Authenticated)
+	assert.Empty(t, status.Username)
+
+	// WebSocket endpoint is also protected.
+	wsReq := newJSONRequest(t, http.MethodGet, "/ws/progress", nil, nil)
+	wsW := httptest.NewRecorder()
+	router.ServeHTTP(wsW, wsReq)
+	assert.Equal(t, http.StatusServiceUnavailable, wsW.Code)
+}
+
+func TestAuth_SetupAndProtectedAccess(t *testing.T) {
+	router, _ := setupAuthenticatedTestServer(t)
+
+	setupReq := newJSONRequest(t, http.MethodPost, "/api/v1/auth/setup", map[string]string{
+		"username": "admin",
+		"password": "password123",
+	}, nil)
+	setupW := httptest.NewRecorder()
+	router.ServeHTTP(setupW, setupReq)
+	assert.Equal(t, http.StatusOK, setupW.Code)
+
+	setupStatus := parseAuthStatus(t, setupW)
+	assert.True(t, setupStatus.Initialized)
+	assert.True(t, setupStatus.Authenticated)
+	assert.Equal(t, "admin", setupStatus.Username)
+
+	sessionCookie := extractSessionCookie(t, setupW)
+
+	protectedReq := newJSONRequest(t, http.MethodGet, "/api/v1/config", nil, sessionCookie)
+	protectedW := httptest.NewRecorder()
+	router.ServeHTTP(protectedW, protectedReq)
+	assert.Equal(t, http.StatusOK, protectedW.Code)
+
+	missingSessionReq := newJSONRequest(t, http.MethodGet, "/api/v1/config", nil, nil)
+	missingSessionW := httptest.NewRecorder()
+	router.ServeHTTP(missingSessionW, missingSessionReq)
+	assert.Equal(t, http.StatusUnauthorized, missingSessionW.Code)
+
+	statusReq := newJSONRequest(t, http.MethodGet, "/api/v1/auth/status", nil, sessionCookie)
+	statusW := httptest.NewRecorder()
+	router.ServeHTTP(statusW, statusReq)
+	assert.Equal(t, http.StatusOK, statusW.Code)
+
+	status := parseAuthStatus(t, statusW)
+	assert.True(t, status.Initialized)
+	assert.True(t, status.Authenticated)
+	assert.Equal(t, "admin", status.Username)
+
+	// Setup can only be called once.
+	setupAgainReq := newJSONRequest(t, http.MethodPost, "/api/v1/auth/setup", map[string]string{
+		"username": "admin",
+		"password": "password123",
+	}, nil)
+	setupAgainW := httptest.NewRecorder()
+	router.ServeHTTP(setupAgainW, setupAgainReq)
+	assert.Equal(t, http.StatusConflict, setupAgainW.Code)
+}
+
+func TestAuth_SetupAfterInitializationReturnsConflictBeforePayloadValidation(t *testing.T) {
+	router, _ := setupAuthenticatedTestServer(t)
+
+	setupReq := newJSONRequest(t, http.MethodPost, "/api/v1/auth/setup", map[string]string{
+		"username": "admin",
+		"password": "password123",
+	}, nil)
+	setupW := httptest.NewRecorder()
+	router.ServeHTTP(setupW, setupReq)
+	require.Equal(t, http.StatusOK, setupW.Code)
+
+	invalidPayloadReq := newJSONRequest(t, http.MethodPost, "/api/v1/auth/setup", map[string]any{}, nil)
+	invalidPayloadW := httptest.NewRecorder()
+	router.ServeHTTP(invalidPayloadW, invalidPayloadReq)
+	assert.Equal(t, http.StatusConflict, invalidPayloadW.Code)
+}
+
+func TestAuth_LoginLogoutFlow(t *testing.T) {
+	router, _ := setupAuthenticatedTestServer(t)
+
+	// Initialize credentials.
+	setupReq := newJSONRequest(t, http.MethodPost, "/api/v1/auth/setup", map[string]string{
+		"username": "admin",
+		"password": "password123",
+	}, nil)
+	setupW := httptest.NewRecorder()
+	router.ServeHTTP(setupW, setupReq)
+	require.Equal(t, http.StatusOK, setupW.Code)
+
+	initialSession := extractSessionCookie(t, setupW)
+
+	// Logout invalidates the existing session.
+	logoutReq := newJSONRequest(t, http.MethodPost, "/api/v1/auth/logout", nil, initialSession)
+	logoutW := httptest.NewRecorder()
+	router.ServeHTTP(logoutW, logoutReq)
+	assert.Equal(t, http.StatusOK, logoutW.Code)
+
+	protectedReq := newJSONRequest(t, http.MethodGet, "/api/v1/config", nil, initialSession)
+	protectedW := httptest.NewRecorder()
+	router.ServeHTTP(protectedW, protectedReq)
+	assert.Equal(t, http.StatusUnauthorized, protectedW.Code)
+
+	invalidLoginReq := newJSONRequest(t, http.MethodPost, "/api/v1/auth/login", map[string]string{
+		"username": "admin",
+		"password": "wrong",
+	}, nil)
+	invalidLoginW := httptest.NewRecorder()
+	router.ServeHTTP(invalidLoginW, invalidLoginReq)
+	assert.Equal(t, http.StatusUnauthorized, invalidLoginW.Code)
+
+	validLoginReq := newJSONRequest(t, http.MethodPost, "/api/v1/auth/login", map[string]string{
+		"username": "admin",
+		"password": "password123",
+	}, nil)
+	validLoginW := httptest.NewRecorder()
+	router.ServeHTTP(validLoginW, validLoginReq)
+	assert.Equal(t, http.StatusOK, validLoginW.Code)
+
+	newSession := extractSessionCookie(t, validLoginW)
+	protectedWithNewSessionReq := newJSONRequest(t, http.MethodGet, "/api/v1/config", nil, newSession)
+	protectedWithNewSessionW := httptest.NewRecorder()
+	router.ServeHTTP(protectedWithNewSessionW, protectedWithNewSessionReq)
+	assert.Equal(t, http.StatusOK, protectedWithNewSessionW.Code)
+}
+
+func TestAuth_WebSocketRequiresAuthentication(t *testing.T) {
+	router, _ := setupAuthenticatedTestServer(t)
+
+	// Initialize authentication.
+	setupReq := newJSONRequest(t, http.MethodPost, "/api/v1/auth/setup", map[string]string{
+		"username": "admin",
+		"password": "password123",
+	}, nil)
+	setupW := httptest.NewRecorder()
+	router.ServeHTTP(setupW, setupReq)
+	require.Equal(t, http.StatusOK, setupW.Code)
+
+	sessionCookie := extractSessionCookie(t, setupW)
+
+	// Missing session should fail before WebSocket upgrade.
+	wsUnauthorizedReq := newJSONRequest(t, http.MethodGet, "/ws/progress", nil, nil)
+	wsUnauthorizedW := httptest.NewRecorder()
+	router.ServeHTTP(wsUnauthorizedW, wsUnauthorizedReq)
+	assert.Equal(t, http.StatusUnauthorized, wsUnauthorizedW.Code)
+
+	// Authenticated request reaches the upgrader and fails with 400 because this isn't
+	// a proper WebSocket handshake in httptest.
+	wsAuthorizedReq := newJSONRequest(t, http.MethodGet, "/ws/progress", nil, sessionCookie)
+	wsAuthorizedW := httptest.NewRecorder()
+	router.ServeHTTP(wsAuthorizedW, wsAuthorizedReq)
+	assert.Equal(t, http.StatusBadRequest, wsAuthorizedW.Code)
+}
+
+func TestAuth_LoginBeforeSetupReturnsServiceUnavailable(t *testing.T) {
+	router, _ := setupAuthenticatedTestServer(t)
+
+	loginReq := newJSONRequest(t, http.MethodPost, "/api/v1/auth/login", map[string]string{
+		"username": "admin",
+		"password": "password123",
+	}, nil)
+	loginW := httptest.NewRecorder()
+	router.ServeHTTP(loginW, loginReq)
+	assert.Equal(t, http.StatusServiceUnavailable, loginW.Code)
+}
+
+func TestAuth_SetupValidationErrors(t *testing.T) {
+	router, _ := setupAuthenticatedTestServer(t)
+
+	shortPasswordReq := newJSONRequest(t, http.MethodPost, "/api/v1/auth/setup", map[string]string{
+		"username": "admin",
+		"password": "short",
+	}, nil)
+	shortPasswordW := httptest.NewRecorder()
+	router.ServeHTTP(shortPasswordW, shortPasswordReq)
+	assert.Equal(t, http.StatusBadRequest, shortPasswordW.Code)
+
+	missingUsernameReq := newJSONRequest(t, http.MethodPost, "/api/v1/auth/setup", map[string]string{
+		"username": "",
+		"password": "password123",
+	}, nil)
+	missingUsernameW := httptest.NewRecorder()
+	router.ServeHTTP(missingUsernameW, missingUsernameReq)
+	assert.Equal(t, http.StatusBadRequest, missingUsernameW.Code)
+}
+
+func TestAuth_StatusWithInvalidCookieClearsSession(t *testing.T) {
+	router, _ := setupAuthenticatedTestServer(t)
+
+	setupReq := newJSONRequest(t, http.MethodPost, "/api/v1/auth/setup", map[string]string{
+		"username": "admin",
+		"password": "password123",
+	}, nil)
+	setupW := httptest.NewRecorder()
+	router.ServeHTTP(setupW, setupReq)
+	require.Equal(t, http.StatusOK, setupW.Code)
+
+	invalidCookie := &http.Cookie{
+		Name:  sessionCookieName,
+		Value: "definitely-invalid-session",
+	}
+
+	statusReq := newJSONRequest(t, http.MethodGet, "/api/v1/auth/status", nil, invalidCookie)
+	statusW := httptest.NewRecorder()
+	router.ServeHTTP(statusW, statusReq)
+	assert.Equal(t, http.StatusOK, statusW.Code)
+
+	status := parseAuthStatus(t, statusW)
+	assert.True(t, status.Initialized)
+	assert.False(t, status.Authenticated)
+	assert.Empty(t, status.Username)
+
+	resp := statusW.Result()
+	var clearCookie *http.Cookie
+	for _, cookie := range resp.Cookies() {
+		if cookie.Name == sessionCookieName {
+			clearCookie = cookie
+			break
+		}
+	}
+	require.NotNil(t, clearCookie)
+	assert.Equal(t, -1, clearCookie.MaxAge)
+}
+
+func TestAuth_SessionCookieIgnoresForwardedHTTPSHeaders(t *testing.T) {
+	router, _ := setupAuthenticatedTestServer(t)
+
+	setupReq := newJSONRequest(t, http.MethodPost, "/api/v1/auth/setup", map[string]string{
+		"username": "admin",
+		"password": "password123",
+	}, nil)
+	setupReq.Header.Set("X-Forwarded-Proto", "https")
+	setupReq.Header.Set("Forwarded", `for=1.2.3.4;proto=https`)
+	setupW := httptest.NewRecorder()
+	router.ServeHTTP(setupW, setupReq)
+	require.Equal(t, http.StatusOK, setupW.Code)
+
+	sessionCookie := extractSessionCookie(t, setupW)
+	assert.False(t, sessionCookie.Secure)
+}
+
+func TestAuth_SessionCookieSecureOnTLS(t *testing.T) {
+	router, _ := setupAuthenticatedTestServer(t)
+
+	setupReq := newJSONRequest(t, http.MethodPost, "/api/v1/auth/setup", map[string]string{
+		"username": "admin",
+		"password": "password123",
+	}, nil)
+	setupReq.TLS = &tls.ConnectionState{}
+	setupW := httptest.NewRecorder()
+	router.ServeHTTP(setupW, setupReq)
+	require.Equal(t, http.StatusOK, setupW.Code)
+
+	sessionCookie := extractSessionCookie(t, setupW)
+	assert.True(t, sessionCookie.Secure)
+}
+
+func TestAuth_SessionCookieNotSecureOnPlainHTTP(t *testing.T) {
+	router, _ := setupAuthenticatedTestServer(t)
+
+	setupReq := newJSONRequest(t, http.MethodPost, "/api/v1/auth/setup", map[string]string{
+		"username": "admin",
+		"password": "password123",
+	}, nil)
+	setupW := httptest.NewRecorder()
+	router.ServeHTTP(setupW, setupReq)
+	require.Equal(t, http.StatusOK, setupW.Code)
+
+	sessionCookie := extractSessionCookie(t, setupW)
+	assert.False(t, sessionCookie.Secure)
+}
+
+func TestAuth_LoginRateLimited(t *testing.T) {
+	router, _ := setupAuthenticatedTestServer(t)
+
+	setupReq := newJSONRequest(t, http.MethodPost, "/api/v1/auth/setup", map[string]string{
+		"username": "admin",
+		"password": "password123",
+	}, nil)
+	setupW := httptest.NewRecorder()
+	router.ServeHTTP(setupW, setupReq)
+	require.Equal(t, http.StatusOK, setupW.Code)
+
+	for i := 0; i < maxFailedLoginAttempts; i++ {
+		loginReq := newJSONRequest(t, http.MethodPost, "/api/v1/auth/login", map[string]string{
+			"username": "admin",
+			"password": "wrong-password",
+		}, nil)
+		loginW := httptest.NewRecorder()
+		router.ServeHTTP(loginW, loginReq)
+		assert.Equal(t, http.StatusUnauthorized, loginW.Code)
+	}
+
+	blockedReq := newJSONRequest(t, http.MethodPost, "/api/v1/auth/login", map[string]string{
+		"username": "admin",
+		"password": "password123",
+	}, nil)
+	blockedW := httptest.NewRecorder()
+	router.ServeHTTP(blockedW, blockedReq)
+	assert.Equal(t, http.StatusTooManyRequests, blockedW.Code)
 }

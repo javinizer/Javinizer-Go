@@ -6,7 +6,7 @@ The Javinizer REST API provides programmatic access to all metadata scraping, fi
 
 - **Base URL**: `http://localhost:8080/api/v1`
 - **Content Type**: `application/json`
-- **Authentication**: None (API is designed for local network use)
+- **Authentication**: Built-in single-user session authentication
 - **WebSocket**: Real-time progress updates at `/ws/progress`
 
 ## Getting Started
@@ -45,6 +45,28 @@ These interfaces provide:
 - Try-it-now functionality
 - Code generation for multiple languages
 - Authentication testing
+
+### First-Run Authentication Setup
+
+On first startup, protected API routes return `503` until credentials are configured.
+
+1. Start server: `javinizer api`
+2. Open Web UI at `http://localhost:8080/`
+3. Create default username/password in the setup screen
+4. Session cookie is issued automatically after setup
+
+**CLI setup example (cookie jar):**
+```bash
+curl -X POST http://localhost:8080/api/v1/auth/setup \
+  -H "Content-Type: application/json" \
+  -c cookies.txt \
+  -d '{"username":"admin","password":"password123"}'
+```
+
+**Reset credentials:**
+1. Stop server
+2. Delete `auth.credentials.json` (next to `config.yaml`)
+3. Restart server and run setup again
 
 ## API Endpoints
 
@@ -145,6 +167,10 @@ Configuration, proxy testing, and scraper management.
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
+| `GET` | `/api/v1/auth/status` | Get auth initialization/login status |
+| `POST` | `/api/v1/auth/setup` | First-run setup (create username/password) |
+| `POST` | `/api/v1/auth/login` | Login and create session cookie |
+| `POST` | `/api/v1/auth/logout` | Logout and clear session cookie |
 | `GET` | `/api/v1/config` | Get current configuration |
 | `PUT` | `/api/v1/config` | Update configuration (saves to file) |
 | `GET` | `/api/v1/scrapers` | List available scrapers and status |
@@ -153,7 +179,7 @@ Configuration, proxy testing, and scraper management.
 
 **Example - Get configuration:**
 ```bash
-curl http://localhost:8080/api/v1/config
+curl -b cookies.txt http://localhost:8080/api/v1/config
 ```
 
 **Example - Test proxy:**
@@ -201,13 +227,14 @@ curl http://localhost:8080/api/v1/temp/posters/abc-123/IPX-535-poster.jpg -o pos
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `GET` | `/health` | Health check endpoint (returns `200 OK`) |
-| `GET` | `/ws/progress` | WebSocket endpoint for real-time updates |
+| `GET` | `/ws/progress` | WebSocket endpoint for real-time updates (requires auth session) |
 | `GET` | `/docs` | Scalar interactive API documentation |
 | `GET` | `/swagger/*` | Swagger UI and OpenAPI spec |
 
 ## WebSocket
 
 The `/ws/progress` endpoint provides real-time progress updates for batch operations.
+An authenticated session cookie is required.
 
 **Connect to WebSocket:**
 ```javascript

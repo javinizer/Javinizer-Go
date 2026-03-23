@@ -144,6 +144,21 @@ You should see output showing:
 - Enabled scrapers
 - Priority settings
 
+### 3. Complete First-Run Web Authentication
+
+Start the API/Web server:
+
+```bash
+javinizer web
+```
+
+Then open [http://localhost:8080](http://localhost:8080) and create your default username/password.
+
+Notes:
+- Credentials are stored in `auth.credentials.json` next to your `config.yaml`.
+- API and WebSocket endpoints require login after setup.
+- To reset credentials later, stop server, delete `auth.credentials.json`, and restart.
+
 ## Your First Scrape
 
 Let's test the scraper by fetching metadata for a movie:

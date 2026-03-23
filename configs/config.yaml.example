@@ -1,4 +1,6 @@
 config_version: 2
+# API authentication credentials are stored in `auth.credentials.json` next to this file.
+# To reset credentials, stop the server, delete that file, then restart `javinizer api`.
 
 server:
     host: localhost

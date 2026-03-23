@@ -3,6 +3,7 @@
 	import { quintOut } from 'svelte/easing';
 	import { fade, scale } from 'svelte/transition';
 	import { portalToBody } from '$lib/actions/portal';
+	import { apiClient } from '$lib/api/client';
 	import type { Movie, Actress } from '$lib/api/types';
 	import Button from './ui/Button.svelte';
 	import Card from './ui/Card.svelte';
@@ -119,10 +120,7 @@
 	// Load all actresses on modal open
 	async function loadAllActresses() {
 		try {
-			const response = await fetch(`/api/v1/actresses/search?q=`);
-			if (response.ok) {
-				allActresses = await response.json();
-			}
+			allActresses = await apiClient.request<Actress[]>('/api/v1/actresses/search?q=');
 		} catch (error) {
 			console.error('Failed to load actresses:', error);
 			allActresses = [];

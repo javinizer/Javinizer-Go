@@ -36,7 +36,9 @@ import type {
 	ActressListParams,
 	ActressListResponse,
 	ActressUpsertRequest,
-	Actress
+	Actress,
+	AuthCredentialsRequest,
+	AuthStatusResponse
 } from './types';
 
 // Build API base URL dynamically from browser location
@@ -62,6 +64,7 @@ class APIClient {
 	public async request<T>(endpoint: string, options?: RequestInit): Promise<T> {
 		const url = `${this.baseURL}${endpoint}`;
 		const response = await fetch(url, {
+			credentials: 'include',
 			...options,
 			headers: {
 				'Content-Type': 'application/json',
@@ -82,6 +85,34 @@ class APIClient {
 	// Health check
 	async health(): Promise<HealthResponse> {
 		return this.request<HealthResponse>('/health');
+	}
+
+	// Get authentication state (first-run/setup/login gate)
+	async getAuthStatus(): Promise<AuthStatusResponse> {
+		return this.request<AuthStatusResponse>('/api/v1/auth/status');
+	}
+
+	// First-run setup: create initial single-user credentials and authenticate
+	async setupAuth(credentials: AuthCredentialsRequest): Promise<AuthStatusResponse> {
+		return this.request<AuthStatusResponse>('/api/v1/auth/setup', {
+			method: 'POST',
+			body: JSON.stringify(credentials)
+		});
+	}
+
+	// Login with configured single-user credentials
+	async loginAuth(credentials: AuthCredentialsRequest): Promise<AuthStatusResponse> {
+		return this.request<AuthStatusResponse>('/api/v1/auth/login', {
+			method: 'POST',
+			body: JSON.stringify(credentials)
+		});
+	}
+
+	// Logout current session
+	async logoutAuth(): Promise<{ message: string }> {
+		return this.request<{ message: string }>('/api/v1/auth/logout', {
+			method: 'POST'
+		});
 	}
 
 	// Build proxy URL for previewing remote images via backend (handles hotlink-protected hosts)
