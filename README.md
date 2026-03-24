@@ -313,11 +313,15 @@ Docker deployments support environment variable overrides:
 |----------|-------------|---------|---------|
 | `JAVINIZER_CONFIG` | Path to config file | `/javinizer/config.yaml` | `/custom/config.yaml` |
 | `JAVINIZER_DB` | Path to SQLite database | `/javinizer/javinizer.db` | `/custom/db.db` |
-| `JAVINIZER_LOG_DIR` | Log file directory | `/javinizer/logs` | `/custom/logs` |
+| `JAVINIZER_LOG_DIR` | Relocate file targets from `logging.output` to this directory (does not enable file logging by itself) | `/javinizer/logs` | `/custom/logs` |
 | `LOG_LEVEL` | Logging verbosity | `info` | `debug`, `warn`, `error` |
 | `UMASK` | File permission mask | `002` | `022` (owner-only write) |
 | `TZ` | Timezone for logs | `UTC` | `America/New_York` |
 | `PORT` | API server port | `8080` | `9000` |
+
+`JAVINIZER_LOG_DIR` examples:
+- `logging.output: stdout` + `JAVINIZER_LOG_DIR=/custom/logs` -> `stdout` (no file output)
+- `logging.output: "stdout,data/logs/javinizer.log"` + `JAVINIZER_LOG_DIR=/custom/logs` -> `"stdout,/custom/logs/javinizer.log"`
 
 **Example:**
 ```bash

@@ -422,6 +422,9 @@ database:
 logging:
     level: info
     format: text
+    # stdout, stderr, /path/to/file.log, or comma-separated (e.g. "stdout,data/logs/javinizer.log")
+    # NOTE: JAVINIZER_LOG_DIR only rewrites file targets listed here.
+    # If output is only stdout/stderr, JAVINIZER_LOG_DIR has no effect.
     output: stdout
 performance:
     max_workers: 5

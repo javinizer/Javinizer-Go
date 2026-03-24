@@ -241,6 +241,13 @@ environment:
   - TZ=America/New_York
 ```
 
+`JAVINIZER_LOG_DIR` only rewrites file paths already configured in `logging.output`.
+If `logging.output` is only `stdout`/`stderr`, no log file will be created.
+
+Examples:
+- `logging.output: stdout` + `JAVINIZER_LOG_DIR=/javinizer/logs` -> container logs only
+- `logging.output: "stdout,data/logs/javinizer.log"` + `JAVINIZER_LOG_DIR=/javinizer/logs` -> container logs + `/javinizer/logs/javinizer.log`
+
 **Note**: The media directory mounted at `/media` is automatically detected and added to allowed directories. No additional configuration needed.
 
 ### Configuration File

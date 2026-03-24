@@ -589,6 +589,14 @@ logging:
 - `/path/to/file.log`: Write to file (creates directory if needed)
 - Multiple outputs: `stdout,/path/to/file.log` (comma-separated for dual output)
 
+When `JAVINIZER_LOG_DIR` is set, Javinizer rewrites file targets in `logging.output` to that directory.
+If `logging.output` only contains `stdout`/`stderr`, `JAVINIZER_LOG_DIR` does not create a file output.
+
+**`JAVINIZER_LOG_DIR` resolution examples:**
+- `logging.output: stdout` + `JAVINIZER_LOG_DIR=/javinizer/logs` -> `stdout` (unchanged)
+- `logging.output: data/logs/javinizer.log` + `JAVINIZER_LOG_DIR=/javinizer/logs` -> `/javinizer/logs/javinizer.log`
+- `logging.output: "stdout,data/logs/javinizer.log"` + `JAVINIZER_LOG_DIR=/javinizer/logs` -> `"stdout,/javinizer/logs/javinizer.log"`
+
 ### Examples
 
 **Console output only (default):**

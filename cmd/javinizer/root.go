@@ -102,6 +102,7 @@ func initConfig() {
 		_, _ = fmt.Fprintf(os.Stderr, "Failed to load config: %v\n", err)
 		os.Exit(1)
 	}
+	originalLogOutput := cfg.Logging.Output
 
 	// Override config values with environment variables (Docker-friendly)
 	config.ApplyEnvironmentOverrides(cfg)
@@ -136,8 +137,12 @@ func initConfig() {
 	if os.Getenv("JAVINIZER_DB") != "" {
 		logging.Debugf("Database DSN overridden by JAVINIZER_DB: %s", cfg.Database.DSN)
 	}
-	if os.Getenv("JAVINIZER_LOG_DIR") != "" {
-		logging.Debugf("Log output overridden by JAVINIZER_LOG_DIR: %s", cfg.Logging.Output)
+	if envLogDir := os.Getenv("JAVINIZER_LOG_DIR"); envLogDir != "" {
+		if cfg.Logging.Output != originalLogOutput {
+			logging.Debugf("Log file outputs relocated by JAVINIZER_LOG_DIR=%s: %s", envLogDir, cfg.Logging.Output)
+		} else {
+			logging.Debugf("JAVINIZER_LOG_DIR=%s set, but logging.output has no file target; output remains: %s", envLogDir, cfg.Logging.Output)
+		}
 	}
 	if os.Getenv("JAVINIZER_HOME") != "" {
 		logging.Debugf("JAVINIZER_HOME is set to: %s (reserved for future use)", os.Getenv("JAVINIZER_HOME"))

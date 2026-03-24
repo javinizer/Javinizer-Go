@@ -40,7 +40,7 @@ services:
       # Database location
       - JAVINIZER_DB=/javinizer/javinizer.db
 
-      # Log directory
+      # Log directory (applies only when logging.output includes a file target)
       - JAVINIZER_LOG_DIR=/javinizer/logs
 
       # Log level (optional: debug, info, warn, error)
