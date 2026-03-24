@@ -224,6 +224,10 @@ chmod 755 /destination/path
 sudo javinizer sort /path
 ```
 
+For Docker/Unraid deployments:
+- Ensure the container runs with matching IDs (`PUID`/`PGID`, or legacy `USER_ID`/`GROUP_ID`)
+- On Unraid, common values are `PUID=99` and `PGID=100`
+
 ### "Path too long"
 
 **Problem**: File path exceeds OS limits (Windows: 260 chars)

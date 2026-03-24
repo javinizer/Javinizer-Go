@@ -53,6 +53,7 @@ curl -o ./javinizer-data/config.yaml \
 
 # 3) Run container
 docker run --rm \
+  --user "$(id -u):$(id -g)" \
   -p 8080:8080 \
   -v "$(pwd)/javinizer-data:/javinizer" \
   -v "/path/to/your/media:/media" \
@@ -63,6 +64,7 @@ Open [http://localhost:8080](http://localhost:8080) to access the web UI.
 
 **Notes:**
 - Replace `/path/to/your/media` with the path to your JAV library
+- On Unraid, use your share owner mapping (commonly `--user 99:100`)
 - Use a pinned tag (e.g., `v0.1.2-alpha`) for reproducible deployments
 - `latest` tracks the most recent release
 
@@ -79,6 +81,8 @@ curl -o .env \
 
 # 2) Edit .env to configure paths and settings
 # MEDIA_PATH=/path/to/your/jav-library
+# PUID=1000
+# PGID=1000
 # TZ=America/New_York
 
 # 3) Start services
@@ -311,6 +315,10 @@ Docker deployments support environment variable overrides:
 
 | Variable | Description | Default | Example |
 |----------|-------------|---------|---------|
+| `PUID` | Runtime user ID for container process (preferred) | `1000` | `99` (common on Unraid) |
+| `PGID` | Runtime group ID for container process (preferred) | `1000` | `100` (common on Unraid) |
+| `USER_ID` | Legacy alias for `PUID` | `1000` | `1000` |
+| `GROUP_ID` | Legacy alias for `PGID` | `1000` | `1000` |
 | `JAVINIZER_CONFIG` | Path to config file | `/javinizer/config.yaml` | `/custom/config.yaml` |
 | `JAVINIZER_DB` | Path to SQLite database | `/javinizer/javinizer.db` | `/custom/db.db` |
 | `JAVINIZER_LOG_DIR` | Relocate file targets from `logging.output` to this directory (does not enable file logging by itself) | `/javinizer/logs` | `/custom/logs` |

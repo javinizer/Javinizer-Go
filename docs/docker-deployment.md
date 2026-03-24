@@ -26,7 +26,7 @@ cd javinizer-go
 
 # 2. Configure environment variables
 cp .env.example .env
-# Edit .env to set your USER_ID, GROUP_ID, and MEDIA_PATH
+# Edit .env to set your PUID, PGID, and MEDIA_PATH
 
 # 3. Copy the Docker Compose template
 cp docker-compose.yml.example docker-compose.yml
@@ -134,8 +134,9 @@ Javinizer uses a `.env` file to configure Docker Compose variables. This makes i
 2. **Edit `.env` with your settings**:
    ```bash
    # Required: Match container user to your host user (prevents permission issues)
-   USER_ID=1000        # Run: id -u
-   GROUP_ID=1000       # Run: id -g
+   # Unraid commonly uses PUID=99 and PGID=100
+   PUID=1000        # Run: id -u
+   PGID=1000       # Run: id -g
 
    # Required: Set your JAV library path
    MEDIA_PATH=/Users/you/JAV
@@ -156,8 +157,10 @@ Javinizer uses a `.env` file to configure Docker Compose variables. This makes i
 
 | Variable | Description | Default | Required |
 |----------|-------------|---------|----------|
-| `USER_ID` | User ID for container (run `id -u`) | 1000 | Recommended |
-| `GROUP_ID` | Group ID for container (run `id -g`) | 1000 | Recommended |
+| `PUID` | User ID for container (run `id -u`) | 1000 | Recommended |
+| `PGID` | Group ID for container (run `id -g`) | 1000 | Recommended |
+| `USER_ID` | Legacy alias for `PUID` | 1000 | Optional |
+| `GROUP_ID` | Legacy alias for `PGID` | 1000 | Optional |
 | `MEDIA_PATH` | Path to your JAV library on host | `/path/to/your/jav-library` | Yes |
 | `HOST_PORT` | Port to expose on host | 8080 | No |
 | `TZ` | Timezone (IANA format) | UTC | No |
@@ -167,7 +170,7 @@ Javinizer uses a `.env` file to configure Docker Compose variables. This makes i
 You can also set variables on the command line (overrides `.env`):
 
 ```bash
-USER_ID=$(id -u) GROUP_ID=$(id -g) docker-compose up -d
+PUID=$(id -u) PGID=$(id -g) docker-compose up -d
 ```
 
 ---
@@ -320,7 +323,7 @@ docker-compose logs
 
 Common issues:
 - **Port 8080 in use**: Set `HOST_PORT=9090` in `.env` file
-- **Permission denied**: Ensure the `./data` directory is writable and check `USER_ID`/`GROUP_ID` in `.env`
+- **Permission denied**: Ensure the `./data` directory is writable and check `PUID`/`PGID` (or legacy `USER_ID`/`GROUP_ID`) in `.env`
 - **Volume mount failed**: Check that `MEDIA_PATH` in `.env` points to an existing directory
 
 ### Health Check Failing
@@ -434,13 +437,13 @@ The container runs as user `javinizer` for security. By default, the user is cre
 **Recommended method**: Use the `.env` file (see [Configuration with .env File](#configuration-with-env-file)):
 ```bash
 # In .env file:
-USER_ID=1000   # Get with: id -u
-GROUP_ID=1000  # Get with: id -g
+PUID=1000      # Get with: id -u
+PGID=1000      # Get with: id -g
 ```
 
 **Alternative**: Set via command line:
 ```bash
-USER_ID=$(id -u) GROUP_ID=$(id -g) docker-compose up -d
+PUID=$(id -u) PGID=$(id -g) docker-compose up -d
 ```
 
 **Why this matters**: Matching the container UID/GID to your host user prevents permission issues when the container writes to mounted volumes (`./data` and `/media`). Without this, you may see "permission denied" errors or files owned by the wrong user.
@@ -470,12 +473,12 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        - USER_ID=${USER_ID:-1000}   # Match host user for permissions
-        - GROUP_ID=${GROUP_ID:-1000}
+        - USER_ID=${PUID:-${USER_ID:-1000}}   # Match host user for permissions
+        - GROUP_ID=${PGID:-${GROUP_ID:-1000}}
     image: javinizer:latest
     container_name: javinizer
     restart: unless-stopped
-    user: "${USER_ID:-1000}:${GROUP_ID:-1000}"
+    user: "${PUID:-${USER_ID:-1000}}:${PGID:-${GROUP_ID:-1000}}"
 
     ports:
       - "127.0.0.1:8080:8080"  # Localhost only
@@ -508,7 +511,7 @@ services:
 **Usage**:
 ```bash
 # Set user/group to match your host user
-USER_ID=$(id -u) GROUP_ID=$(id -g) docker-compose up -d
+PUID=$(id -u) PGID=$(id -g) docker-compose up -d
 ```
 
 ---

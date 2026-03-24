@@ -3,8 +3,10 @@
 package auth
 
 import (
+	"errors"
 	"fmt"
 	"os"
+	"syscall"
 )
 
 const credentialFileMode = 0600
@@ -29,6 +31,14 @@ func enforceCredentialFilePermissions(path string) error {
 	}
 
 	if err := os.Chmod(path, credentialFileMode); err != nil {
+		if isUnsupportedPermissionMutation(err) {
+			return fmt.Errorf(
+				"credential file mode is %o and filesystem does not support chmod to %o: %w",
+				info.Mode().Perm(),
+				credentialFileMode,
+				err,
+			)
+		}
 		return err
 	}
 
@@ -43,4 +53,10 @@ func enforceCredentialFilePermissions(path string) error {
 		return fmt.Errorf("credential file mode is %o, expected %o", info.Mode().Perm(), credentialFileMode)
 	}
 	return nil
+}
+
+func isUnsupportedPermissionMutation(err error) bool {
+	return errors.Is(err, syscall.EOPNOTSUPP) ||
+		errors.Is(err, syscall.ENOTSUP) ||
+		errors.Is(err, syscall.EROFS)
 }
