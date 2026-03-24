@@ -2,6 +2,7 @@ package update
 
 import (
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -64,6 +65,13 @@ func TestStateStore_ShouldCheck(t *testing.T) {
 	}
 	store.SetState(state)
 	assert.True(t, store.ShouldCheck(), "should check when past interval")
+
+	// Test with invalid timestamp (should fail open and re-check)
+	state = &UpdateState{
+		CheckedAt: "not-a-timestamp",
+	}
+	store.SetState(state)
+	assert.True(t, store.ShouldCheck(), "should check when timestamp is invalid")
 }
 
 func TestStateStore_Clear(t *testing.T) {
@@ -107,6 +115,17 @@ func TestLoadStateFromFile(t *testing.T) {
 	loaded, err := LoadStateFromFile(statePath)
 	assert.NoError(t, err)
 	assert.Equal(t, "v1.6.0", loaded.Version)
+}
+
+func TestLoadStateFromFile_InvalidJSON(t *testing.T) {
+	tmpDir := t.TempDir()
+	statePath := filepath.Join(tmpDir, "update_cache.json")
+
+	require.NoError(t, os.WriteFile(statePath, []byte(`{not-json`), 0644))
+
+	state, err := LoadStateFromFile(statePath)
+	assert.Error(t, err)
+	assert.Nil(t, state)
 }
 
 func TestNowISO8601(t *testing.T) {
@@ -170,4 +189,80 @@ func TestUpdateState_JSON(t *testing.T) {
 	err = json.Unmarshal(data, &loaded)
 	assert.NoError(t, err)
 	assert.Equal(t, state, loaded)
+}
+
+func TestNewDefaultStateStore_UsesRuntimeDataDir(t *testing.T) {
+	tempDataDir := t.TempDir()
+	t.Setenv("JAVINIZER_DATA_DIR", tempDataDir)
+
+	store := NewDefaultStateStore()
+	require.NotNil(t, store)
+	assert.Equal(t, filepath.Join(tempDataDir, "update_cache.json"), store.path)
+	assert.Equal(t, DefaultCheckInterval, store.interval)
+}
+
+func TestStateStore_LoadState_PathIsDirectory(t *testing.T) {
+	tmpDir := t.TempDir()
+	statePath := filepath.Join(tmpDir, "update_cache.json")
+	require.NoError(t, os.Mkdir(statePath, 0o755))
+
+	store := NewStateStore(statePath, DefaultCheckInterval)
+	state, err := store.LoadState()
+	require.Error(t, err)
+	assert.Nil(t, state)
+}
+
+func TestStateStore_LoadState_InvalidJSON(t *testing.T) {
+	tmpDir := t.TempDir()
+	statePath := filepath.Join(tmpDir, "update_cache.json")
+	require.NoError(t, os.WriteFile(statePath, []byte(`{bad json`), 0o644))
+
+	store := NewStateStore(statePath, DefaultCheckInterval)
+	state, err := store.LoadState()
+	require.Error(t, err)
+	assert.Nil(t, state)
+}
+
+func TestStateStore_SaveState_MkdirAllFailure(t *testing.T) {
+	tmpDir := t.TempDir()
+	parentAsFile := filepath.Join(tmpDir, "not-a-directory")
+	require.NoError(t, os.WriteFile(parentAsFile, []byte("x"), 0o644))
+
+	store := NewStateStore(filepath.Join(parentAsFile, "update_cache.json"), DefaultCheckInterval)
+	err := store.SaveState(&UpdateState{Version: "v1.0.0"})
+	require.Error(t, err)
+}
+
+func TestStateStore_SaveState_RenameFailureCleansTempFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	targetDir := filepath.Join(tmpDir, "as-directory")
+	require.NoError(t, os.Mkdir(targetDir, 0o755))
+
+	store := NewStateStore(targetDir, DefaultCheckInterval)
+	err := store.SaveState(&UpdateState{Version: "v1.0.0"})
+	require.Error(t, err)
+
+	_, statErr := os.Stat(targetDir + ".tmp")
+	assert.True(t, os.IsNotExist(statErr))
+}
+
+func TestSaveStateToFile_MkdirAllFailure(t *testing.T) {
+	tmpDir := t.TempDir()
+	parentAsFile := filepath.Join(tmpDir, "not-a-directory")
+	require.NoError(t, os.WriteFile(parentAsFile, []byte("x"), 0o644))
+
+	err := SaveStateToFile(filepath.Join(parentAsFile, "update_cache.json"), &UpdateState{Version: "v1.0.0"})
+	require.Error(t, err)
+}
+
+func TestSaveStateToFile_RenameFailureCleansTempFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	targetDir := filepath.Join(tmpDir, "as-directory")
+	require.NoError(t, os.Mkdir(targetDir, 0o755))
+
+	err := SaveStateToFile(targetDir, &UpdateState{Version: "v1.0.0"})
+	require.Error(t, err)
+
+	_, statErr := os.Stat(targetDir + ".tmp")
+	assert.True(t, os.IsNotExist(statErr))
 }

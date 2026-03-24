@@ -123,13 +123,12 @@ func versionCheck(deps *ServerDependencies) gin.HandlerFunc {
 			Current:    version.Short(),
 			Commit:     version.Commit,
 			BuildDate:  version.BuildDate,
-			Source:     state.Source,
-			Error:      state.Error,
 			Latest:     "",
 			Prerelease: false,
 		}
 
 		if err != nil {
+			response.Source = "error"
 			response.Error = err.Error()
 			response.Latest = ""
 			response.UpdateAvailable = false
@@ -137,6 +136,17 @@ func versionCheck(deps *ServerDependencies) gin.HandlerFunc {
 			return
 		}
 
+		if state == nil {
+			response.Source = "error"
+			response.Error = "update check returned no state"
+			response.Latest = ""
+			response.UpdateAvailable = false
+			c.JSON(http.StatusOK, response)
+			return
+		}
+
+		response.Source = state.Source
+		response.Error = state.Error
 		response.Latest = state.Version
 		response.Prerelease = state.Prerelease
 		response.UpdateAvailable = state.Available

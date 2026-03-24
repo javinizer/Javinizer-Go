@@ -2,78 +2,198 @@ package worker
 
 import (
 	"errors"
-	"strings"
 	"testing"
 
 	"github.com/javinizer/javinizer-go/internal/models"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-func TestFormatScraperFailure502(t *testing.T) {
-	msg := formatScraperFailure("libredmm", errors.New("LibreDMM returned status code 502"))
-
-	if !strings.Contains(msg, "temporarily unavailable") {
-		t.Fatalf("expected unavailable message, got: %s", msg)
-	}
-	if !strings.Contains(msg, "host may be down") {
-		t.Fatalf("expected host down hint, got: %s", msg)
-	}
-	if !strings.Contains(msg, "502") {
-		t.Fatalf("expected status code in message, got: %s", msg)
-	}
-}
-
-func TestFormatScraperFailure502_PassthroughReadableMessage(t *testing.T) {
-	msg := formatScraperFailure(
-		"libredmm",
-		models.NewScraperStatusError(
-			"LibreDMM",
-			502,
-			"LibreDMM is temporarily unavailable (HTTP 502 Bad Gateway; host may be down)",
-		),
-	)
-
-	if !strings.Contains(msg, "libredmm: LibreDMM is temporarily unavailable") {
-		t.Fatalf("expected passthrough message, got: %s", msg)
-	}
-	if strings.Contains(msg, "details:") {
-		t.Fatalf("expected no nested details wrapper, got: %s", msg)
-	}
-}
-
-func TestBuildScraperNoResultsError_NotFoundOnly(t *testing.T) {
-	msg := buildScraperNoResultsError([]scraperFailure{
-		{Scraper: "r18dev", Err: errors.New("movie ABW-102 not found on R18.dev")},
-		{Scraper: "dmm", Err: errors.New("movie ABW-102 not found on DMM")},
+func TestBuildScraperNoResultsError(t *testing.T) {
+	t.Run("no failures", func(t *testing.T) {
+		msg := buildScraperNoResultsError(nil)
+		assert.Equal(t, "Movie lookup failed: no scraper results", msg)
 	})
 
-	if !strings.HasPrefix(msg, "Movie not found on configured scrapers:") {
-		t.Fatalf("expected not-found prefix, got: %s", msg)
+	t.Run("all not found", func(t *testing.T) {
+		msg := buildScraperNoResultsError([]scraperFailure{
+			{Scraper: "a", Err: models.NewScraperNotFoundError("a", "no match")},
+			{Scraper: "b", Err: errors.New("movie not found")},
+		})
+		assert.Contains(t, msg, "Movie not found on configured scrapers")
+		assert.Contains(t, msg, "a:")
+		assert.Contains(t, msg, "b:")
+	})
+
+	t.Run("availability issues", func(t *testing.T) {
+		msg := buildScraperNoResultsError([]scraperFailure{
+			{Scraper: "a", Err: models.NewScraperStatusError("a", 502, "bad gateway")},
+			{Scraper: "b", Err: models.NewScraperStatusError("b", 429, "slow down")},
+		})
+		assert.Contains(t, msg, "Movie lookup failed due to source availability issues")
+		assert.Contains(t, msg, "bad gateway")
+		assert.Contains(t, msg, "slow down")
+	})
+}
+
+func TestFormatScraperFailure(t *testing.T) {
+	tests := []struct {
+		name       string
+		err        error
+		contains   string
+		contains2  string
+		notContain string
+	}{
+		{
+			name:      "nil error fallback",
+			err:       nil,
+			contains:  "unknown error",
+			contains2: "stub:",
+		},
+		{
+			name:      "typed scraper error raw pass-through",
+			err:       models.NewScraperNotFoundError("stub", "  exact typed message  "),
+			contains:  "exact typed message",
+			contains2: "stub:",
+		},
+		{
+			name:      "not found message",
+			err:       errors.New("movie not found"),
+			contains:  "movie not found on source",
+			contains2: "details: movie not found",
+		},
+		{
+			name:      "rate limited with status",
+			err:       errors.New("HTTP 429 from upstream"),
+			contains:  "rate-limited",
+			contains2: "HTTP 429",
+		},
+		{
+			name:      "blocked with status",
+			err:       errors.New("status code 451 denied"),
+			contains:  "blocked access",
+			contains2: "HTTP 451",
+		},
+		{
+			name:      "unavailable 502 special text",
+			err:       errors.New("HTTP: 502 bad gateway"),
+			contains:  "HTTP 502 Bad Gateway",
+			contains2: "temporarily unavailable",
+		},
+		{
+			name:      "other with status",
+			err:       errors.New("status code 418 teapot"),
+			contains:  "scraper request failed",
+			contains2: "details: status code 418 teapot",
+		},
+		{
+			name:      "other without status",
+			err:       errors.New("socket closed"),
+			contains:  "scraper request failed",
+			contains2: "details: socket closed",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			msg := formatScraperFailure("stub", tt.err)
+			assert.Contains(t, msg, tt.contains)
+			assert.Contains(t, msg, tt.contains2)
+			if tt.notContain != "" {
+				assert.NotContains(t, msg, tt.notContain)
+			}
+		})
 	}
 }
 
-func TestBuildScraperNoResultsError_AvailabilityIssues(t *testing.T) {
-	msg := buildScraperNoResultsError([]scraperFailure{
-		{Scraper: "libredmm", Err: errors.New("LibreDMM returned status code 502")},
-		{Scraper: "r18dev", Err: errors.New("R18.dev returned status code 503")},
+func TestClassifyScraperError(t *testing.T) {
+	t.Run("nil error", func(t *testing.T) {
+		kind, code, raw := classifyScraperError(nil)
+		assert.Equal(t, scraperErrorOther, kind)
+		assert.Equal(t, 0, code)
+		assert.Equal(t, "", raw)
 	})
 
-	if !strings.HasPrefix(msg, "Movie lookup failed due to source availability issues:") {
-		t.Fatalf("expected availability prefix, got: %s", msg)
-	}
-	if !strings.Contains(msg, "source temporarily unavailable") {
-		t.Fatalf("expected unavailable detail, got: %s", msg)
-	}
+	t.Run("typed kind mapping", func(t *testing.T) {
+		cases := []struct {
+			err      *models.ScraperError
+			expected scraperErrorKind
+			code     int
+		}{
+			{models.NewScraperNotFoundError("s", "missing"), scraperErrorNotFound, 0},
+			{models.NewScraperStatusError("s", 429, ""), scraperErrorRateLimited, 429},
+			{models.NewScraperStatusError("s", 451, ""), scraperErrorBlocked, 451},
+			{models.NewScraperStatusError("s", 502, ""), scraperErrorUnavailable, 502},
+		}
+
+		for _, tc := range cases {
+			kind, code, raw := classifyScraperError(tc.err)
+			assert.Equal(t, tc.expected, kind)
+			assert.Equal(t, tc.code, code)
+			assert.NotEmpty(t, raw)
+		}
+	})
+
+	t.Run("typed unknown kind uses status fallback", func(t *testing.T) {
+		err := &models.ScraperError{Scraper: "s", Kind: models.ScraperErrorKindUnknown, StatusCode: 404}
+		kind, code, raw := classifyScraperError(err)
+		assert.Equal(t, scraperErrorNotFound, kind)
+		assert.Equal(t, 404, code)
+		assert.NotEmpty(t, raw)
+
+		err = &models.ScraperError{Scraper: "s", Kind: models.ScraperErrorKindUnknown, StatusCode: 599}
+		kind, code, raw = classifyScraperError(err)
+		assert.Equal(t, scraperErrorUnavailable, kind)
+		assert.Equal(t, 599, code)
+		assert.NotEmpty(t, raw)
+
+		err = &models.ScraperError{Scraper: "s", Kind: models.ScraperErrorKindUnknown, StatusCode: 418}
+		kind, code, raw = classifyScraperError(err)
+		assert.Equal(t, scraperErrorOther, kind)
+		assert.Equal(t, 418, code)
+		assert.NotEmpty(t, raw)
+	})
+
+	t.Run("string matching fallbacks", func(t *testing.T) {
+		kind, code, raw := classifyScraperError(errors.New("HTTP status code 429 from upstream"))
+		assert.Equal(t, scraperErrorRateLimited, kind)
+		assert.Equal(t, 429, code)
+		assert.Equal(t, "HTTP status code 429 from upstream", raw)
+
+		kind, code, raw = classifyScraperError(errors.New("resource not found"))
+		assert.Equal(t, scraperErrorNotFound, kind)
+		assert.Equal(t, 0, code)
+		assert.Equal(t, "resource not found", raw)
+
+		kind, code, raw = classifyScraperError(errors.New("unexpected transport reset"))
+		assert.Equal(t, scraperErrorOther, kind)
+		assert.Equal(t, 0, code)
+		assert.Equal(t, "unexpected transport reset", raw)
+	})
 }
 
-func TestBuildScraperNoResultsError_RateLimited(t *testing.T) {
-	msg := buildScraperNoResultsError([]scraperFailure{
-		{Scraper: "javdb", Err: errors.New("JavDB returned status code 429")},
-	})
+func TestExtractHTTPStatusCode(t *testing.T) {
+	tests := []struct {
+		raw    string
+		code   int
+		hasHit bool
+	}{
+		{raw: "status code 403 from source", code: 403, hasHit: true},
+		{raw: "HTTP: 502 bad gateway", code: 502, hasHit: true},
+		{raw: "no code here", code: 0, hasHit: false},
+	}
 
-	if !strings.Contains(msg, "rate-limited") {
-		t.Fatalf("expected rate-limit detail, got: %s", msg)
+	for _, tt := range tests {
+		t.Run(tt.raw, func(t *testing.T) {
+			code, ok := extractHTTPStatusCode(tt.raw)
+			assert.Equal(t, tt.hasHit, ok)
+			if ok {
+				assert.Equal(t, tt.code, code)
+			}
+		})
 	}
-	if !strings.Contains(msg, "429") {
-		t.Fatalf("expected status code in rate-limit detail, got: %s", msg)
-	}
+
+	code, ok := extractHTTPStatusCode("status code 12a")
+	require.False(t, ok)
+	assert.Equal(t, 0, code)
 }

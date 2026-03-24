@@ -1083,3 +1083,27 @@ func TestIsDirAllowed_SymlinkResolution(t *testing.T) {
 	result2 := isDirAllowed(realDir, allow2, []string{})
 	assert.True(t, result2, "Real directory should be accessible when symlink to it is in allowlist")
 }
+
+func TestWrapperFunctions(t *testing.T) {
+	tempDir := t.TempDir()
+
+	allow := []string{tempDir}
+	deny := []string{}
+	assert.True(t, IsDirAllowed(tempDir, allow, deny))
+
+	assert.Equal(t, ExpandHomeDir("~/test"), expandHomeDir("~/test"))
+	assert.Equal(t, Contains("abcdef", "bcd"), contains("abcdef", "bcd"))
+	assert.Equal(t, GetDeniedDirectories(), getDeniedDirectories())
+	assert.Equal(t, PathHasPrefix(tempDir, tempDir), pathHasPrefix(tempDir, tempDir))
+}
+
+func TestCanonicalizePath_NonExistentChildUnderExistingParent(t *testing.T) {
+	base := t.TempDir()
+	missing := filepath.Join(base, "nested", "child")
+
+	got, err := canonicalizePath(missing)
+	require.NoError(t, err)
+	assert.True(t, filepath.IsAbs(got))
+	assert.Equal(t, filepath.Base(missing), filepath.Base(got))
+	assert.Equal(t, "nested", filepath.Base(filepath.Dir(got)))
+}

@@ -503,6 +503,86 @@ func TestTestProxy_AdditionalBranches(t *testing.T) {
 		require.Equal(t, http.StatusBadRequest, w.Code)
 		assert.Contains(t, w.Body.String(), "proxy.flaresolverr.enabled=true and proxy.flaresolverr.url are required")
 	})
+
+	t.Run("direct proxy client creation failure returns structured response", func(t *testing.T) {
+		deps := &ServerDependencies{}
+		deps.SetConfig(config.DefaultConfig())
+
+		router := gin.New()
+		router.POST("/proxy/test", testProxy(deps))
+
+		reqBody := `{"mode":"direct","target_url":"https://example.com","proxy":{"enabled":true,"url":"http://[::1"}}`
+		req := httptest.NewRequest(http.MethodPost, "/proxy/test", bytes.NewBufferString(reqBody))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusOK, w.Code)
+
+		var response ProxyTestResponse
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+		assert.False(t, response.Success)
+		assert.Contains(t, response.Message, "failed to create proxy client")
+		assert.GreaterOrEqual(t, response.DurationMS, int64(0))
+	})
+
+	t.Run("direct proxy request failure returns structured response", func(t *testing.T) {
+		deps := &ServerDependencies{}
+		deps.SetConfig(config.DefaultConfig())
+
+		router := gin.New()
+		router.POST("/proxy/test", testProxy(deps))
+
+		reqBody := `{"mode":"direct","target_url":"https://example.com","proxy":{"enabled":true,"url":"http://127.0.0.1:1"}}`
+		req := httptest.NewRequest(http.MethodPost, "/proxy/test", bytes.NewBufferString(reqBody))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusOK, w.Code)
+
+		var response ProxyTestResponse
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+		assert.False(t, response.Success)
+		assert.Contains(t, response.Message, "direct proxy request failed")
+		assert.GreaterOrEqual(t, response.DurationMS, int64(0))
+	})
+
+	t.Run("flaresolverr request failure returns structured response", func(t *testing.T) {
+		fs := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"status":"error","message":"blocked"}`))
+		}))
+		defer fs.Close()
+
+		deps := &ServerDependencies{}
+		deps.SetConfig(config.DefaultConfig())
+
+		router := gin.New()
+		router.POST("/proxy/test", testProxy(deps))
+
+		reqBody := `{"mode":"flaresolverr","target_url":"https://example.com","proxy":{"flaresolverr":{"enabled":true,"url":"` + fs.URL + `","timeout":5}}}`
+		req := httptest.NewRequest(http.MethodPost, "/proxy/test", bytes.NewBufferString(reqBody))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusOK, w.Code)
+
+		var response ProxyTestResponse
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+		assert.False(t, response.Success)
+		assert.Contains(t, response.Message, "flaresolverr request failed")
+		assert.GreaterOrEqual(t, response.DurationMS, int64(0))
+	})
+}
+
+func TestIsValidHTTPURL(t *testing.T) {
+	assert.True(t, isValidHTTPURL("https://example.com"))
+	assert.True(t, isValidHTTPURL("http://localhost:8080/path"))
+	assert.False(t, isValidHTTPURL("ftp://example.com"))
+	assert.False(t, isValidHTTPURL("https:///missing-host"))
+	assert.False(t, isValidHTTPURL("://bad-url"))
 }
 
 func TestUpdateConfig_SaveAndTranslationFailures(t *testing.T) {

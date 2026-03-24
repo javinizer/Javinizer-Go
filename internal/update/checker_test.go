@@ -3,14 +3,22 @@ package update
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+type roundTripFunc func(req *http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
 
 // TestCheckLatestVersion tests the GitHub checker with a mock server.
 func TestCheckLatestVersion(t *testing.T) {
@@ -270,4 +278,274 @@ func TestGitHubChecker_ClientConfig(t *testing.T) {
 	assert.Equal(t, "test/repo", checker.repo)
 	assert.NotNil(t, checker.httpClient)
 	assert.Equal(t, 10*time.Second, checker.httpClient.Timeout)
+}
+
+func TestCheckLatestVersion_EdgeCases(t *testing.T) {
+	t.Run("rate limited 403", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusForbidden)
+		}))
+		defer server.Close()
+
+		checker := NewGitHubCheckerWithBaseURL("javinizer/Javinizer", server.URL)
+		_, err := checker.CheckLatestVersion(context.Background())
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "rate limited")
+	})
+
+	t.Run("rate limited 429", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusTooManyRequests)
+		}))
+		defer server.Close()
+
+		checker := NewGitHubCheckerWithBaseURL("javinizer/Javinizer", server.URL)
+		_, err := checker.CheckLatestVersion(context.Background())
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "rate limited")
+	})
+
+	t.Run("non-200 response", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte(`{"message":"boom"}`))
+		}))
+		defer server.Close()
+
+		checker := NewGitHubCheckerWithBaseURL("javinizer/Javinizer", server.URL)
+		_, err := checker.CheckLatestVersion(context.Background())
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "status 500")
+	})
+
+	t.Run("malformed JSON", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{not-json`))
+		}))
+		defer server.Close()
+
+		checker := NewGitHubCheckerWithBaseURL("javinizer/Javinizer", server.URL)
+		_, err := checker.CheckLatestVersion(context.Background())
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to parse response")
+	})
+
+	t.Run("falls back to name when tag is empty", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{
+				"tag_name": "",
+				"name": "v2.0.0",
+				"prerelease": false,
+				"published_at": "2026-03-24T00:00:00Z"
+			}`))
+		}))
+		defer server.Close()
+
+		checker := NewGitHubCheckerWithBaseURL("javinizer/Javinizer", server.URL)
+		info, err := checker.CheckLatestVersion(context.Background())
+		require.NoError(t, err)
+		require.NotNil(t, info)
+		assert.Equal(t, "v2.0.0", info.Version)
+		assert.Equal(t, "", info.TagName)
+	})
+}
+
+func TestCheckForUpdateWithChecker_PrereleaseFallback(t *testing.T) {
+	t.Run("uses latest stable from recent releases when prerelease checks are disabled", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/repos/javinizer/Javinizer/releases/latest":
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{
+					"tag_name": "v1.6.0-rc1",
+					"name": "v1.6.0-rc1",
+					"prerelease": true
+				}`))
+			case "/repos/javinizer/Javinizer/releases":
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`[
+					{"tag_name":"v1.6.0-rc1","name":"v1.6.0-rc1"},
+					{"tag_name":"v1.5.0","name":"v1.5.0"}
+				]`))
+			default:
+				w.WriteHeader(http.StatusNotFound)
+			}
+		}))
+		defer server.Close()
+
+		checker := NewGitHubCheckerWithBaseURL("javinizer/Javinizer", server.URL)
+		latest, available, err := CheckForUpdateWithChecker(context.Background(), "v1.4.0", false, checker)
+		require.NoError(t, err)
+		require.NotNil(t, latest)
+		assert.True(t, available)
+		assert.Equal(t, "v1.5.0", latest.Version)
+		assert.False(t, latest.Prerelease)
+	})
+
+	t.Run("keeps prerelease when no stable release exists", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/repos/javinizer/Javinizer/releases/latest":
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{
+					"tag_name": "v2.0.0-rc1",
+					"name": "v2.0.0-rc1",
+					"prerelease": true
+				}`))
+			case "/repos/javinizer/Javinizer/releases":
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`[
+					{"tag_name":"v2.0.0-rc1"},
+					{"tag_name":"v2.0.0-beta1"}
+				]`))
+			default:
+				w.WriteHeader(http.StatusNotFound)
+			}
+		}))
+		defer server.Close()
+
+		checker := NewGitHubCheckerWithBaseURL("javinizer/Javinizer", server.URL)
+		latest, available, err := CheckForUpdateWithChecker(context.Background(), "v1.9.0", false, checker)
+		require.NoError(t, err)
+		require.NotNil(t, latest)
+		assert.True(t, available)
+		assert.Equal(t, "v2.0.0-rc1", latest.Version)
+		assert.True(t, latest.Prerelease)
+	})
+
+	t.Run("keeps prerelease when fallback lookup fails", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/repos/javinizer/Javinizer/releases/latest":
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{
+					"tag_name": "v3.0.0-rc1",
+					"name": "v3.0.0-rc1",
+					"prerelease": true
+				}`))
+			case "/repos/javinizer/Javinizer/releases":
+				w.WriteHeader(http.StatusInternalServerError)
+			default:
+				w.WriteHeader(http.StatusNotFound)
+			}
+		}))
+		defer server.Close()
+
+		checker := NewGitHubCheckerWithBaseURL("javinizer/Javinizer", server.URL)
+		latest, available, err := CheckForUpdateWithChecker(context.Background(), "v2.9.0", false, checker)
+		require.NoError(t, err)
+		require.NotNil(t, latest)
+		assert.True(t, available)
+		assert.Equal(t, "v3.0.0-rc1", latest.Version)
+		assert.True(t, latest.Prerelease)
+	})
+}
+
+func TestCompareVersions_LegacyFallback(t *testing.T) {
+	tests := []struct {
+		name     string
+		current  string
+		latest   string
+		expected int
+	}{
+		{
+			name:     "numeric prefix in segment is compared",
+			current:  "1.2.3beta",
+			latest:   "1.2.4alpha",
+			expected: -1,
+		},
+		{
+			name:     "missing numeric prefix falls back to zero",
+			current:  "1.2.rc1",
+			latest:   "1.2.0",
+			expected: 0,
+		},
+		{
+			name:     "stable preferred over prerelease in legacy mode",
+			current:  "1.2.3-rc1",
+			latest:   "1.2.3",
+			expected: -1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := CompareVersions(tt.current, tt.latest)
+			assert.Equal(t, tt.expected, got)
+		})
+	}
+}
+
+func TestWrapperFunctions(t *testing.T) {
+	t.Run("GetLatestStableVersion uses default checker", func(t *testing.T) {
+		original := http.DefaultTransport
+		http.DefaultTransport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			require.Equal(t, "api.github.com", req.URL.Host)
+			require.Equal(t, "/repos/javinizer/Javinizer/releases/latest", req.URL.Path)
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body: io.NopCloser(strings.NewReader(`{
+					"tag_name":"v9.9.9",
+					"name":"v9.9.9",
+					"prerelease":false,
+					"published_at":"2026-03-24T00:00:00Z"
+				}`)),
+				Header: make(http.Header),
+			}, nil
+		})
+		defer func() { http.DefaultTransport = original }()
+
+		info, err := GetLatestStableVersion(context.Background())
+		require.NoError(t, err)
+		require.NotNil(t, info)
+		assert.Equal(t, "v9.9.9", info.Version)
+	})
+
+	t.Run("CheckForUpdate uses default checker", func(t *testing.T) {
+		original := http.DefaultTransport
+		http.DefaultTransport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			require.Equal(t, "api.github.com", req.URL.Host)
+			require.Equal(t, "/repos/javinizer/Javinizer/releases/latest", req.URL.Path)
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body: io.NopCloser(strings.NewReader(`{
+					"tag_name":"v2.0.0",
+					"name":"v2.0.0",
+					"prerelease":false
+				}`)),
+				Header: make(http.Header),
+			}, nil
+		})
+		defer func() { http.DefaultTransport = original }()
+
+		latest, available, err := CheckForUpdate(context.Background(), "v1.0.0", false)
+		require.NoError(t, err)
+		require.NotNil(t, latest)
+		assert.True(t, available)
+		assert.Equal(t, "v2.0.0", latest.Version)
+	})
+
+	t.Run("GetRecentReleases wrapper", func(t *testing.T) {
+		original := http.DefaultTransport
+		http.DefaultTransport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			require.Equal(t, "api.github.com", req.URL.Host)
+			require.Equal(t, "/repos/javinizer/Javinizer/releases", req.URL.Path)
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body: io.NopCloser(strings.NewReader(`[
+					{"tag_name":"v1.5.0"},
+					{"tag_name":"","name":"v1.4.0"},
+					{"tag_name":"v1.3.0"}
+				]`)),
+				Header: make(http.Header),
+			}, nil
+		})
+		defer func() { http.DefaultTransport = original }()
+
+		versions, err := GetRecentReleases(context.Background(), 10)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"v1.5.0", "v1.4.0", "v1.3.0"}, versions)
+	})
 }

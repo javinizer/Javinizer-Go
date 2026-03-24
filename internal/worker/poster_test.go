@@ -1,7 +1,11 @@
 package worker
 
 import (
+	"bytes"
 	"context"
+	"image"
+	"image/color"
+	"image/jpeg"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -10,7 +14,24 @@ import (
 
 	"github.com/javinizer/javinizer-go/internal/downloader"
 	"github.com/javinizer/javinizer-go/internal/models"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
+
+func validJPEGBytes(t *testing.T) []byte {
+	t.Helper()
+
+	img := image.NewRGBA(image.Rect(0, 0, 180, 240))
+	for y := 0; y < 240; y++ {
+		for x := 0; x < 180; x++ {
+			img.Set(x, y, color.RGBA{R: uint8(x % 255), G: uint8(y % 255), B: 120, A: 255})
+		}
+	}
+
+	var buf bytes.Buffer
+	require.NoError(t, jpeg.Encode(&buf, img, &jpeg.Options{Quality: 90}))
+	return buf.Bytes()
+}
 
 func TestResolvePosterReferer(t *testing.T) {
 	tests := []struct {
@@ -251,4 +272,97 @@ func TestGenerateCroppedPoster_ErrorHandling(t *testing.T) {
 	if err == nil {
 		t.Fatal("Expected error for invalid domain, got nil")
 	}
+}
+
+func TestGenerateTempPoster_SuccessAndFallbacks(t *testing.T) {
+	chdirToTempDir(t)
+
+	jpegBody := validJPEGBytes(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/jpeg")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(jpegBody)
+	}))
+	defer server.Close()
+
+	movie := &models.Movie{
+		ID:        "TEMP-001",
+		PosterURL: "",
+		CoverURL:  server.URL + "/cover.jpg",
+	}
+
+	url, err := GenerateTempPoster(
+		context.Background(),
+		"job-temp-1",
+		movie,
+		server.Client(),
+		"test-agent",
+		"https://configured.example/",
+		downloader.ResolveMediaReferer,
+	)
+	require.NoError(t, err)
+	assert.Equal(t, "/api/v1/temp/posters/job-temp-1/TEMP-001.jpg", url)
+	assert.False(t, movie.ShouldCropPoster)
+
+	_, err = os.Stat(filepath.Join("data", "temp", "posters", "job-temp-1", "TEMP-001-full.jpg"))
+	require.NoError(t, err)
+	_, err = os.Stat(filepath.Join("data", "temp", "posters", "job-temp-1", "TEMP-001.jpg"))
+	require.NoError(t, err)
+}
+
+func TestGenerateTempPoster_ErrorBranches(t *testing.T) {
+	chdirToTempDir(t)
+
+	t.Run("missing poster and cover url", func(t *testing.T) {
+		movie := &models.Movie{ID: "TEMP-ERR-1"}
+		_, err := GenerateTempPoster(context.Background(), "job-temp-err", movie, http.DefaultClient, "", "", downloader.ResolveMediaReferer)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "no poster or cover URL")
+	})
+
+	t.Run("invalid url", func(t *testing.T) {
+		movie := &models.Movie{ID: "TEMP-ERR-2", PosterURL: "://bad-url"}
+		_, err := GenerateTempPoster(context.Background(), "job-temp-err", movie, http.DefaultClient, "", "", downloader.ResolveMediaReferer)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to create request")
+	})
+
+	t.Run("non-200 response", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusForbidden)
+		}))
+		defer server.Close()
+
+		movie := &models.Movie{ID: "TEMP-ERR-3", PosterURL: server.URL + "/forbidden.jpg"}
+		_, err := GenerateTempPoster(context.Background(), "job-temp-err", movie, server.Client(), "", "", downloader.ResolveMediaReferer)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "status 403")
+	})
+}
+
+func TestGenerateCroppedPoster_RealSuccess(t *testing.T) {
+	chdirToTempDir(t)
+
+	jpegBody := validJPEGBytes(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/jpeg")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(jpegBody)
+	}))
+	defer server.Close()
+
+	movie := &models.Movie{
+		ID:       "POSTER-SUCCESS-001",
+		CoverURL: server.URL + "/cover.jpg",
+	}
+
+	url, err := GenerateCroppedPoster(context.Background(), movie, server.Client(), "ua", "", downloader.ResolveMediaReferer)
+	require.NoError(t, err)
+	assert.Equal(t, "/api/v1/posters/POSTER-SUCCESS-001.jpg", url)
+	assert.False(t, movie.ShouldCropPoster)
+
+	path := filepath.Join("data", "posters", "POSTER-SUCCESS-001.jpg")
+	info, err := os.Stat(path)
+	require.NoError(t, err)
+	assert.Greater(t, info.Size(), int64(0))
 }

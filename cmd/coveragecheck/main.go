@@ -3,60 +3,106 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/javinizer/javinizer-go/internal/coverage"
 )
 
+var osExit = os.Exit
+
 func main() {
+	osExit(run(os.Args[1:], os.Stdout, os.Stderr))
+}
+
+type analyzeProfileFn func(path string) (coverage.Summary, error)
+
+func run(args []string, stdout, stderr io.Writer) int {
+	return runWithAnalyze(args, stdout, stderr, coverage.AnalyzeProfile)
+}
+
+func runWithAnalyze(args []string, stdout, stderr io.Writer, analyze analyzeProfileFn) int {
 	var minCoverage float64
 	var profilePath string
 	var metric string
 
-	flag.Float64Var(&minCoverage, "min", 75, "minimum required coverage percentage")
-	flag.StringVar(&profilePath, "profile", "coverage.out", "path to coverage profile")
-	flag.StringVar(&metric, "metric", "line", "coverage metric to enforce: line or statement")
-	flag.Parse()
-
-	summary, err := coverage.AnalyzeProfile(profilePath)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(2)
+	fs := flag.NewFlagSet("coveragecheck", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	fs.Float64Var(&minCoverage, "min", 75, "minimum required coverage percentage")
+	fs.StringVar(&profilePath, "profile", "coverage.out", "path to coverage profile")
+	fs.StringVar(&metric, "metric", "line", "coverage metric to enforce: line or statement")
+	if err := fs.Parse(args); err != nil {
+		return 2
 	}
 
-	selectedPercent, selectedLabel, selectedDetails := selectMetric(metric, summary)
+	summary, err := analyze(profilePath)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "Error: %v\n", err)
+		return 2
+	}
 
-	fmt.Println("==========================================")
-	fmt.Println("Test Coverage Report")
-	fmt.Println("==========================================")
-	fmt.Printf("Coverage Profile: %s\n", profilePath)
-	fmt.Printf("Enforced Metric:  %s\n", selectedLabel)
-	fmt.Printf("Current Coverage: %.2f%%\n", selectedPercent)
-	fmt.Printf("Required Minimum: %.2f%%\n", minCoverage)
-	fmt.Println("==========================================")
-	fmt.Printf("Line Coverage:     %.2f%% (%d hit, %d partial, %d miss, %d total)\n",
-		summary.Line.Percent, summary.Line.Hit, summary.Line.Partial, summary.Line.Miss, summary.Line.Total)
-	fmt.Printf("Statement Coverage %.2f%% (%d covered, %d total)\n",
-		summary.Statement.Percent, summary.Statement.Covered, summary.Statement.Total)
-	fmt.Printf("Metric Details:    %s\n", selectedDetails)
+	selectedPercent, selectedLabel, selectedDetails, err := selectMetric(metric, summary)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "Error: %v\n", err)
+		return 2
+	}
+
+	if _, err := fmt.Fprintln(stdout, "=========================================="); err != nil {
+		return 2
+	}
+	if _, err := fmt.Fprintln(stdout, "Test Coverage Report"); err != nil {
+		return 2
+	}
+	if _, err := fmt.Fprintln(stdout, "=========================================="); err != nil {
+		return 2
+	}
+	if _, err := fmt.Fprintf(stdout, "Coverage Profile: %s\n", profilePath); err != nil {
+		return 2
+	}
+	if _, err := fmt.Fprintf(stdout, "Enforced Metric:  %s\n", selectedLabel); err != nil {
+		return 2
+	}
+	if _, err := fmt.Fprintf(stdout, "Current Coverage: %.2f%%\n", selectedPercent); err != nil {
+		return 2
+	}
+	if _, err := fmt.Fprintf(stdout, "Required Minimum: %.2f%%\n", minCoverage); err != nil {
+		return 2
+	}
+	if _, err := fmt.Fprintln(stdout, "=========================================="); err != nil {
+		return 2
+	}
+	if _, err := fmt.Fprintf(stdout, "Line Coverage:     %.2f%% (%d hit, %d partial, %d miss, %d total)\n",
+		summary.Line.Percent, summary.Line.Hit, summary.Line.Partial, summary.Line.Miss, summary.Line.Total); err != nil {
+		return 2
+	}
+	if _, err := fmt.Fprintf(stdout, "Statement Coverage %.2f%% (%d covered, %d total)\n",
+		summary.Statement.Percent, summary.Statement.Covered, summary.Statement.Total); err != nil {
+		return 2
+	}
+	if _, err := fmt.Fprintf(stdout, "Metric Details:    %s\n", selectedDetails); err != nil {
+		return 2
+	}
 
 	if selectedPercent+1e-9 < minCoverage {
-		fmt.Println("Coverage check FAILED")
-		os.Exit(1)
+		if _, err := fmt.Fprintln(stdout, "Coverage check FAILED"); err != nil {
+			return 2
+		}
+		return 1
 	}
 
-	fmt.Println("Coverage check PASSED")
+	if _, err := fmt.Fprintln(stdout, "Coverage check PASSED"); err != nil {
+		return 2
+	}
+	return 0
 }
 
-func selectMetric(metric string, summary coverage.Summary) (float64, string, string) {
+func selectMetric(metric string, summary coverage.Summary) (float64, string, string, error) {
 	switch metric {
 	case "line":
-		return summary.Line.Percent, "Codecov line coverage", "fully covered lines only count toward the percentage"
+		return summary.Line.Percent, "Codecov line coverage", "fully covered lines only count toward the percentage", nil
 	case "statement":
-		return summary.Statement.Percent, "Go statement coverage", "matches go tool cover -func total"
+		return summary.Statement.Percent, "Go statement coverage", "matches go tool cover -func total", nil
 	default:
-		fmt.Fprintf(os.Stderr, "Error: unsupported metric %q\n", metric)
-		os.Exit(2)
-		return 0, "", ""
+		return 0, "", "", fmt.Errorf("unsupported metric %q", metric)
 	}
 }

@@ -2,17 +2,44 @@ package info_test
 
 import (
 	"bytes"
+	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/javinizer/javinizer-go/cmd/javinizer/commands/info"
 	"github.com/javinizer/javinizer-go/internal/config"
+	"github.com/javinizer/javinizer-go/internal/update"
+	appversion "github.com/javinizer/javinizer-go/internal/version"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+type failAfterNWriter struct {
+	failAt int
+	writes int
+}
+
+func (w *failAfterNWriter) Write(p []byte) (int, error) {
+	w.writes++
+	if w.writes >= w.failAt {
+		return 0, errors.New("forced write failure")
+	}
+	return len(p), nil
+}
+
+type countOnlyWriter struct {
+	writes int
+}
+
+func (w *countOnlyWriter) Write(p []byte) (int, error) {
+	w.writes++
+	return len(p), nil
+}
 
 // Test helpers
 
@@ -45,6 +72,12 @@ func WithDownloadCover(enabled bool) ConfigOption {
 func WithDatabaseDSN(dsn string) ConfigOption {
 	return func(cfg *config.Config) {
 		cfg.Database.DSN = dsn
+	}
+}
+
+func WithUpdateEnabled(enabled bool) ConfigOption {
+	return func(cfg *config.Config) {
+		cfg.System.UpdateEnabled = enabled
 	}
 }
 
@@ -360,4 +393,193 @@ func TestRunInfo_WithDefaultConfig(t *testing.T) {
 	// Verify no errors or panics occurred
 	assert.NotContains(t, stdout, "error")
 	assert.NotContains(t, stdout, "panic")
+}
+
+func TestRunInfo_UpdateSection_Disabled(t *testing.T) {
+	tempDataDir := t.TempDir()
+	t.Setenv("JAVINIZER_DATA_DIR", tempDataDir)
+
+	configPath, _ := createTestConfig(t, WithUpdateEnabled(false))
+
+	rootCmd := &cobra.Command{Use: "root"}
+	rootCmd.PersistentFlags().String("config", configPath, "config file")
+	cmd := info.NewCommand()
+	rootCmd.AddCommand(cmd)
+	rootCmd.SetArgs([]string{"info"})
+
+	stdout, _ := captureOutput(t, func() {
+		err := rootCmd.Execute()
+		require.NoError(t, err, "command execution failed")
+	})
+
+	assert.Contains(t, stdout, "Update:")
+	assert.Contains(t, stdout, "Update enabled: false")
+	assert.Contains(t, stdout, "Updates are disabled in config")
+}
+
+func TestRunInfo_UpdateSection_NeverChecked(t *testing.T) {
+	tempDataDir := t.TempDir()
+	t.Setenv("JAVINIZER_DATA_DIR", tempDataDir)
+
+	configPath, _ := createTestConfig(t, WithUpdateEnabled(true))
+
+	rootCmd := &cobra.Command{Use: "root"}
+	rootCmd.PersistentFlags().String("config", configPath, "config file")
+	cmd := info.NewCommand()
+	rootCmd.AddCommand(cmd)
+	rootCmd.SetArgs([]string{"info"})
+
+	stdout, _ := captureOutput(t, func() {
+		err := rootCmd.Execute()
+		require.NoError(t, err, "command execution failed")
+	})
+
+	assert.Contains(t, stdout, "Update enabled: true")
+	assert.Contains(t, stdout, "Last checked: never")
+	assert.Contains(t, stdout, "Latest version: (unknown)")
+}
+
+func TestRunInfo_UpdateSection_CachedState(t *testing.T) {
+	tempDataDir := t.TempDir()
+	t.Setenv("JAVINIZER_DATA_DIR", tempDataDir)
+
+	configPath, _ := createTestConfig(t, WithUpdateEnabled(true))
+
+	checkedAt := time.Now().UTC().Format(time.RFC3339)
+	statePath := filepath.Join(tempDataDir, "update_cache.json")
+	err := update.SaveStateToFile(statePath, &update.UpdateState{
+		Version:    "v9.9.9",
+		CheckedAt:  checkedAt,
+		Available:  true,
+		Prerelease: false,
+		Source:     "cached",
+	})
+	require.NoError(t, err)
+
+	rootCmd := &cobra.Command{Use: "root"}
+	rootCmd.PersistentFlags().String("config", configPath, "config file")
+	cmd := info.NewCommand()
+	rootCmd.AddCommand(cmd)
+	rootCmd.SetArgs([]string{"info"})
+
+	stdout, _ := captureOutput(t, func() {
+		err := rootCmd.Execute()
+		require.NoError(t, err, "command execution failed")
+	})
+
+	assert.Contains(t, stdout, "Latest version: v9.9.9")
+	assert.Contains(t, stdout, "Update available: true")
+	assert.Contains(t, stdout, "Last checked: "+checkedAt)
+}
+
+func TestRunInfo_UpdateSection_PrereleaseWarning(t *testing.T) {
+	tempDataDir := t.TempDir()
+	t.Setenv("JAVINIZER_DATA_DIR", tempDataDir)
+
+	if update.IsPrerelease(appversion.Short()) {
+		t.Skip("current build version is prerelease; warning path requires stable current version")
+	}
+
+	configPath, _ := createTestConfig(t, WithUpdateEnabled(true))
+
+	statePath := filepath.Join(tempDataDir, "update_cache.json")
+	err := update.SaveStateToFile(statePath, &update.UpdateState{
+		Version:    "v2.0.0-rc1",
+		CheckedAt:  time.Now().UTC().Format(time.RFC3339),
+		Available:  true,
+		Prerelease: true,
+		Source:     "cached",
+	})
+	require.NoError(t, err)
+
+	rootCmd := &cobra.Command{Use: "root"}
+	rootCmd.PersistentFlags().String("config", configPath, "config file")
+	cmd := info.NewCommand()
+	rootCmd.AddCommand(cmd)
+	rootCmd.SetArgs([]string{"info"})
+
+	stdout, _ := captureOutput(t, func() {
+		err := rootCmd.Execute()
+		require.NoError(t, err, "command execution failed")
+	})
+
+	assert.Contains(t, stdout, "Latest version: v2.0.0-rc1")
+	assert.Contains(t, stdout, "Warning: Latest version is a prerelease")
+}
+
+func TestRunInfo_LoadConfigError(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yaml")
+	require.NoError(t, os.Mkdir(configPath, 0o755))
+
+	rootCmd := &cobra.Command{Use: "root"}
+	rootCmd.PersistentFlags().String("config", configPath, "config file")
+	cmd := info.NewCommand()
+	rootCmd.AddCommand(cmd)
+	rootCmd.SetArgs([]string{"info"})
+
+	err := rootCmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to load config")
+}
+
+func TestRunInfo_WriteFailures(t *testing.T) {
+	configPath, _ := createTestConfig(t)
+
+	failPoints := []int{1, 2, 3, 5, 8, 12, 16}
+	for _, failAt := range failPoints {
+		t.Run(fmt.Sprintf("fail_at_write_%d", failAt), func(t *testing.T) {
+			rootCmd := &cobra.Command{Use: "root"}
+			rootCmd.PersistentFlags().String("config", configPath, "config file")
+			cmd := info.NewCommand()
+			rootCmd.AddCommand(cmd)
+			rootCmd.SetArgs([]string{"info"})
+
+			w := &failAfterNWriter{failAt: failAt}
+			cmd.SetOut(w)
+			cmd.SetErr(w)
+
+			err := rootCmd.Execute()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "forced write failure")
+		})
+	}
+}
+
+func TestRunInfo_WriteFailures_Exhaustive(t *testing.T) {
+	tempDataDir := t.TempDir()
+	t.Setenv("JAVINIZER_DATA_DIR", tempDataDir)
+
+	configPath, _ := createTestConfig(t, WithUpdateEnabled(true))
+
+	// First run: count total writes for this command path.
+	countWriter := &countOnlyWriter{}
+	rootCmd := &cobra.Command{Use: "root"}
+	rootCmd.PersistentFlags().String("config", configPath, "config file")
+	cmd := info.NewCommand()
+	rootCmd.AddCommand(cmd)
+	rootCmd.SetArgs([]string{"info"})
+	cmd.SetOut(countWriter)
+	cmd.SetErr(countWriter)
+	require.NoError(t, rootCmd.Execute())
+	require.Greater(t, countWriter.writes, 0)
+
+	// Then fail each write index to cover all write-error return branches.
+	for failAt := 1; failAt <= countWriter.writes; failAt++ {
+		t.Run(fmt.Sprintf("exhaustive_fail_at_write_%d", failAt), func(t *testing.T) {
+			rootCmd := &cobra.Command{Use: "root"}
+			rootCmd.PersistentFlags().String("config", configPath, "config file")
+			cmd := info.NewCommand()
+			rootCmd.AddCommand(cmd)
+			rootCmd.SetArgs([]string{"info"})
+
+			w := &failAfterNWriter{failAt: failAt}
+			cmd.SetOut(w)
+			cmd.SetErr(w)
+
+			err := rootCmd.Execute()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "forced write failure")
+		})
+	}
 }
