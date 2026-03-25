@@ -45,52 +45,43 @@ var (
 
 // New creates a new MGStage scraper
 func New(cfg *config.Config) *Scraper {
-	proxyConfig := config.ResolveScraperProxy(cfg.Scrapers.Proxy, cfg.Scrapers.MGStage.Proxy)
+	scraperCfg := cfg.Scrapers.MGStage
+	proxyCfg := config.ResolveScraperProxy(cfg.Scrapers.Proxy, scraperCfg.Proxy)
 
-	// Create resty client with proxy support
-	client, err := httpclient.NewRestyClient(
-		proxyConfig,
-		30*time.Second,
-		3,
-	)
-	usingProxy := err == nil && proxyConfig.Enabled && strings.TrimSpace(proxyConfig.URL) != ""
+	// Build ScraperConfig for HTTP client (HTTP-01 pattern)
+	configForHTTP := &config.ScraperConfig{
+		Enabled:          scraperCfg.Enabled,
+		Timeout:          30,
+		RateLimit:        scraperCfg.RequestDelay,
+		RetryCount:       3,
+		UseFakeUserAgent: scraperCfg.UseFakeUserAgent,
+		UserAgent:        scraperCfg.FakeUserAgent,
+		Proxy:            scraperCfg.Proxy,
+		DownloadProxy:    scraperCfg.DownloadProxy,
+	}
+
+	client, err := NewHTTPClient(configForHTTP, &cfg.Scrapers.Proxy)
+	usingProxy := err == nil && proxyCfg.Enabled && strings.TrimSpace(proxyCfg.URL) != ""
 	if err != nil {
 		logging.Errorf("MGStage: Failed to create HTTP client with proxy: %v, using explicit no-proxy fallback", err)
 		client = httpclient.NewRestyClientNoProxy(30*time.Second, 3)
 	}
 
-	userAgent := config.ResolveScraperUserAgent(
-		cfg.Scrapers.UserAgent,
-		cfg.Scrapers.MGStage.UseFakeUserAgent,
-		cfg.Scrapers.MGStage.FakeUserAgent,
-	)
-	client.SetHeader("User-Agent", userAgent)
-
-	// Add browser-like headers
-	client.SetHeader("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
-	client.SetHeader("Accept-Language", "ja,en-US;q=0.7,en;q=0.3")
-	client.SetHeader("Accept-Encoding", "gzip, deflate, br")
-	client.SetHeader("Connection", "keep-alive")
-	client.SetHeader("Upgrade-Insecure-Requests", "1")
-
-	// Set age verification cookie (required for MGStage)
-	client.SetHeader("Cookie", "adc=1")
-
-	if proxyConfig.Enabled {
-		logging.Infof("MGStage: Using proxy %s", httpclient.SanitizeProxyURL(proxyConfig.URL))
+	if proxyCfg.Enabled {
+		logging.Infof("MGStage: Using proxy %s", httpclient.SanitizeProxyURL(proxyCfg.URL))
 	}
 
 	// Calculate request delay from config (milliseconds to duration)
-	requestDelay := time.Duration(cfg.Scrapers.MGStage.RequestDelay) * time.Millisecond
+	requestDelay := time.Duration(scraperCfg.RequestDelay) * time.Millisecond
 
 	scraper := &Scraper{
 		client:        client,
 		cfg:           &cfg.Scrapers.MGStage,
-		enabled:       cfg.Scrapers.MGStage.Enabled,
+		enabled:       scraperCfg.Enabled,
 		usingProxy:    usingProxy,
 		requestDelay:  requestDelay,
-		proxyOverride: cfg.Scrapers.MGStage.Proxy,
-		downloadProxy: cfg.Scrapers.MGStage.DownloadProxy,
+		proxyOverride: scraperCfg.Proxy,
+		downloadProxy: scraperCfg.DownloadProxy,
 	}
 
 	// Initialize lastRequestTime with zero time
@@ -118,15 +109,39 @@ func (s *Scraper) Config() *config.ScraperConfig {
 	return &config.ScraperConfig{
 		Enabled:          s.cfg.Enabled,
 		RateLimit:        s.cfg.RequestDelay,
+		Timeout:          30,
+		RetryCount:       3,
 		UseFakeUserAgent: s.cfg.UseFakeUserAgent,
 		UserAgent:        s.cfg.FakeUserAgent,
 		Proxy:            s.cfg.Proxy,
 		DownloadProxy:    s.cfg.DownloadProxy,
+		Extra:            make(map[string]any),
 	}
 }
 
 // Close cleans up resources held by the scraper
 func (s *Scraper) Close() error {
+	return nil
+}
+
+// ValidateConfig validates the scraper configuration.
+// Returns error if config is invalid, nil if valid.
+func (s *Scraper) ValidateConfig(cfg *config.ScraperConfig) error {
+	if cfg == nil {
+		return fmt.Errorf("mgstage: config is nil")
+	}
+	if !cfg.Enabled {
+		return nil // Disabled is valid
+	}
+	if cfg.RateLimit < 0 {
+		return fmt.Errorf("mgstage: rate_limit must be non-negative, got %d", cfg.RateLimit)
+	}
+	if cfg.RetryCount < 0 {
+		return fmt.Errorf("mgstage: retry_count must be non-negative, got %d", cfg.RetryCount)
+	}
+	if cfg.Timeout < 0 {
+		return fmt.Errorf("mgstage: timeout must be non-negative, got %d", cfg.Timeout)
+	}
 	return nil
 }
 
