@@ -54,27 +54,35 @@ type Scraper struct {
 // New creates a new JavDB scraper.
 func New(cfg *config.Config) *Scraper {
 	scraperCfg := cfg.Scrapers.JavDB
-	proxyCfg := config.ResolveScraperProxy(cfg.Scrapers.Proxy, scraperCfg.Proxy)
 
-	client, fs, err := httpclient.NewRestyClientWithFlareSolverr(proxyCfg, 30*time.Second, 3)
+	// Create scraper config for HTTP client ownership (HTTP-01)
+	// HTTP-03: FlareSolverr enabled if scraper config says so, inherits global settings
+	flareSolverrCfg := cfg.Scrapers.Proxy.FlareSolverr
+	if scraperCfg.UseFlareSolverr {
+		flareSolverrCfg.Enabled = true
+	}
+	avdbScraperCfg := &config.ScraperConfig{
+		Enabled:          scraperCfg.Enabled,
+		Timeout:          30, // default
+		RateLimit:        scraperCfg.RequestDelay,
+		RetryCount:       3, // default
+		UseFakeUserAgent: scraperCfg.UseFakeUserAgent,
+		UserAgent:        scraperCfg.FakeUserAgent,
+		Proxy:            scraperCfg.Proxy,
+		DownloadProxy:    scraperCfg.DownloadProxy,
+		FlareSolverr:     flareSolverrCfg,
+		Extra:            make(map[string]any),
+	}
+
+	// Create HTTP client and FlareSolverr via per-scraper NewHTTPClient (HTTP-01, HTTP-03)
+	client, flaresolverr, err := NewHTTPClient(avdbScraperCfg, &cfg.Scrapers.Proxy)
+	proxyCfg := config.ResolveScraperProxy(cfg.Scrapers.Proxy, scraperCfg.Proxy)
 	usingProxy := err == nil && proxyCfg.Enabled && strings.TrimSpace(proxyCfg.URL) != ""
 	if err != nil {
 		logging.Errorf("JavDB: Failed to create HTTP client with proxy/flaresolverr: %v, using explicit no-proxy fallback", err)
 		client = httpclient.NewRestyClientNoProxy(30*time.Second, 3)
-		fs = nil
+		flaresolverr = nil
 	}
-
-	userAgent := config.ResolveScraperUserAgent(
-		cfg.Scrapers.UserAgent,
-		scraperCfg.UseFakeUserAgent,
-		scraperCfg.FakeUserAgent,
-	)
-
-	client.SetHeader("User-Agent", userAgent)
-	client.SetHeader("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
-	client.SetHeader("Accept-Language", "en-US,en;q=0.9,ja;q=0.8,zh;q=0.7")
-	client.SetHeader("Connection", "keep-alive")
-	client.SetHeader("Upgrade-Insecure-Requests", "1")
 
 	baseURL := scraperCfg.BaseURL
 	if baseURL == "" {
@@ -83,7 +91,7 @@ func New(cfg *config.Config) *Scraper {
 
 	s := &Scraper{
 		client:        client,
-		flaresolverr:  fs,
+		flaresolverr:  flaresolverr,
 		cfg:           &scraperCfg,
 		enabled:       scraperCfg.Enabled,
 		baseURL:       strings.TrimRight(baseURL, "/"),
@@ -97,7 +105,7 @@ func New(cfg *config.Config) *Scraper {
 	if usingProxy {
 		logging.Infof("JavDB: Using proxy %s", httpclient.SanitizeProxyURL(proxyCfg.URL))
 	}
-	if scraperCfg.UseFlareSolverr && fs == nil {
+	if scraperCfg.UseFlareSolverr && flaresolverr == nil {
 		logging.Warn("JavDB: use_flaresolverr=true but no FlareSolverr client is configured")
 	}
 
