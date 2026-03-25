@@ -90,7 +90,7 @@ func New(cfg *config.Config) *Scraper {
 		language = "en"
 	}
 
-	userAgent := config.ResolveScraperUserAgent("", scraperCfg.UserAgent.Value)
+	userAgent := config.ResolveScraperUserAgent(scraperCfg.UserAgent.Value)
 	client.SetHeader("User-Agent", userAgent)
 
 	if usingProxy {

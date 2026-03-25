@@ -27,7 +27,7 @@ func NewHTTPClient(cfg *config.ScraperConfig, globalProxy *config.ProxyConfig) (
 		return nil, err
 	}
 
-	userAgent := config.ResolveScraperUserAgent("", cfg.UserAgent)
+	userAgent := config.ResolveScraperUserAgent(cfg.UserAgent)
 	client.SetHeader("User-Agent", userAgent)
 	client.SetHeader("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
 	client.SetHeader("Accept-Language", "en-US,en;q=0.9,ja;q=0.8")

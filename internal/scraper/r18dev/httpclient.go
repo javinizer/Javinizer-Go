@@ -54,7 +54,7 @@ func NewHTTPClient(cfg *config.ScraperConfig, globalProxy *config.ProxyConfig) (
 	}
 
 	// Apply UserAgent from ScraperConfig
-	userAgent := config.ResolveScraperUserAgent("", cfg.UserAgent)
+	userAgent := config.ResolveScraperUserAgent(cfg.UserAgent)
 	client.SetHeader("User-Agent", userAgent)
 	client.SetHeader("Accept", "application/json, text/html, */*")
 	client.SetHeader("Referer", "https://r18.dev/")

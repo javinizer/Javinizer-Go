@@ -2156,13 +2156,9 @@ const docTemplate = `{
                     "description": "Append bonus image files (e.g., \"特典ファイル\") to screenshot URLs",
                     "type": "boolean"
                 },
-                "userAgent": {
-                    "description": "Custom User-Agent; accepts both user_agent (new) and fake_user_agent (deprecated)",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/config.UserAgentString"
-                        }
-                    ]
+                "user_agent": {
+                    "description": "Custom User-Agent for this scraper",
+                    "type": "string"
                 }
             }
         },
@@ -2217,13 +2213,9 @@ const docTemplate = `{
                     "description": "Delay between requests in milliseconds (0 = no delay)",
                     "type": "integer"
                 },
-                "userAgent": {
-                    "description": "Custom User-Agent; accepts both user_agent (new) and fake_user_agent (deprecated)",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/config.UserAgentString"
-                        }
-                    ]
+                "user_agent": {
+                    "description": "Custom User-Agent for this scraper",
+                    "type": "string"
                 }
             }
         },
@@ -2298,13 +2290,9 @@ const docTemplate = `{
                     "description": "Delay between requests in milliseconds (0 = no delay)",
                     "type": "integer"
                 },
-                "userAgent": {
-                    "description": "Custom User-Agent; accepts both user_agent (new) and fake_user_agent (deprecated)",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/config.UserAgentString"
-                        }
-                    ]
+                "user_agent": {
+                    "description": "Custom User-Agent for this scraper",
+                    "type": "string"
                 }
             }
         },
@@ -2349,13 +2337,9 @@ const docTemplate = `{
                 "scrape_actress": {
                     "type": "boolean"
                 },
-                "userAgent": {
-                    "description": "Custom User-Agent; accepts both user_agent (new) and fake_user_agent (deprecated)",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/config.UserAgentString"
-                        }
-                    ]
+                "user_agent": {
+                    "description": "Custom User-Agent for this scraper",
+                    "type": "string"
                 }
             }
         },
@@ -2423,13 +2407,9 @@ const docTemplate = `{
                     "description": "Delay between requests in milliseconds (0 = no delay)",
                     "type": "integer"
                 },
-                "userAgent": {
-                    "description": "Custom User-Agent; accepts both user_agent (new) and fake_user_agent (deprecated)",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/config.UserAgentString"
-                        }
-                    ]
+                "user_agent": {
+                    "description": "Custom User-Agent for this scraper",
+                    "type": "string"
                 }
             }
         },
@@ -2518,13 +2498,9 @@ const docTemplate = `{
                     "description": "Delay between requests in milliseconds (0 = no delay)",
                     "type": "integer"
                 },
-                "userAgent": {
-                    "description": "Custom User-Agent; accepts both user_agent (new) and fake_user_agent (deprecated)",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/config.UserAgentString"
-                        }
-                    ]
+                "user_agent": {
+                    "description": "Custom User-Agent for this scraper",
+                    "type": "string"
                 }
             }
         },
@@ -2562,13 +2538,9 @@ const docTemplate = `{
                     "description": "Delay between requests in milliseconds (0 = no delay)",
                     "type": "integer"
                 },
-                "userAgent": {
-                    "description": "Custom User-Agent; accepts both user_agent (new) and fake_user_agent (deprecated)",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/config.UserAgentString"
-                        }
-                    ]
+                "user_agent": {
+                    "description": "Custom User-Agent for this scraper",
+                    "type": "string"
                 }
             }
         },
@@ -2606,13 +2578,9 @@ const docTemplate = `{
                     "description": "Enable FlareSolverr for Cloudflare bypass",
                     "type": "boolean"
                 },
-                "userAgent": {
-                    "description": "Custom User-Agent; accepts both user_agent (new) and fake_user_agent (deprecated)",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/config.UserAgentString"
-                        }
-                    ]
+                "user_agent": {
+                    "description": "Custom User-Agent for this scraper",
+                    "type": "string"
                 }
             }
         },
@@ -2662,13 +2630,9 @@ const docTemplate = `{
                     "description": "Enable FlareSolverr for Cloudflare bypass",
                     "type": "boolean"
                 },
-                "userAgent": {
-                    "description": "Custom User-Agent; accepts both user_agent (new) and fake_user_agent (deprecated)",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/config.UserAgentString"
-                        }
-                    ]
+                "user_agent": {
+                    "description": "Custom User-Agent for this scraper",
+                    "type": "string"
                 }
             }
         },
@@ -2702,13 +2666,9 @@ const docTemplate = `{
                     "description": "Delay between requests in milliseconds (0 = no delay)",
                     "type": "integer"
                 },
-                "userAgent": {
-                    "description": "Custom User-Agent; accepts both user_agent (new) and fake_user_agent (deprecated)",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/config.UserAgentString"
-                        }
-                    ]
+                "user_agent": {
+                    "description": "Custom User-Agent for this scraper",
+                    "type": "string"
                 }
             }
         },
@@ -2755,13 +2715,9 @@ const docTemplate = `{
                     "description": "Delay between requests in milliseconds (0 = no delay)",
                     "type": "integer"
                 },
-                "userAgent": {
-                    "description": "Custom User-Agent; accepts both user_agent (new) and fake_user_agent (deprecated)",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/config.UserAgentString"
-                        }
-                    ]
+                "user_agent": {
+                    "description": "Custom User-Agent for this scraper",
+                    "type": "string"
                 }
             }
         },
@@ -3287,69 +3243,8 @@ const docTemplate = `{
                     "description": "Whether to respect Retry-After header from server",
                     "type": "boolean"
                 },
-                "userAgent": {
-                    "description": "Custom User-Agent; accepts both user_agent (new) and fake_user_agent (deprecated)",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/config.UserAgentString"
-                        }
-                    ]
-                }
-            }
-        },
-        "config.ScraperConfig": {
-            "type": "object",
-            "properties": {
-                "download_proxy": {
-                    "description": "Optional scraper-specific download proxy override",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/config.ProxyConfig"
-                        }
-                    ]
-                },
-                "enabled": {
-                    "type": "boolean"
-                },
-                "extra": {
-                    "description": "CONF-06: scraper-specific fields",
-                    "type": "object",
-                    "additionalProperties": {}
-                },
-                "flaresolverr": {
-                    "description": "HTTP-03: FlareSolverr on ScraperConfig",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/config.FlareSolverrConfig"
-                        }
-                    ]
-                },
-                "language": {
-                    "description": "Language code varies by scraper",
-                    "type": "string"
-                },
-                "proxy": {
-                    "description": "Optional scraper-specific proxy override",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/config.ProxyConfig"
-                        }
-                    ]
-                },
-                "rate_limit": {
-                    "description": "Request delay in milliseconds (mirrors RequestDelay)",
-                    "type": "integer"
-                },
-                "retry_count": {
-                    "description": "Max retries (mirrors MaxRetries)",
-                    "type": "integer"
-                },
-                "timeout": {
-                    "description": "HTTP client timeout in seconds",
-                    "type": "integer"
-                },
                 "user_agent": {
-                    "description": "Custom User-Agent; if empty, DefaultFakeUserAgent is used",
+                    "description": "Custom User-Agent for this scraper",
                     "type": "string"
                 }
             }
@@ -3389,13 +3284,6 @@ const docTemplate = `{
                 },
                 "mgstage": {
                     "$ref": "#/definitions/config.MGStageConfig"
-                },
-                "overrides": {
-                    "description": "Overrides: normalized map for generic iteration (populated at Load() time)\nCONF-02: This map is write-only populated from flat structs.\nNOT yaml-serializable (omitempty). The flat structs remain source of truth for YAML.",
-                    "type": "object",
-                    "additionalProperties": {
-                        "$ref": "#/definitions/config.ScraperConfig"
-                    }
                 },
                 "priority": {
                     "description": "Global scraper priority order",
@@ -3540,13 +3428,9 @@ const docTemplate = `{
                     "description": "Delay between requests in milliseconds (0 = no delay)",
                     "type": "integer"
                 },
-                "userAgent": {
-                    "description": "Custom User-Agent; accepts both user_agent (new) and fake_user_agent (deprecated)",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/config.UserAgentString"
-                        }
-                    ]
+                "user_agent": {
+                    "description": "Custom User-Agent for this scraper",
+                    "type": "string"
                 }
             }
         },
@@ -3644,14 +3528,6 @@ const docTemplate = `{
                 },
                 "title": {
                     "type": "boolean"
-                }
-            }
-        },
-        "config.UserAgentString": {
-            "type": "object",
-            "properties": {
-                "value": {
-                    "type": "string"
                 }
             }
         },

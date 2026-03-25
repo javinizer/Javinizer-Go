@@ -353,11 +353,9 @@ definitions:
       scrape_bonus_screens:
         description: Append bonus image files (e.g., "特典ファイル") to screenshot URLs
         type: boolean
-      userAgent:
-        allOf:
-        - $ref: '#/definitions/config.UserAgentString'
-        description: Custom User-Agent; accepts both user_agent (new) and fake_user_agent
-          (deprecated)
+      user_agent:
+        description: Custom User-Agent for this scraper
+        type: string
     type: object
   config.ActressDatabaseConfig:
     properties:
@@ -392,11 +390,9 @@ definitions:
       request_delay:
         description: Delay between requests in milliseconds (0 = no delay)
         type: integer
-      userAgent:
-        allOf:
-        - $ref: '#/definitions/config.UserAgentString'
-        description: Custom User-Agent; accepts both user_agent (new) and fake_user_agent
-          (deprecated)
+      user_agent:
+        description: Custom User-Agent for this scraper
+        type: string
     type: object
   config.Config:
     properties:
@@ -443,11 +439,9 @@ definitions:
       request_delay:
         description: Delay between requests in milliseconds (0 = no delay)
         type: integer
-      userAgent:
-        allOf:
-        - $ref: '#/definitions/config.UserAgentString'
-        description: Custom User-Agent; accepts both user_agent (new) and fake_user_agent
-          (deprecated)
+      user_agent:
+        description: Custom User-Agent for this scraper
+        type: string
     type: object
   config.DMMConfig:
     properties:
@@ -475,11 +469,9 @@ definitions:
         type: integer
       scrape_actress:
         type: boolean
-      userAgent:
-        allOf:
-        - $ref: '#/definitions/config.UserAgentString'
-        description: Custom User-Agent; accepts both user_agent (new) and fake_user_agent
-          (deprecated)
+      user_agent:
+        description: Custom User-Agent for this scraper
+        type: string
     type: object
   config.DatabaseConfig:
     properties:
@@ -524,11 +516,9 @@ definitions:
       request_delay:
         description: Delay between requests in milliseconds (0 = no delay)
         type: integer
-      userAgent:
-        allOf:
-        - $ref: '#/definitions/config.UserAgentString'
-        description: Custom User-Agent; accepts both user_agent (new) and fake_user_agent
-          (deprecated)
+      user_agent:
+        description: Custom User-Agent for this scraper
+        type: string
     type: object
   config.FlareSolverrConfig:
     properties:
@@ -587,11 +577,9 @@ definitions:
       request_delay:
         description: Delay between requests in milliseconds (0 = no delay)
         type: integer
-      userAgent:
-        allOf:
-        - $ref: '#/definitions/config.UserAgentString'
-        description: Custom User-Agent; accepts both user_agent (new) and fake_user_agent
-          (deprecated)
+      user_agent:
+        description: Custom User-Agent for this scraper
+        type: string
     type: object
   config.JavBusConfig:
     properties:
@@ -614,11 +602,9 @@ definitions:
       request_delay:
         description: Delay between requests in milliseconds (0 = no delay)
         type: integer
-      userAgent:
-        allOf:
-        - $ref: '#/definitions/config.UserAgentString'
-        description: Custom User-Agent; accepts both user_agent (new) and fake_user_agent
-          (deprecated)
+      user_agent:
+        description: Custom User-Agent for this scraper
+        type: string
     type: object
   config.JavDBConfig:
     properties:
@@ -641,11 +627,9 @@ definitions:
       use_flaresolverr:
         description: Enable FlareSolverr for Cloudflare bypass
         type: boolean
-      userAgent:
-        allOf:
-        - $ref: '#/definitions/config.UserAgentString'
-        description: Custom User-Agent; accepts both user_agent (new) and fake_user_agent
-          (deprecated)
+      user_agent:
+        description: Custom User-Agent for this scraper
+        type: string
     type: object
   config.JavLibraryConfig:
     properties:
@@ -677,11 +661,9 @@ definitions:
       use_flaresolverr:
         description: Enable FlareSolverr for Cloudflare bypass
         type: boolean
-      userAgent:
-        allOf:
-        - $ref: '#/definitions/config.UserAgentString'
-        description: Custom User-Agent; accepts both user_agent (new) and fake_user_agent
-          (deprecated)
+      user_agent:
+        description: Custom User-Agent for this scraper
+        type: string
     type: object
   config.LibreDMMConfig:
     properties:
@@ -701,11 +683,9 @@ definitions:
       request_delay:
         description: Delay between requests in milliseconds (0 = no delay)
         type: integer
-      userAgent:
-        allOf:
-        - $ref: '#/definitions/config.UserAgentString'
-        description: Custom User-Agent; accepts both user_agent (new) and fake_user_agent
-          (deprecated)
+      user_agent:
+        description: Custom User-Agent for this scraper
+        type: string
     type: object
   config.LoggingConfig:
     properties:
@@ -734,11 +714,9 @@ definitions:
       request_delay:
         description: Delay between requests in milliseconds (0 = no delay)
         type: integer
-      userAgent:
-        allOf:
-        - $ref: '#/definitions/config.UserAgentString'
-        description: Custom User-Agent; accepts both user_agent (new) and fake_user_agent
-          (deprecated)
+      user_agent:
+        description: Custom User-Agent for this scraper
+        type: string
     type: object
   config.MatchingConfig:
     properties:
@@ -1085,46 +1063,8 @@ definitions:
       respect_retry_after:
         description: Whether to respect Retry-After header from server
         type: boolean
-      userAgent:
-        allOf:
-        - $ref: '#/definitions/config.UserAgentString'
-        description: Custom User-Agent; accepts both user_agent (new) and fake_user_agent
-          (deprecated)
-    type: object
-  config.ScraperConfig:
-    properties:
-      download_proxy:
-        allOf:
-        - $ref: '#/definitions/config.ProxyConfig'
-        description: Optional scraper-specific download proxy override
-      enabled:
-        type: boolean
-      extra:
-        additionalProperties: {}
-        description: 'CONF-06: scraper-specific fields'
-        type: object
-      flaresolverr:
-        allOf:
-        - $ref: '#/definitions/config.FlareSolverrConfig'
-        description: 'HTTP-03: FlareSolverr on ScraperConfig'
-      language:
-        description: Language code varies by scraper
-        type: string
-      proxy:
-        allOf:
-        - $ref: '#/definitions/config.ProxyConfig'
-        description: Optional scraper-specific proxy override
-      rate_limit:
-        description: Request delay in milliseconds (mirrors RequestDelay)
-        type: integer
-      retry_count:
-        description: Max retries (mirrors MaxRetries)
-        type: integer
-      timeout:
-        description: HTTP client timeout in seconds
-        type: integer
       user_agent:
-        description: Custom User-Agent; if empty, DefaultFakeUserAgent is used
+        description: Custom User-Agent for this scraper
         type: string
     type: object
   config.ScrapersConfig:
@@ -1151,14 +1091,6 @@ definitions:
         $ref: '#/definitions/config.LibreDMMConfig'
       mgstage:
         $ref: '#/definitions/config.MGStageConfig'
-      overrides:
-        additionalProperties:
-          $ref: '#/definitions/config.ScraperConfig'
-        description: |-
-          Overrides: normalized map for generic iteration (populated at Load() time)
-          CONF-02: This map is write-only populated from flat structs.
-          NOT yaml-serializable (omitempty). The flat structs remain source of truth for YAML.
-        type: object
       priority:
         description: Global scraper priority order
         items:
@@ -1259,11 +1191,9 @@ definitions:
       request_delay:
         description: Delay between requests in milliseconds (0 = no delay)
         type: integer
-      userAgent:
-        allOf:
-        - $ref: '#/definitions/config.UserAgentString'
-        description: Custom User-Agent; accepts both user_agent (new) and fake_user_agent
-          (deprecated)
+      user_agent:
+        description: Custom User-Agent for this scraper
+        type: string
     type: object
   config.TranslationConfig:
     properties:
@@ -1325,11 +1255,6 @@ definitions:
         type: boolean
       title:
         type: boolean
-    type: object
-  config.UserAgentString:
-    properties:
-      value:
-        type: string
     type: object
   contracts.ActressMergeConflict:
     properties:

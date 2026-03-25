@@ -257,9 +257,5 @@
 			</div>
 		</div>
 
-		<div>
-			<label class="block text-sm font-medium mb-2" for="user-agent">User Agent</label>
-			<input id="user-agent" type="text" bind:value={config.scrapers.user_agent} class={inputClass} />
-		</div>
 	</div>
 </SettingsSection>
