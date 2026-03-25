@@ -141,6 +141,40 @@ func (s *Scraper) Close() error {
 	return nil
 }
 
+// ValidateConfig validates the scraper configuration.
+// Returns error if config is invalid, nil if valid.
+// Called by callers before creating the scraper to validate configuration.
+func (s *Scraper) ValidateConfig(cfg *config.ScraperConfig) error {
+	if cfg == nil {
+		return fmt.Errorf("r18dev: config is nil")
+	}
+	if !cfg.Enabled {
+		return nil // Disabled is valid
+	}
+	// Validate language if set
+	switch strings.ToLower(strings.TrimSpace(cfg.Language)) {
+	case "", "en":
+		// Valid
+	case "ja":
+		// Valid
+	default:
+		return fmt.Errorf("r18dev: language must be 'en' or 'ja', got %q", cfg.Language)
+	}
+	// Validate rate limit
+	if cfg.RateLimit < 0 {
+		return fmt.Errorf("r18dev: rate_limit must be non-negative, got %d", cfg.RateLimit)
+	}
+	// Validate retry count
+	if cfg.RetryCount < 0 {
+		return fmt.Errorf("r18dev: retry_count must be non-negative, got %d", cfg.RetryCount)
+	}
+	// Validate timeout
+	if cfg.Timeout < 0 {
+		return fmt.Errorf("r18dev: timeout must be non-negative, got %d", cfg.Timeout)
+	}
+	return nil
+}
+
 // ResolveDownloadProxyForHost declares R18.dev-owned media hosts for downloader proxy routing.
 func (s *Scraper) ResolveDownloadProxyForHost(host string) (*config.ProxyConfig, *config.ProxyConfig, bool) {
 	host = strings.ToLower(strings.TrimSpace(host))
