@@ -56,16 +56,15 @@ func New(cfg *config.Config) *Scraper {
 
 	// Build ScraperConfig for NewHTTPClient (HTTP-01 pattern)
 	configForHTTP := &config.ScraperConfig{
-		Enabled:          scraperCfg.Enabled,
-		Language:         scraperCfg.Language,
-		RateLimit:        scraperCfg.RequestDelay,
-		Timeout:          30, // default, will be overridden if ScraperConfig has it
-		RetryCount:       3,  // default
-		UseFakeUserAgent: scraperCfg.UseFakeUserAgent,
-		UserAgent:        scraperCfg.FakeUserAgent,
-		Proxy:            scraperCfg.Proxy,
-		DownloadProxy:    scraperCfg.DownloadProxy,
-		FlareSolverr:     flaresolverrConfig,
+		Enabled:       scraperCfg.Enabled,
+		Language:      scraperCfg.Language,
+		RateLimit:     scraperCfg.RequestDelay,
+		Timeout:       30, // default, will be overridden if ScraperConfig has it
+		RetryCount:    3,  // default
+		UserAgent:     scraperCfg.UserAgent.Value,
+		Proxy:         scraperCfg.Proxy,
+		DownloadProxy: scraperCfg.DownloadProxy,
+		FlareSolverr:  flaresolverrConfig,
 	}
 
 	client, flaresolverr, err := NewHTTPClient(configForHTTP, &proxyConfig, scraperCfg.UseFlareSolverr)
@@ -91,11 +90,7 @@ func New(cfg *config.Config) *Scraper {
 		language = "en"
 	}
 
-	userAgent := config.ResolveScraperUserAgent(
-		cfg.Scrapers.UserAgent,
-		scraperCfg.UseFakeUserAgent,
-		scraperCfg.FakeUserAgent,
-	)
+	userAgent := config.ResolveScraperUserAgent("", scraperCfg.UserAgent.Value)
 	client.SetHeader("User-Agent", userAgent)
 
 	if usingProxy {
@@ -132,15 +127,14 @@ func (s *Scraper) IsEnabled() bool {
 // Config returns the scraper's configuration
 func (s *Scraper) Config() *config.ScraperConfig {
 	return &config.ScraperConfig{
-		Enabled:          s.cfg.Enabled,
-		Language:         s.cfg.Language,
-		RateLimit:        s.cfg.RequestDelay,
-		Timeout:          30, // default, hardcoded in HTTP client creation
-		RetryCount:       3,  // default, hardcoded in HTTP client creation
-		UseFakeUserAgent: s.cfg.UseFakeUserAgent,
-		UserAgent:        s.cfg.FakeUserAgent,
-		Proxy:            s.cfg.Proxy,
-		DownloadProxy:    s.cfg.DownloadProxy,
+		Enabled:       s.cfg.Enabled,
+		Language:      s.cfg.Language,
+		RateLimit:     s.cfg.RequestDelay,
+		Timeout:       30, // default, hardcoded in HTTP client creation
+		RetryCount:    3,  // default, hardcoded in HTTP client creation
+		UserAgent:     s.cfg.UserAgent.Value,
+		Proxy:         s.cfg.Proxy,
+		DownloadProxy: s.cfg.DownloadProxy,
 		FlareSolverr: config.FlareSolverrConfig{
 			Enabled: s.cfg.UseFlareSolverr,
 		},
@@ -160,10 +154,14 @@ func (s *Scraper) Close() error {
 // ResolveDownloadProxyForHost declares JavLibrary-owned media hosts for downloader proxy routing.
 func (s *Scraper) ResolveDownloadProxyForHost(host string) (*config.ProxyConfig, *config.ProxyConfig, bool) {
 	host = strings.ToLower(strings.TrimSpace(host))
-	if host == "" || !strings.Contains(host, "javlibrary") {
+	if host == "" {
 		return nil, nil, false
 	}
-	return s.downloadProxy, s.proxyOverride, true
+	// JavLibrary uses c.impact.jp for its image CDN alongside javlibrary.com
+	if strings.Contains(host, "javlibrary") || strings.Contains(host, "c.impact.jp") {
+		return s.downloadProxy, s.proxyOverride, true
+	}
+	return nil, nil, false
 }
 
 // GetURL returns the search URL for a given ID
@@ -590,6 +588,11 @@ func (s *Scraper) extractScreenshotURLs(html string) []string {
 		if strings.Contains(url, "jp-") || strings.HasSuffix(url, "jp.jpg") {
 			return
 		}
+		// Filter out DMM cover URLs (pl.jpg = cover, ps.jpg = poster)
+		// These should not be included as screenshots
+		if strings.Contains(url, "pl.jpg") || strings.Contains(url, "ps.jpg") {
+			return
+		}
 		seen[url] = true
 		screenshotURLs = append(screenshotURLs, url)
 	}
@@ -651,8 +654,8 @@ func (s *Scraper) extractScreenshotURLs(html string) []string {
 	}
 
 	// Look for any src attribute containing .jpg that looks like a screenshot
-	// (broader pattern to catch new formats)
-	re = regexp.MustCompile(`src="([^"]*\.jpg[^"]*)"`)
+	// Require numeric pattern (e.g., /04.jpg, /001.jpg) typical of gallery screenshots
+	re = regexp.MustCompile(`src="([^"]*\/(\d+)\.jpg[^"]*)"`)
 	matches = re.FindAllStringSubmatch(html, -1)
 	for _, m := range matches {
 		if len(m) > 1 {
@@ -695,8 +698,8 @@ func (s *Scraper) extractScreenshotURLs(html string) []string {
 		}
 	}
 
-	// Broader fallback: any href to .jpg anywhere in page
-	re = regexp.MustCompile(`href="([^"]*\.jpg[^"]*)"`)
+	// Broader fallback: any href to .jpg with numeric pattern typical of gallery screenshots
+	re = regexp.MustCompile(`href="([^"]*\/(\d+)\.jpg[^"]*)"`)
 	matches = re.FindAllStringSubmatch(html, -1)
 	for _, m := range matches {
 		if len(m) > 1 {

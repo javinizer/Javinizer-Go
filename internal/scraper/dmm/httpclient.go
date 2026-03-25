@@ -34,11 +34,7 @@ func NewHTTPClient(cfg *config.ScraperConfig, globalProxy *config.ProxyConfig) (
 	}
 
 	// Apply UserAgent from ScraperConfig
-	userAgent := config.ResolveScraperUserAgent(
-		cfg.UserAgent,
-		cfg.UseFakeUserAgent,
-		cfg.UserAgent,
-	)
+	userAgent := config.ResolveScraperUserAgent("", cfg.UserAgent)
 	client.SetHeader("User-Agent", userAgent)
 	client.SetHeader("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
 	client.SetHeader("Accept-Language", "en-US,en;q=0.9,ja;q=0.8")
@@ -54,15 +50,14 @@ func NewHTTPClient(cfg *config.ScraperConfig, globalProxy *config.ProxyConfig) (
 // This is a convenience wrapper for the common case where DMMConfig is available.
 func NewHTTPClientWithDefaults(cfg *config.Config) (*resty.Client, *config.ProxyConfig, error) {
 	scraperCfg := &config.ScraperConfig{
-		Enabled:          cfg.Scrapers.DMM.Enabled,
-		Timeout:          30, // default (seconds)
-		RateLimit:        0,  // DMM doesn't have per-request delay in its config
-		RetryCount:       3,  // default
-		UseFakeUserAgent: cfg.Scrapers.DMM.UseFakeUserAgent,
-		UserAgent:        cfg.Scrapers.DMM.FakeUserAgent,
-		Proxy:            cfg.Scrapers.DMM.Proxy,
-		DownloadProxy:    cfg.Scrapers.DMM.DownloadProxy,
-		FlareSolverr:     cfg.Scrapers.Proxy.FlareSolverr, // inherit global if not overridden
+		Enabled:       cfg.Scrapers.DMM.Enabled,
+		Timeout:       30, // default (seconds)
+		RateLimit:     0,  // DMM doesn't have per-request delay in its config
+		RetryCount:    3,  // default
+		UserAgent:     cfg.Scrapers.DMM.UserAgent.Value,
+		Proxy:         cfg.Scrapers.DMM.Proxy,
+		DownloadProxy: cfg.Scrapers.DMM.DownloadProxy,
+		FlareSolverr:  cfg.Scrapers.Proxy.FlareSolverr, // inherit global if not overridden
 	}
 
 	client, proxyConfig, err := NewHTTPClient(scraperCfg, &cfg.Scrapers.Proxy)

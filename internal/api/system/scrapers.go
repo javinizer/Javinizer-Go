@@ -89,18 +89,12 @@ func scraperProxyOptions(profileChoices []ScraperChoice) []ScraperOption {
 	}
 }
 
-func scraperFakeUserAgentOptions() []ScraperOption {
+func scraperUserAgentOptions() []ScraperOption {
 	return []ScraperOption{
 		{
-			Key:         "use_fake_user_agent",
-			Label:       "Use fake User-Agent",
-			Description: "Use a browser-like User-Agent string for this scraper",
-			Type:        "boolean",
-		},
-		{
-			Key:         "fake_user_agent",
-			Label:       "Fake User-Agent",
-			Description: "Optional custom fake User-Agent (leave empty to use default browser User-Agent)",
+			Key:         "user_agent",
+			Label:       "User-Agent",
+			Description: "Custom User-Agent (uses default browser UA if empty)",
 			Type:        "string",
 		},
 	}

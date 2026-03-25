@@ -242,43 +242,32 @@ func TestResolveScraperUserAgent(t *testing.T) {
 	tests := []struct {
 		name       string
 		globalUA   string
-		useFake    bool
-		fakeUA     string
+		userAgent  string
 		expectedUA string
 	}{
 		{
-			name:       "global user-agent when fake disabled",
+			name:       "scraper user-agent takes precedence",
 			globalUA:   "Javinizer-Test-UA",
-			useFake:    false,
-			fakeUA:     "",
-			expectedUA: "Javinizer-Test-UA",
+			userAgent:  "Custom-UA",
+			expectedUA: "Custom-UA",
 		},
 		{
-			name:       "default true user-agent when global empty",
-			globalUA:   "",
-			useFake:    false,
-			fakeUA:     "",
-			expectedUA: DefaultUserAgent,
-		},
-		{
-			name:       "default fake user-agent when enabled but custom empty",
-			globalUA:   "ignored",
-			useFake:    true,
-			fakeUA:     "",
+			name:       "default fake user-agent when scraper UA empty",
+			globalUA:   "Javinizer-Test-UA",
+			userAgent:  "",
 			expectedUA: DefaultFakeUserAgent,
 		},
 		{
-			name:       "custom fake user-agent when enabled",
-			globalUA:   "ignored",
-			useFake:    true,
-			fakeUA:     "Mozilla/5.0 Test",
-			expectedUA: "Mozilla/5.0 Test",
+			name:       "default fake user-agent when both empty",
+			globalUA:   "",
+			userAgent:  "",
+			expectedUA: DefaultFakeUserAgent,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := ResolveScraperUserAgent(tt.globalUA, tt.useFake, tt.fakeUA)
+			got := ResolveScraperUserAgent(tt.globalUA, tt.userAgent)
 			if got != tt.expectedUA {
 				t.Errorf("expected user-agent %q, got %q", tt.expectedUA, got)
 			}

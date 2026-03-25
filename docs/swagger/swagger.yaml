@@ -340,10 +340,6 @@ definitions:
         description: Optional scraper-specific download proxy override
       enabled:
         type: boolean
-      fake_user_agent:
-        description: Optional custom fake User-Agent (defaults to built-in browser
-          UA)
-        type: string
       language:
         description: 'Language code: en, ja (default: en)'
         type: string
@@ -357,9 +353,11 @@ definitions:
       scrape_bonus_screens:
         description: Append bonus image files (e.g., "特典ファイル") to screenshot URLs
         type: boolean
-      use_fake_user_agent:
-        description: Use browser-like User-Agent header for this scraper
-        type: boolean
+      userAgent:
+        allOf:
+        - $ref: '#/definitions/config.UserAgentString'
+        description: Custom User-Agent; accepts both user_agent (new) and fake_user_agent
+          (deprecated)
     type: object
   config.ActressDatabaseConfig:
     properties:
@@ -384,10 +382,6 @@ definitions:
         description: Optional scraper-specific download proxy override
       enabled:
         type: boolean
-      fake_user_agent:
-        description: Optional custom fake User-Agent (defaults to built-in browser
-          UA)
-        type: string
       language:
         description: 'Language code: ja, en (default: ja)'
         type: string
@@ -398,9 +392,11 @@ definitions:
       request_delay:
         description: Delay between requests in milliseconds (0 = no delay)
         type: integer
-      use_fake_user_agent:
-        description: Use browser-like User-Agent header for this scraper
-        type: boolean
+      userAgent:
+        allOf:
+        - $ref: '#/definitions/config.UserAgentString'
+        description: Custom User-Agent; accepts both user_agent (new) and fake_user_agent
+          (deprecated)
     type: object
   config.Config:
     properties:
@@ -440,10 +436,6 @@ definitions:
         description: Optional scraper-specific download proxy override
       enabled:
         type: boolean
-      fake_user_agent:
-        description: Optional custom fake User-Agent (defaults to built-in browser
-          UA)
-        type: string
       proxy:
         allOf:
         - $ref: '#/definitions/config.ProxyConfig'
@@ -451,9 +443,11 @@ definitions:
       request_delay:
         description: Delay between requests in milliseconds (0 = no delay)
         type: integer
-      use_fake_user_agent:
-        description: Use browser-like User-Agent header for this scraper
-        type: boolean
+      userAgent:
+        allOf:
+        - $ref: '#/definitions/config.UserAgentString'
+        description: Custom User-Agent; accepts both user_agent (new) and fake_user_agent
+          (deprecated)
     type: object
   config.DMMConfig:
     properties:
@@ -469,10 +463,6 @@ definitions:
         type: boolean
       enabled:
         type: boolean
-      fake_user_agent:
-        description: Optional custom fake User-Agent (defaults to built-in browser
-          UA)
-        type: string
       max_retries:
         description: Maximum number of retry attempts for rate-limited requests
         type: integer
@@ -485,9 +475,11 @@ definitions:
         type: integer
       scrape_actress:
         type: boolean
-      use_fake_user_agent:
-        description: Use browser-like User-Agent header for this scraper
-        type: boolean
+      userAgent:
+        allOf:
+        - $ref: '#/definitions/config.UserAgentString'
+        description: Custom User-Agent; accepts both user_agent (new) and fake_user_agent
+          (deprecated)
     type: object
   config.DatabaseConfig:
     properties:
@@ -525,10 +517,6 @@ definitions:
         description: Optional scraper-specific download proxy override
       enabled:
         type: boolean
-      fake_user_agent:
-        description: Optional custom fake User-Agent (defaults to built-in browser
-          UA)
-        type: string
       proxy:
         allOf:
         - $ref: '#/definitions/config.ProxyConfig'
@@ -536,9 +524,11 @@ definitions:
       request_delay:
         description: Delay between requests in milliseconds (0 = no delay)
         type: integer
-      use_fake_user_agent:
-        description: Use browser-like User-Agent header for this scraper
-        type: boolean
+      userAgent:
+        allOf:
+        - $ref: '#/definitions/config.UserAgentString'
+        description: Custom User-Agent; accepts both user_agent (new) and fake_user_agent
+          (deprecated)
     type: object
   config.FlareSolverrConfig:
     properties:
@@ -590,10 +580,6 @@ definitions:
         description: Optional scraper-specific download proxy override
       enabled:
         type: boolean
-      fake_user_agent:
-        description: Optional custom fake User-Agent (defaults to built-in browser
-          UA)
-        type: string
       proxy:
         allOf:
         - $ref: '#/definitions/config.ProxyConfig'
@@ -601,9 +587,11 @@ definitions:
       request_delay:
         description: Delay between requests in milliseconds (0 = no delay)
         type: integer
-      use_fake_user_agent:
-        description: Use browser-like User-Agent header for this scraper
-        type: boolean
+      userAgent:
+        allOf:
+        - $ref: '#/definitions/config.UserAgentString'
+        description: Custom User-Agent; accepts both user_agent (new) and fake_user_agent
+          (deprecated)
     type: object
   config.JavBusConfig:
     properties:
@@ -616,10 +604,6 @@ definitions:
         description: Optional scraper-specific download proxy override
       enabled:
         type: boolean
-      fake_user_agent:
-        description: Optional custom fake User-Agent (defaults to built-in browser
-          UA)
-        type: string
       language:
         description: 'Language code: en, ja, zh (default: zh)'
         type: string
@@ -630,9 +614,11 @@ definitions:
       request_delay:
         description: Delay between requests in milliseconds (0 = no delay)
         type: integer
-      use_fake_user_agent:
-        description: Use browser-like User-Agent header for this scraper
-        type: boolean
+      userAgent:
+        allOf:
+        - $ref: '#/definitions/config.UserAgentString'
+        description: Custom User-Agent; accepts both user_agent (new) and fake_user_agent
+          (deprecated)
     type: object
   config.JavDBConfig:
     properties:
@@ -645,10 +631,6 @@ definitions:
         description: Optional scraper-specific download proxy override
       enabled:
         type: boolean
-      fake_user_agent:
-        description: Optional custom fake User-Agent (defaults to built-in browser
-          UA)
-        type: string
       proxy:
         allOf:
         - $ref: '#/definitions/config.ProxyConfig'
@@ -656,12 +638,14 @@ definitions:
       request_delay:
         description: Delay between requests in milliseconds (0 = no delay)
         type: integer
-      use_fake_user_agent:
-        description: Use browser-like User-Agent header for this scraper
-        type: boolean
       use_flaresolverr:
         description: Enable FlareSolverr for Cloudflare bypass
         type: boolean
+      userAgent:
+        allOf:
+        - $ref: '#/definitions/config.UserAgentString'
+        description: Custom User-Agent; accepts both user_agent (new) and fake_user_agent
+          (deprecated)
     type: object
   config.JavLibraryConfig:
     properties:
@@ -680,10 +664,6 @@ definitions:
         description: Optional scraper-specific download proxy override
       enabled:
         type: boolean
-      fake_user_agent:
-        description: Optional custom fake User-Agent (defaults to built-in browser
-          UA)
-        type: string
       language:
         description: 'Language code: en, ja, cn, tw (default: en)'
         type: string
@@ -694,15 +674,14 @@ definitions:
       request_delay:
         description: Delay between requests in milliseconds (0 = no delay)
         type: integer
-      use_fake_user_agent:
-        description: Use browser-like User-Agent header for this scraper
-        type: boolean
       use_flaresolverr:
         description: Enable FlareSolverr for Cloudflare bypass
         type: boolean
-      user_agent:
-        description: Custom user agent (optional)
-        type: string
+      userAgent:
+        allOf:
+        - $ref: '#/definitions/config.UserAgentString'
+        description: Custom User-Agent; accepts both user_agent (new) and fake_user_agent
+          (deprecated)
     type: object
   config.LibreDMMConfig:
     properties:
@@ -715,10 +694,6 @@ definitions:
         description: Optional scraper-specific download proxy override
       enabled:
         type: boolean
-      fake_user_agent:
-        description: Optional custom fake User-Agent (defaults to built-in browser
-          UA)
-        type: string
       proxy:
         allOf:
         - $ref: '#/definitions/config.ProxyConfig'
@@ -726,9 +701,11 @@ definitions:
       request_delay:
         description: Delay between requests in milliseconds (0 = no delay)
         type: integer
-      use_fake_user_agent:
-        description: Use browser-like User-Agent header for this scraper
-        type: boolean
+      userAgent:
+        allOf:
+        - $ref: '#/definitions/config.UserAgentString'
+        description: Custom User-Agent; accepts both user_agent (new) and fake_user_agent
+          (deprecated)
     type: object
   config.LoggingConfig:
     properties:
@@ -750,10 +727,6 @@ definitions:
         description: Optional scraper-specific download proxy override
       enabled:
         type: boolean
-      fake_user_agent:
-        description: Optional custom fake User-Agent (defaults to built-in browser
-          UA)
-        type: string
       proxy:
         allOf:
         - $ref: '#/definitions/config.ProxyConfig'
@@ -761,9 +734,11 @@ definitions:
       request_delay:
         description: Delay between requests in milliseconds (0 = no delay)
         type: integer
-      use_fake_user_agent:
-        description: Use browser-like User-Agent header for this scraper
-        type: boolean
+      userAgent:
+        allOf:
+        - $ref: '#/definitions/config.UserAgentString'
+        description: Custom User-Agent; accepts both user_agent (new) and fake_user_agent
+          (deprecated)
     type: object
   config.MatchingConfig:
     properties:
@@ -1094,10 +1069,6 @@ definitions:
         description: Optional scraper-specific download proxy override
       enabled:
         type: boolean
-      fake_user_agent:
-        description: Optional custom fake User-Agent (defaults to built-in browser
-          UA)
-        type: string
       language:
         description: 'Language code: en, ja (default: en)'
         type: string
@@ -1114,9 +1085,11 @@ definitions:
       respect_retry_after:
         description: Whether to respect Retry-After header from server
         type: boolean
-      use_fake_user_agent:
-        description: Use browser-like User-Agent header for this scraper
-        type: boolean
+      userAgent:
+        allOf:
+        - $ref: '#/definitions/config.UserAgentString'
+        description: Custom User-Agent; accepts both user_agent (new) and fake_user_agent
+          (deprecated)
     type: object
   config.ScraperConfig:
     properties:
@@ -1150,11 +1123,8 @@ definitions:
       timeout:
         description: HTTP client timeout in seconds
         type: integer
-      use_fake_user_agent:
-        description: Use browser-like User-Agent header
-        type: boolean
       user_agent:
-        description: Optional custom User-Agent (replaces FakeUserAgent)
+        description: Custom User-Agent; if empty, DefaultFakeUserAgent is used
         type: string
     type: object
   config.ScrapersConfig:
@@ -1279,10 +1249,6 @@ definitions:
         description: Optional scraper-specific download proxy override
       enabled:
         type: boolean
-      fake_user_agent:
-        description: Optional custom fake User-Agent (defaults to built-in browser
-          UA)
-        type: string
       language:
         description: 'Language code: en, ja, zh (default: en)'
         type: string
@@ -1293,9 +1259,11 @@ definitions:
       request_delay:
         description: Delay between requests in milliseconds (0 = no delay)
         type: integer
-      use_fake_user_agent:
-        description: Use browser-like User-Agent header for this scraper
-        type: boolean
+      userAgent:
+        allOf:
+        - $ref: '#/definitions/config.UserAgentString'
+        description: Custom User-Agent; accepts both user_agent (new) and fake_user_agent
+          (deprecated)
     type: object
   config.TranslationConfig:
     properties:
@@ -1357,6 +1325,11 @@ definitions:
         type: boolean
       title:
         type: boolean
+    type: object
+  config.UserAgentString:
+    properties:
+      value:
+        type: string
     type: object
   contracts.ActressMergeConflict:
     properties:

@@ -62,16 +62,15 @@ func New(cfg *config.Config) *Scraper {
 		flareSolverrCfg.Enabled = true
 	}
 	avdbScraperCfg := &config.ScraperConfig{
-		Enabled:          scraperCfg.Enabled,
-		Timeout:          30, // default
-		RateLimit:        scraperCfg.RequestDelay,
-		RetryCount:       3, // default
-		UseFakeUserAgent: scraperCfg.UseFakeUserAgent,
-		UserAgent:        scraperCfg.FakeUserAgent,
-		Proxy:            scraperCfg.Proxy,
-		DownloadProxy:    scraperCfg.DownloadProxy,
-		FlareSolverr:     flareSolverrCfg,
-		Extra:            make(map[string]any),
+		Enabled:       scraperCfg.Enabled,
+		Timeout:       30, // default
+		RateLimit:     scraperCfg.RequestDelay,
+		RetryCount:    3, // default
+		UserAgent:     scraperCfg.UserAgent.Value,
+		Proxy:         scraperCfg.Proxy,
+		DownloadProxy: scraperCfg.DownloadProxy,
+		FlareSolverr:  flareSolverrCfg,
+		Extra:         make(map[string]any),
 	}
 
 	// Create HTTP client and FlareSolverr via per-scraper NewHTTPClient (HTTP-01, HTTP-03)
@@ -125,12 +124,11 @@ func (s *Scraper) IsEnabled() bool {
 // Config returns the scraper's configuration
 func (s *Scraper) Config() *config.ScraperConfig {
 	return &config.ScraperConfig{
-		Enabled:          s.cfg.Enabled,
-		RateLimit:        s.cfg.RequestDelay,
-		UseFakeUserAgent: s.cfg.UseFakeUserAgent,
-		UserAgent:        s.cfg.FakeUserAgent,
-		Proxy:            s.cfg.Proxy,
-		DownloadProxy:    s.cfg.DownloadProxy,
+		Enabled:       s.cfg.Enabled,
+		RateLimit:     s.cfg.RequestDelay,
+		UserAgent:     s.cfg.UserAgent.Value,
+		Proxy:         s.cfg.Proxy,
+		DownloadProxy: s.cfg.DownloadProxy,
 		// HTTP-03: FlareSolverr from ScraperConfig directly
 		FlareSolverr: s.cfg.Proxy.FlareSolverr,
 		Extra:        make(map[string]any),

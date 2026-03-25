@@ -168,6 +168,15 @@ func TestHelpers(t *testing.T) {
 	if _, _, ok := s.ResolveDownloadProxyForHost("www.javlibrary.com"); !ok {
 		t.Fatal("expected JavLibrary host to be recognized")
 	}
+	if _, _, ok := s.ResolveDownloadProxyForHost("c.impact.jp"); !ok {
+		t.Fatal("expected c.impact.jp (JavLibrary CDN) to be recognized")
+	}
+	if _, _, ok := s.ResolveDownloadProxyForHost("img.javlibrary.com"); !ok {
+		t.Fatal("expected img.javlibrary.com to be recognized")
+	}
+	if _, _, ok := s.ResolveDownloadProxyForHost("example.com"); ok {
+		t.Fatal("expected example.com to NOT be recognized")
+	}
 }
 
 func TestExtractDescription(t *testing.T) {
@@ -289,6 +298,79 @@ func TestExtractScreenshotURLs(t *testing.T) {
 	got = s.extractScreenshotURLs(html)
 	if len(got) != 0 {
 		t.Fatalf("extractScreenshotURLs empty = %v, want empty", got)
+	}
+}
+
+func TestExtractScreenshotURLs_DMMFiltering(t *testing.T) {
+	cfg := createTestConfig(
+		config.JavLibraryConfig{
+			Enabled:  true,
+			Language: "en",
+			BaseURL:  "https://www.javlibrary.com",
+		},
+		config.ProxyConfig{},
+	)
+	s := New(cfg)
+
+	tests := []struct {
+		name    string
+		html    string
+		wantLen int
+	}{
+		{
+			name:    "filter pl.jpg cover URL",
+			html:    `<img src="https://images.example.com/ipx123pl.jpg">`,
+			wantLen: 0,
+		},
+		{
+			name:    "filter ps.jpg poster URL",
+			html:    `<img src="https://images.example.com/ipx123ps.jpg">`,
+			wantLen: 0,
+		},
+		{
+			name:    "filter pl.jpg in path",
+			html:    `<img src="https://c.impact.jp/abc123/special/pl.jpg">`,
+			wantLen: 0,
+		},
+		{
+			name:    "numeric pattern /04.jpg passes filter",
+			html:    `<img src="https://c.impact.jp/abc123/04.jpg">`,
+			wantLen: 1,
+		},
+		{
+			name:    "numeric pattern /001.jpg passes filter",
+			html:    `<img src="https://c.impact.jp/abc123/001.jpg">`,
+			wantLen: 1,
+		},
+		{
+			name:    "numeric pattern in href passes filter",
+			html:    `<a href="https://c.impact.jp/abc123/04.jpg">screenshot</a>`,
+			wantLen: 1,
+		},
+		{
+			name:    "non-numeric jpg in src is filtered by stricter regex",
+			html:    `<img src="https://example.com/numericless.jpg">`,
+			wantLen: 0,
+		},
+		{
+			name:    "non-numeric jpg in href is filtered by stricter regex",
+			html:    `<a href="https://example.com/numericless.jpg">screenshot</a>`,
+			wantLen: 0,
+		},
+		{
+			name:    "mix of valid screenshots and filtered covers",
+			html:    `<img src="https://c.impact.jp/abc/04.jpg"><img src="https://c.impact.jp/abc/pl.jpg"><img src="https://c.impact.jp/abc/05.jpg">`,
+			wantLen: 2,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := s.extractScreenshotURLs(tt.html)
+			if len(got) != tt.wantLen {
+				t.Errorf("extractScreenshotURLs() len = %d, want %d, got URLs: %v", len(got), tt.wantLen, got)
+			}
+		})
 	}
 }
 

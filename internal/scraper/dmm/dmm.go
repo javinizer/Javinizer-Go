@@ -103,16 +103,15 @@ func (s *Scraper) IsEnabled() bool {
 // Config returns the scraper's configuration
 func (s *Scraper) Config() *config.ScraperConfig {
 	return &config.ScraperConfig{
-		Enabled:          s.cfg.Enabled,
-		Timeout:          30, // default (seconds)
-		RateLimit:        0,  // no per-request delay for DMM
-		RetryCount:       3,  // default
-		UseFakeUserAgent: s.cfg.UseFakeUserAgent,
-		UserAgent:        s.cfg.FakeUserAgent,
-		Proxy:            s.cfg.Proxy,
-		DownloadProxy:    s.cfg.DownloadProxy,
-		FlareSolverr:     config.FlareSolverrConfig{}, // DMM doesn't use FlareSolverr
-		Extra:            make(map[string]any),
+		Enabled:       s.cfg.Enabled,
+		Timeout:       30, // default (seconds)
+		RateLimit:     0,  // no per-request delay for DMM
+		RetryCount:    3,  // default
+		UserAgent:     s.cfg.UserAgent.Value,
+		Proxy:         s.cfg.Proxy,
+		DownloadProxy: s.cfg.DownloadProxy,
+		FlareSolverr:  config.FlareSolverrConfig{}, // DMM doesn't use FlareSolverr
+		Extra:         make(map[string]any),
 	}
 }
 

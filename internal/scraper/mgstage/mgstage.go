@@ -50,14 +50,13 @@ func New(cfg *config.Config) *Scraper {
 
 	// Build ScraperConfig for HTTP client (HTTP-01 pattern)
 	configForHTTP := &config.ScraperConfig{
-		Enabled:          scraperCfg.Enabled,
-		Timeout:          30,
-		RateLimit:        scraperCfg.RequestDelay,
-		RetryCount:       3,
-		UseFakeUserAgent: scraperCfg.UseFakeUserAgent,
-		UserAgent:        scraperCfg.FakeUserAgent,
-		Proxy:            scraperCfg.Proxy,
-		DownloadProxy:    scraperCfg.DownloadProxy,
+		Enabled:       scraperCfg.Enabled,
+		Timeout:       30,
+		RateLimit:     scraperCfg.RequestDelay,
+		RetryCount:    3,
+		UserAgent:     scraperCfg.UserAgent.Value,
+		Proxy:         scraperCfg.Proxy,
+		DownloadProxy: scraperCfg.DownloadProxy,
 	}
 
 	client, err := NewHTTPClient(configForHTTP, &cfg.Scrapers.Proxy)
@@ -107,15 +106,14 @@ func (s *Scraper) IsEnabled() bool {
 // Config returns the scraper's configuration
 func (s *Scraper) Config() *config.ScraperConfig {
 	return &config.ScraperConfig{
-		Enabled:          s.cfg.Enabled,
-		RateLimit:        s.cfg.RequestDelay,
-		Timeout:          30,
-		RetryCount:       3,
-		UseFakeUserAgent: s.cfg.UseFakeUserAgent,
-		UserAgent:        s.cfg.FakeUserAgent,
-		Proxy:            s.cfg.Proxy,
-		DownloadProxy:    s.cfg.DownloadProxy,
-		Extra:            make(map[string]any),
+		Enabled:       s.cfg.Enabled,
+		RateLimit:     s.cfg.RequestDelay,
+		Timeout:       30,
+		RetryCount:    3,
+		UserAgent:     s.cfg.UserAgent.Value,
+		Proxy:         s.cfg.Proxy,
+		DownloadProxy: s.cfg.DownloadProxy,
+		Extra:         make(map[string]any),
 	}
 }
 

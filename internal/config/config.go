@@ -6,6 +6,64 @@ import (
 	"strings"
 )
 
+// UserAgentString is a backward-compatible User-Agent field that accepts both
+// "user_agent" (new) and "fake_user_agent" (deprecated) YAML keys.
+type UserAgentString struct {
+	Value string
+}
+
+// UnmarshalYAML implements custom unmarshaling for backward compatibility.
+// It accepts both "user_agent" (new key) and "fake_user_agent" (deprecated key).
+func (u *UserAgentString) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	type rawUA struct {
+		UserAgent     string `yaml:"user_agent"`
+		FakeUserAgent string `yaml:"fake_user_agent"` // deprecated alias for user_agent
+	}
+
+	// First try to unmarshal as a string (simple value)
+	var str string
+	if err := unmarshal(&str); err == nil {
+		u.Value = str
+		return nil
+	}
+
+	// If that fails, try as a struct (map with user_agent/fake_user_agent keys)
+	var raw rawUA
+	if err := unmarshal(&raw); err != nil {
+		return err
+	}
+
+	// New key takes precedence over deprecated key
+	if raw.UserAgent != "" {
+		u.Value = raw.UserAgent
+	} else {
+		u.Value = raw.FakeUserAgent
+	}
+	return nil
+}
+
+// MarshalYAML implements custom marshaling so the field serializes correctly.
+func (u UserAgentString) MarshalYAML() (interface{}, error) {
+	return u.Value, nil
+}
+
+// Scan implements sql.Scanner for database compatibility.
+func (u *UserAgentString) Scan(value interface{}) error {
+	if value == nil {
+		u.Value = ""
+		return nil
+	}
+	switch v := value.(type) {
+	case string:
+		u.Value = v
+	case []byte:
+		u.Value = string(v)
+	default:
+		u.Value = fmt.Sprintf("%v", v)
+	}
+	return nil
+}
+
 // File and directory permission constants
 // Centralized to ensure consistency across the codebase
 const (
@@ -25,6 +83,7 @@ const (
 	DefaultUserAgent = "Javinizer (+https://github.com/javinizer/Javinizer)"
 
 	// DefaultFakeUserAgent is a browser-like UA for scraper-hostile sites.
+	// Used as fallback when scraper UserAgent is not set.
 	DefaultFakeUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"
 )
 
@@ -122,19 +181,18 @@ type ScrapersConfig struct {
 // ScraperConfig holds common scraper configuration fields used by the Scraper interface.
 // Individual scraper configs embed this and add scraper-specific fields.
 // CONF-01: All fields are present: Enabled, Timeout, RateLimit, RetryCount,
-// FlareSolverr, UseFakeUserAgent, UserAgent, Extra.
+// FlareSolverr, UserAgent, Extra.
 type ScraperConfig struct {
-	Enabled          bool               `yaml:"enabled" json:"enabled"`
-	Language         string             `yaml:"language" json:"language"`                                 // Language code varies by scraper
-	Timeout          int                `yaml:"timeout" json:"timeout"`                                   // HTTP client timeout in seconds
-	RateLimit        int                `yaml:"rate_limit" json:"rate_limit"`                             // Request delay in milliseconds (mirrors RequestDelay)
-	RetryCount       int                `yaml:"retry_count" json:"retry_count"`                           // Max retries (mirrors MaxRetries)
-	UseFakeUserAgent bool               `yaml:"use_fake_user_agent" json:"use_fake_user_agent"`           // Use browser-like User-Agent header
-	UserAgent        string             `yaml:"user_agent" json:"user_agent"`                             // Optional custom User-Agent (replaces FakeUserAgent)
-	Proxy            *ProxyConfig       `yaml:"proxy,omitempty" json:"proxy,omitempty"`                   // Optional scraper-specific proxy override
-	DownloadProxy    *ProxyConfig       `yaml:"download_proxy,omitempty" json:"download_proxy,omitempty"` // Optional scraper-specific download proxy override
-	FlareSolverr     FlareSolverrConfig `yaml:"flaresolverr" json:"flaresolverr"`                         // HTTP-03: FlareSolverr on ScraperConfig
-	Extra            map[string]any     `yaml:"extra,omitempty" json:"extra,omitempty"`                   // CONF-06: scraper-specific fields
+	Enabled       bool               `yaml:"enabled" json:"enabled"`
+	Language      string             `yaml:"language" json:"language"`                                 // Language code varies by scraper
+	Timeout       int                `yaml:"timeout" json:"timeout"`                                   // HTTP client timeout in seconds
+	RateLimit     int                `yaml:"rate_limit" json:"rate_limit"`                             // Request delay in milliseconds (mirrors RequestDelay)
+	RetryCount    int                `yaml:"retry_count" json:"retry_count"`                           // Max retries (mirrors MaxRetries)
+	UserAgent     string             `yaml:"user_agent" json:"user_agent"`                             // Custom User-Agent; if empty, DefaultFakeUserAgent is used
+	Proxy         *ProxyConfig       `yaml:"proxy,omitempty" json:"proxy,omitempty"`                   // Optional scraper-specific proxy override
+	DownloadProxy *ProxyConfig       `yaml:"download_proxy,omitempty" json:"download_proxy,omitempty"` // Optional scraper-specific download proxy override
+	FlareSolverr  FlareSolverrConfig `yaml:"flaresolverr" json:"flaresolverr"`                         // HTTP-03: FlareSolverr on ScraperConfig
+	Extra         map[string]any     `yaml:"extra,omitempty" json:"extra,omitempty"`                   // CONF-06: scraper-specific fields
 }
 
 // GetBoolExtra returns a boolean from Extra map with type safety.
@@ -227,8 +285,7 @@ func flatToScraperConfig(name string, flat interface{}) *ScraperConfig {
 		sc.Language = cfg.Language
 		sc.RateLimit = cfg.RequestDelay
 		sc.RetryCount = cfg.MaxRetries
-		sc.UseFakeUserAgent = cfg.UseFakeUserAgent
-		sc.UserAgent = cfg.FakeUserAgent
+		sc.UserAgent = cfg.UserAgent.Value
 		sc.Proxy = cfg.Proxy
 		sc.DownloadProxy = cfg.DownloadProxy
 		if cfg.RespectRetryAfter {
@@ -236,8 +293,7 @@ func flatToScraperConfig(name string, flat interface{}) *ScraperConfig {
 		}
 	case *DMMConfig:
 		sc.Enabled = cfg.Enabled
-		sc.UseFakeUserAgent = cfg.UseFakeUserAgent
-		sc.UserAgent = cfg.FakeUserAgent
+		sc.UserAgent = cfg.UserAgent.Value
 		sc.Proxy = cfg.Proxy
 		sc.DownloadProxy = cfg.DownloadProxy
 		if cfg.EnableBrowser {
@@ -252,73 +308,62 @@ func flatToScraperConfig(name string, flat interface{}) *ScraperConfig {
 	case *JavDBConfig:
 		sc.Enabled = cfg.Enabled
 		sc.RateLimit = cfg.RequestDelay
-		sc.UseFakeUserAgent = cfg.UseFakeUserAgent
-		sc.UserAgent = cfg.FakeUserAgent
+		sc.UserAgent = cfg.UserAgent.Value
 		sc.Proxy = cfg.Proxy
 		sc.DownloadProxy = cfg.DownloadProxy
 	case *JavLibraryConfig:
 		sc.Enabled = cfg.Enabled
 		sc.Language = cfg.Language
-		sc.UseFakeUserAgent = cfg.UseFakeUserAgent
-		sc.UserAgent = cfg.FakeUserAgent
+		sc.UserAgent = cfg.UserAgent.Value
 		sc.Proxy = cfg.Proxy
 		sc.DownloadProxy = cfg.DownloadProxy
 	case *MGStageConfig:
 		sc.Enabled = cfg.Enabled
-		sc.UseFakeUserAgent = cfg.UseFakeUserAgent
-		sc.UserAgent = cfg.FakeUserAgent
+		sc.UserAgent = cfg.UserAgent.Value
 		sc.Proxy = cfg.Proxy
 	case *LibreDMMConfig:
 		sc.Enabled = cfg.Enabled
 		sc.RateLimit = cfg.RequestDelay
-		sc.UseFakeUserAgent = cfg.UseFakeUserAgent
-		sc.UserAgent = cfg.FakeUserAgent
+		sc.UserAgent = cfg.UserAgent.Value
 		sc.Proxy = cfg.Proxy
 	case *JavBusConfig:
 		sc.Enabled = cfg.Enabled
 		sc.Language = cfg.Language
 		sc.RateLimit = cfg.RequestDelay
-		sc.UseFakeUserAgent = cfg.UseFakeUserAgent
-		sc.UserAgent = cfg.FakeUserAgent
+		sc.UserAgent = cfg.UserAgent.Value
 		sc.Proxy = cfg.Proxy
 	case *Jav321Config:
 		sc.Enabled = cfg.Enabled
 		sc.RateLimit = cfg.RequestDelay
-		sc.UseFakeUserAgent = cfg.UseFakeUserAgent
-		sc.UserAgent = cfg.FakeUserAgent
+		sc.UserAgent = cfg.UserAgent.Value
 		sc.Proxy = cfg.Proxy
 	case *TokyoHotConfig:
 		sc.Enabled = cfg.Enabled
 		sc.Language = cfg.Language
 		sc.RateLimit = cfg.RequestDelay
-		sc.UseFakeUserAgent = cfg.UseFakeUserAgent
-		sc.UserAgent = cfg.FakeUserAgent
+		sc.UserAgent = cfg.UserAgent.Value
 		sc.Proxy = cfg.Proxy
 	case *AVEntertainmentConfig:
 		sc.Enabled = cfg.Enabled
 		sc.Language = cfg.Language
 		sc.RateLimit = cfg.RequestDelay
-		sc.UseFakeUserAgent = cfg.UseFakeUserAgent
-		sc.UserAgent = cfg.FakeUserAgent
+		sc.UserAgent = cfg.UserAgent.Value
 		sc.Proxy = cfg.Proxy
 	case *DLGetchuConfig:
 		sc.Enabled = cfg.Enabled
 		sc.RateLimit = cfg.RequestDelay
-		sc.UseFakeUserAgent = cfg.UseFakeUserAgent
-		sc.UserAgent = cfg.FakeUserAgent
+		sc.UserAgent = cfg.UserAgent.Value
 		sc.Proxy = cfg.Proxy
 	case *CaribbeancomConfig:
 		sc.Enabled = cfg.Enabled
 		sc.Language = cfg.Language
 		sc.RateLimit = cfg.RequestDelay
-		sc.UseFakeUserAgent = cfg.UseFakeUserAgent
-		sc.UserAgent = cfg.FakeUserAgent
+		sc.UserAgent = cfg.UserAgent.Value
 		sc.Proxy = cfg.Proxy
 	case *FC2Config:
 		sc.Enabled = cfg.Enabled
 		sc.RateLimit = cfg.RequestDelay
-		sc.UseFakeUserAgent = cfg.UseFakeUserAgent
-		sc.UserAgent = cfg.FakeUserAgent
+		sc.UserAgent = cfg.UserAgent.Value
 		sc.Proxy = cfg.Proxy
 	}
 
@@ -327,15 +372,14 @@ func flatToScraperConfig(name string, flat interface{}) *ScraperConfig {
 
 // R18DevConfig holds R18.dev scraper configuration
 type R18DevConfig struct {
-	Enabled           bool         `yaml:"enabled" json:"enabled"`
-	Language          string       `yaml:"language" json:"language"`                                 // Language code: en, ja (default: en)
-	RequestDelay      int          `yaml:"request_delay" json:"request_delay"`                       // Delay between requests in milliseconds (0 = no delay)
-	MaxRetries        int          `yaml:"max_retries" json:"max_retries"`                           // Maximum number of retry attempts for rate-limited requests
-	RespectRetryAfter bool         `yaml:"respect_retry_after" json:"respect_retry_after"`           // Whether to respect Retry-After header from server
-	UseFakeUserAgent  bool         `yaml:"use_fake_user_agent" json:"use_fake_user_agent"`           // Use browser-like User-Agent header for this scraper
-	FakeUserAgent     string       `yaml:"fake_user_agent" json:"fake_user_agent"`                   // Optional custom fake User-Agent (defaults to built-in browser UA)
-	Proxy             *ProxyConfig `yaml:"proxy,omitempty" json:"proxy,omitempty"`                   // Optional scraper-specific proxy override
-	DownloadProxy     *ProxyConfig `yaml:"download_proxy,omitempty" json:"download_proxy,omitempty"` // Optional scraper-specific download proxy override
+	Enabled           bool            `yaml:"enabled" json:"enabled"`
+	Language          string          `yaml:"language" json:"language"`                                 // Language code: en, ja (default: en)
+	RequestDelay      int             `yaml:"request_delay" json:"request_delay"`                       // Delay between requests in milliseconds (0 = no delay)
+	MaxRetries        int             `yaml:"max_retries" json:"max_retries"`                           // Maximum number of retry attempts for rate-limited requests
+	RespectRetryAfter bool            `yaml:"respect_retry_after" json:"respect_retry_after"`           // Whether to respect Retry-After header from server
+	UserAgent         UserAgentString `yaml:"user_agent"`                                               // Custom User-Agent; accepts both user_agent (new) and fake_user_agent (deprecated)
+	Proxy             *ProxyConfig    `yaml:"proxy,omitempty" json:"proxy,omitempty"`                   // Optional scraper-specific proxy override
+	DownloadProxy     *ProxyConfig    `yaml:"download_proxy,omitempty" json:"download_proxy,omitempty"` // Optional scraper-specific download proxy override
 }
 
 // ValidateConfig implements ConfigValidator for R18DevConfig.
@@ -357,16 +401,15 @@ func (c *R18DevConfig) ValidateConfig(sc *ScraperConfig) error {
 
 // DMMConfig holds DMM/Fanza scraper configuration
 type DMMConfig struct {
-	Enabled          bool         `yaml:"enabled" json:"enabled"`
-	ScrapeActress    bool         `yaml:"scrape_actress" json:"scrape_actress"`
-	EnableBrowser    bool         `yaml:"enable_browser" json:"enable_browser"`                     // Enable browser mode for video.dmm.co.jp (JavaScript rendering)
-	BrowserTimeout   int          `yaml:"browser_timeout" json:"browser_timeout"`                   // Timeout in seconds for browser operations (default: 30)
-	RequestDelay     int          `yaml:"request_delay" json:"request_delay"`                       // Delay between requests in milliseconds (0 = no delay)
-	MaxRetries       int          `yaml:"max_retries" json:"max_retries"`                           // Maximum number of retry attempts for rate-limited requests
-	UseFakeUserAgent bool         `yaml:"use_fake_user_agent" json:"use_fake_user_agent"`           // Use browser-like User-Agent header for this scraper
-	FakeUserAgent    string       `yaml:"fake_user_agent" json:"fake_user_agent"`                   // Optional custom fake User-Agent (defaults to built-in browser UA)
-	Proxy            *ProxyConfig `yaml:"proxy,omitempty" json:"proxy,omitempty"`                   // Optional scraper-specific proxy override
-	DownloadProxy    *ProxyConfig `yaml:"download_proxy,omitempty" json:"download_proxy,omitempty"` // Optional scraper-specific download proxy override
+	Enabled        bool            `yaml:"enabled" json:"enabled"`
+	ScrapeActress  bool            `yaml:"scrape_actress" json:"scrape_actress"`
+	EnableBrowser  bool            `yaml:"enable_browser" json:"enable_browser"`                     // Enable browser mode for video.dmm.co.jp (JavaScript rendering)
+	BrowserTimeout int             `yaml:"browser_timeout" json:"browser_timeout"`                   // Timeout in seconds for browser operations (default: 30)
+	RequestDelay   int             `yaml:"request_delay" json:"request_delay"`                       // Delay between requests in milliseconds (0 = no delay)
+	MaxRetries     int             `yaml:"max_retries" json:"max_retries"`                           // Maximum number of retry attempts for rate-limited requests
+	UserAgent      UserAgentString `yaml:"user_agent"`                                               // Custom User-Agent; accepts both user_agent (new) and fake_user_agent (deprecated)
+	Proxy          *ProxyConfig    `yaml:"proxy,omitempty" json:"proxy,omitempty"`                   // Optional scraper-specific proxy override
+	DownloadProxy  *ProxyConfig    `yaml:"download_proxy,omitempty" json:"download_proxy,omitempty"` // Optional scraper-specific download proxy override
 }
 
 // ValidateConfig implements ConfigValidator for DMMConfig.
@@ -379,13 +422,12 @@ func (c *DMMConfig) ValidateConfig(sc *ScraperConfig) error {
 
 // LibreDMMConfig holds LibreDMM scraper configuration
 type LibreDMMConfig struct {
-	Enabled          bool         `yaml:"enabled" json:"enabled"`
-	RequestDelay     int          `yaml:"request_delay" json:"request_delay"`                       // Delay between requests in milliseconds (0 = no delay)
-	BaseURL          string       `yaml:"base_url" json:"base_url"`                                 // Base URL for LibreDMM
-	UseFakeUserAgent bool         `yaml:"use_fake_user_agent" json:"use_fake_user_agent"`           // Use browser-like User-Agent header for this scraper
-	FakeUserAgent    string       `yaml:"fake_user_agent" json:"fake_user_agent"`                   // Optional custom fake User-Agent (defaults to built-in browser UA)
-	Proxy            *ProxyConfig `yaml:"proxy,omitempty" json:"proxy,omitempty"`                   // Optional scraper-specific proxy override
-	DownloadProxy    *ProxyConfig `yaml:"download_proxy,omitempty" json:"download_proxy,omitempty"` // Optional scraper-specific download proxy override
+	Enabled       bool            `yaml:"enabled" json:"enabled"`
+	RequestDelay  int             `yaml:"request_delay" json:"request_delay"`                       // Delay between requests in milliseconds (0 = no delay)
+	BaseURL       string          `yaml:"base_url" json:"base_url"`                                 // Base URL for LibreDMM
+	UserAgent     UserAgentString `yaml:"user_agent"`                                               // Custom User-Agent; accepts both user_agent (new) and fake_user_agent (deprecated)
+	Proxy         *ProxyConfig    `yaml:"proxy,omitempty" json:"proxy,omitempty"`                   // Optional scraper-specific proxy override
+	DownloadProxy *ProxyConfig    `yaml:"download_proxy,omitempty" json:"download_proxy,omitempty"` // Optional scraper-specific download proxy override
 }
 
 // ValidateConfig implements ConfigValidator for LibreDMMConfig.
@@ -398,12 +440,11 @@ func (c *LibreDMMConfig) ValidateConfig(sc *ScraperConfig) error {
 
 // MGStageConfig holds MGStage scraper configuration
 type MGStageConfig struct {
-	Enabled          bool         `yaml:"enabled" json:"enabled"`
-	RequestDelay     int          `yaml:"request_delay" json:"request_delay"`                       // Delay between requests in milliseconds (0 = no delay)
-	UseFakeUserAgent bool         `yaml:"use_fake_user_agent" json:"use_fake_user_agent"`           // Use browser-like User-Agent header for this scraper
-	FakeUserAgent    string       `yaml:"fake_user_agent" json:"fake_user_agent"`                   // Optional custom fake User-Agent (defaults to built-in browser UA)
-	Proxy            *ProxyConfig `yaml:"proxy,omitempty" json:"proxy,omitempty"`                   // Optional scraper-specific proxy override
-	DownloadProxy    *ProxyConfig `yaml:"download_proxy,omitempty" json:"download_proxy,omitempty"` // Optional scraper-specific download proxy override
+	Enabled       bool            `yaml:"enabled" json:"enabled"`
+	RequestDelay  int             `yaml:"request_delay" json:"request_delay"`                       // Delay between requests in milliseconds (0 = no delay)
+	UserAgent     UserAgentString `yaml:"user_agent"`                                               // Custom User-Agent; accepts both user_agent (new) and fake_user_agent (deprecated)
+	Proxy         *ProxyConfig    `yaml:"proxy,omitempty" json:"proxy,omitempty"`                   // Optional scraper-specific proxy override
+	DownloadProxy *ProxyConfig    `yaml:"download_proxy,omitempty" json:"download_proxy,omitempty"` // Optional scraper-specific download proxy override
 }
 
 // ValidateConfig implements ConfigValidator for MGStageConfig.
@@ -416,18 +457,16 @@ func (c *MGStageConfig) ValidateConfig(sc *ScraperConfig) error {
 
 // JavLibraryConfig holds JavLibrary scraper configuration
 type JavLibraryConfig struct {
-	Enabled          bool         `yaml:"enabled" json:"enabled"`
-	Language         string       `yaml:"language" json:"language"`                                 // Language code: en, ja, cn, tw (default: en)
-	RequestDelay     int          `yaml:"request_delay" json:"request_delay"`                       // Delay between requests in milliseconds (0 = no delay)
-	BaseURL          string       `yaml:"base_url" json:"base_url"`                                 // Base URL for JavLibrary
-	CfClearance      string       `yaml:"cf_clearance" json:"cf_clearance"`                         // Cloudflare clearance cookie (deprecated, use FlareSolverr)
-	CfBm             string       `yaml:"cf_bm" json:"cf_bm"`                                       // Cloudflare Bot Management cookie (deprecated)
-	UserAgent        string       `yaml:"user_agent" json:"user_agent"`                             // Custom user agent (optional)
-	UseFakeUserAgent bool         `yaml:"use_fake_user_agent" json:"use_fake_user_agent"`           // Use browser-like User-Agent header for this scraper
-	FakeUserAgent    string       `yaml:"fake_user_agent" json:"fake_user_agent"`                   // Optional custom fake User-Agent (defaults to built-in browser UA)
-	UseFlareSolverr  bool         `yaml:"use_flaresolverr" json:"use_flaresolverr"`                 // Enable FlareSolverr for Cloudflare bypass
-	Proxy            *ProxyConfig `yaml:"proxy,omitempty" json:"proxy,omitempty"`                   // Optional scraper-specific proxy override
-	DownloadProxy    *ProxyConfig `yaml:"download_proxy,omitempty" json:"download_proxy,omitempty"` // Optional scraper-specific download proxy override
+	Enabled         bool            `yaml:"enabled" json:"enabled"`
+	Language        string          `yaml:"language" json:"language"`                                 // Language code: en, ja, cn, tw (default: en)
+	RequestDelay    int             `yaml:"request_delay" json:"request_delay"`                       // Delay between requests in milliseconds (0 = no delay)
+	BaseURL         string          `yaml:"base_url" json:"base_url"`                                 // Base URL for JavLibrary
+	CfClearance     string          `yaml:"cf_clearance" json:"cf_clearance"`                         // Cloudflare clearance cookie (deprecated, use FlareSolverr)
+	CfBm            string          `yaml:"cf_bm" json:"cf_bm"`                                       // Cloudflare Bot Management cookie (deprecated)
+	UserAgent       UserAgentString `yaml:"user_agent"`                                               // Custom User-Agent; accepts both user_agent (new) and fake_user_agent (deprecated)
+	UseFlareSolverr bool            `yaml:"use_flaresolverr" json:"use_flaresolverr"`                 // Enable FlareSolverr for Cloudflare bypass
+	Proxy           *ProxyConfig    `yaml:"proxy,omitempty" json:"proxy,omitempty"`                   // Optional scraper-specific proxy override
+	DownloadProxy   *ProxyConfig    `yaml:"download_proxy,omitempty" json:"download_proxy,omitempty"` // Optional scraper-specific download proxy override
 }
 
 // ValidateConfig implements ConfigValidator for JavLibraryConfig.
@@ -448,14 +487,13 @@ func (c *JavLibraryConfig) ValidateConfig(sc *ScraperConfig) error {
 
 // JavDBConfig holds JavDB scraper configuration
 type JavDBConfig struct {
-	Enabled          bool         `yaml:"enabled" json:"enabled"`
-	RequestDelay     int          `yaml:"request_delay" json:"request_delay"`                       // Delay between requests in milliseconds (0 = no delay)
-	BaseURL          string       `yaml:"base_url" json:"base_url"`                                 // Base URL for JavDB
-	UseFakeUserAgent bool         `yaml:"use_fake_user_agent" json:"use_fake_user_agent"`           // Use browser-like User-Agent header for this scraper
-	FakeUserAgent    string       `yaml:"fake_user_agent" json:"fake_user_agent"`                   // Optional custom fake User-Agent (defaults to built-in browser UA)
-	UseFlareSolverr  bool         `yaml:"use_flaresolverr" json:"use_flaresolverr"`                 // Enable FlareSolverr for Cloudflare bypass
-	Proxy            *ProxyConfig `yaml:"proxy,omitempty" json:"proxy,omitempty"`                   // Optional scraper-specific proxy override
-	DownloadProxy    *ProxyConfig `yaml:"download_proxy,omitempty" json:"download_proxy,omitempty"` // Optional scraper-specific download proxy override
+	Enabled         bool            `yaml:"enabled" json:"enabled"`
+	RequestDelay    int             `yaml:"request_delay" json:"request_delay"`                       // Delay between requests in milliseconds (0 = no delay)
+	BaseURL         string          `yaml:"base_url" json:"base_url"`                                 // Base URL for JavDB
+	UserAgent       UserAgentString `yaml:"user_agent"`                                               // Custom User-Agent; accepts both user_agent (new) and fake_user_agent (deprecated)
+	UseFlareSolverr bool            `yaml:"use_flaresolverr" json:"use_flaresolverr"`                 // Enable FlareSolverr for Cloudflare bypass
+	Proxy           *ProxyConfig    `yaml:"proxy,omitempty" json:"proxy,omitempty"`                   // Optional scraper-specific proxy override
+	DownloadProxy   *ProxyConfig    `yaml:"download_proxy,omitempty" json:"download_proxy,omitempty"` // Optional scraper-specific download proxy override
 }
 
 // ValidateConfig implements ConfigValidator for JavDBConfig.
@@ -468,14 +506,13 @@ func (c *JavDBConfig) ValidateConfig(sc *ScraperConfig) error {
 
 // JavBusConfig holds JavBus scraper configuration
 type JavBusConfig struct {
-	Enabled          bool         `yaml:"enabled" json:"enabled"`
-	Language         string       `yaml:"language" json:"language"`                                 // Language code: en, ja, zh (default: zh)
-	RequestDelay     int          `yaml:"request_delay" json:"request_delay"`                       // Delay between requests in milliseconds (0 = no delay)
-	BaseURL          string       `yaml:"base_url" json:"base_url"`                                 // Base URL for JavBus
-	UseFakeUserAgent bool         `yaml:"use_fake_user_agent" json:"use_fake_user_agent"`           // Use browser-like User-Agent header for this scraper
-	FakeUserAgent    string       `yaml:"fake_user_agent" json:"fake_user_agent"`                   // Optional custom fake User-Agent (defaults to built-in browser UA)
-	Proxy            *ProxyConfig `yaml:"proxy,omitempty" json:"proxy,omitempty"`                   // Optional scraper-specific proxy override
-	DownloadProxy    *ProxyConfig `yaml:"download_proxy,omitempty" json:"download_proxy,omitempty"` // Optional scraper-specific download proxy override
+	Enabled       bool            `yaml:"enabled" json:"enabled"`
+	Language      string          `yaml:"language" json:"language"`                                 // Language code: en, ja, zh (default: zh)
+	RequestDelay  int             `yaml:"request_delay" json:"request_delay"`                       // Delay between requests in milliseconds (0 = no delay)
+	BaseURL       string          `yaml:"base_url" json:"base_url"`                                 // Base URL for JavBus
+	UserAgent     UserAgentString `yaml:"user_agent"`                                               // Custom User-Agent; accepts both user_agent (new) and fake_user_agent (deprecated)
+	Proxy         *ProxyConfig    `yaml:"proxy,omitempty" json:"proxy,omitempty"`                   // Optional scraper-specific proxy override
+	DownloadProxy *ProxyConfig    `yaml:"download_proxy,omitempty" json:"download_proxy,omitempty"` // Optional scraper-specific download proxy override
 }
 
 // ValidateConfig implements ConfigValidator for JavBusConfig.
@@ -488,13 +525,12 @@ func (c *JavBusConfig) ValidateConfig(sc *ScraperConfig) error {
 
 // Jav321Config holds Jav321 scraper configuration
 type Jav321Config struct {
-	Enabled          bool         `yaml:"enabled" json:"enabled"`
-	RequestDelay     int          `yaml:"request_delay" json:"request_delay"`                       // Delay between requests in milliseconds (0 = no delay)
-	BaseURL          string       `yaml:"base_url" json:"base_url"`                                 // Base URL for Jav321
-	UseFakeUserAgent bool         `yaml:"use_fake_user_agent" json:"use_fake_user_agent"`           // Use browser-like User-Agent header for this scraper
-	FakeUserAgent    string       `yaml:"fake_user_agent" json:"fake_user_agent"`                   // Optional custom fake User-Agent (defaults to built-in browser UA)
-	Proxy            *ProxyConfig `yaml:"proxy,omitempty" json:"proxy,omitempty"`                   // Optional scraper-specific proxy override
-	DownloadProxy    *ProxyConfig `yaml:"download_proxy,omitempty" json:"download_proxy,omitempty"` // Optional scraper-specific download proxy override
+	Enabled       bool            `yaml:"enabled" json:"enabled"`
+	RequestDelay  int             `yaml:"request_delay" json:"request_delay"`                       // Delay between requests in milliseconds (0 = no delay)
+	BaseURL       string          `yaml:"base_url" json:"base_url"`                                 // Base URL for Jav321
+	UserAgent     UserAgentString `yaml:"user_agent"`                                               // Custom User-Agent; accepts both user_agent (new) and fake_user_agent (deprecated)
+	Proxy         *ProxyConfig    `yaml:"proxy,omitempty" json:"proxy,omitempty"`                   // Optional scraper-specific proxy override
+	DownloadProxy *ProxyConfig    `yaml:"download_proxy,omitempty" json:"download_proxy,omitempty"` // Optional scraper-specific download proxy override
 }
 
 // ValidateConfig implements ConfigValidator for Jav321Config.
@@ -507,14 +543,13 @@ func (c *Jav321Config) ValidateConfig(sc *ScraperConfig) error {
 
 // TokyoHotConfig holds TokyoHot scraper configuration
 type TokyoHotConfig struct {
-	Enabled          bool         `yaml:"enabled" json:"enabled"`
-	Language         string       `yaml:"language" json:"language"`                                 // Language code: en, ja, zh (default: en)
-	RequestDelay     int          `yaml:"request_delay" json:"request_delay"`                       // Delay between requests in milliseconds (0 = no delay)
-	BaseURL          string       `yaml:"base_url" json:"base_url"`                                 // Base URL for TokyoHot
-	UseFakeUserAgent bool         `yaml:"use_fake_user_agent" json:"use_fake_user_agent"`           // Use browser-like User-Agent header for this scraper
-	FakeUserAgent    string       `yaml:"fake_user_agent" json:"fake_user_agent"`                   // Optional custom fake User-Agent (defaults to built-in browser UA)
-	Proxy            *ProxyConfig `yaml:"proxy,omitempty" json:"proxy,omitempty"`                   // Optional scraper-specific proxy override
-	DownloadProxy    *ProxyConfig `yaml:"download_proxy,omitempty" json:"download_proxy,omitempty"` // Optional scraper-specific download proxy override
+	Enabled       bool            `yaml:"enabled" json:"enabled"`
+	Language      string          `yaml:"language" json:"language"`                                 // Language code: en, ja, zh (default: en)
+	RequestDelay  int             `yaml:"request_delay" json:"request_delay"`                       // Delay between requests in milliseconds (0 = no delay)
+	BaseURL       string          `yaml:"base_url" json:"base_url"`                                 // Base URL for TokyoHot
+	UserAgent     UserAgentString `yaml:"user_agent"`                                               // Custom User-Agent; accepts both user_agent (new) and fake_user_agent (deprecated)
+	Proxy         *ProxyConfig    `yaml:"proxy,omitempty" json:"proxy,omitempty"`                   // Optional scraper-specific proxy override
+	DownloadProxy *ProxyConfig    `yaml:"download_proxy,omitempty" json:"download_proxy,omitempty"` // Optional scraper-specific download proxy override
 }
 
 // ValidateConfig implements ConfigValidator for TokyoHotConfig.
@@ -527,15 +562,14 @@ func (c *TokyoHotConfig) ValidateConfig(sc *ScraperConfig) error {
 
 // AVEntertainmentConfig holds AVEntertainment scraper configuration
 type AVEntertainmentConfig struct {
-	Enabled            bool         `yaml:"enabled" json:"enabled"`
-	Language           string       `yaml:"language" json:"language"`                                 // Language code: en, ja (default: en)
-	RequestDelay       int          `yaml:"request_delay" json:"request_delay"`                       // Delay between requests in milliseconds (0 = no delay)
-	BaseURL            string       `yaml:"base_url" json:"base_url"`                                 // Base URL for AVEntertainment
-	ScrapeBonusScreens bool         `yaml:"scrape_bonus_screens" json:"scrape_bonus_screens"`         // Append bonus image files (e.g., "特典ファイル") to screenshot URLs
-	UseFakeUserAgent   bool         `yaml:"use_fake_user_agent" json:"use_fake_user_agent"`           // Use browser-like User-Agent header for this scraper
-	FakeUserAgent      string       `yaml:"fake_user_agent" json:"fake_user_agent"`                   // Optional custom fake User-Agent (defaults to built-in browser UA)
-	Proxy              *ProxyConfig `yaml:"proxy,omitempty" json:"proxy,omitempty"`                   // Optional scraper-specific proxy override
-	DownloadProxy      *ProxyConfig `yaml:"download_proxy,omitempty" json:"download_proxy,omitempty"` // Optional scraper-specific download proxy override
+	Enabled            bool            `yaml:"enabled" json:"enabled"`
+	Language           string          `yaml:"language" json:"language"`                                 // Language code: en, ja (default: en)
+	RequestDelay       int             `yaml:"request_delay" json:"request_delay"`                       // Delay between requests in milliseconds (0 = no delay)
+	BaseURL            string          `yaml:"base_url" json:"base_url"`                                 // Base URL for AVEntertainment
+	ScrapeBonusScreens bool            `yaml:"scrape_bonus_screens" json:"scrape_bonus_screens"`         // Append bonus image files (e.g., "特典ファイル") to screenshot URLs
+	UserAgent          UserAgentString `yaml:"user_agent"`                                               // Custom User-Agent; accepts both user_agent (new) and fake_user_agent (deprecated)
+	Proxy              *ProxyConfig    `yaml:"proxy,omitempty" json:"proxy,omitempty"`                   // Optional scraper-specific proxy override
+	DownloadProxy      *ProxyConfig    `yaml:"download_proxy,omitempty" json:"download_proxy,omitempty"` // Optional scraper-specific download proxy override
 }
 
 // ValidateConfig implements ConfigValidator for AVEntertainmentConfig.
@@ -548,13 +582,12 @@ func (c *AVEntertainmentConfig) ValidateConfig(sc *ScraperConfig) error {
 
 // DLGetchuConfig holds DLgetchu scraper configuration
 type DLGetchuConfig struct {
-	Enabled          bool         `yaml:"enabled" json:"enabled"`
-	RequestDelay     int          `yaml:"request_delay" json:"request_delay"`                       // Delay between requests in milliseconds (0 = no delay)
-	BaseURL          string       `yaml:"base_url" json:"base_url"`                                 // Base URL for DLgetchu
-	UseFakeUserAgent bool         `yaml:"use_fake_user_agent" json:"use_fake_user_agent"`           // Use browser-like User-Agent header for this scraper
-	FakeUserAgent    string       `yaml:"fake_user_agent" json:"fake_user_agent"`                   // Optional custom fake User-Agent (defaults to built-in browser UA)
-	Proxy            *ProxyConfig `yaml:"proxy,omitempty" json:"proxy,omitempty"`                   // Optional scraper-specific proxy override
-	DownloadProxy    *ProxyConfig `yaml:"download_proxy,omitempty" json:"download_proxy,omitempty"` // Optional scraper-specific download proxy override
+	Enabled       bool            `yaml:"enabled" json:"enabled"`
+	RequestDelay  int             `yaml:"request_delay" json:"request_delay"`                       // Delay between requests in milliseconds (0 = no delay)
+	BaseURL       string          `yaml:"base_url" json:"base_url"`                                 // Base URL for DLgetchu
+	UserAgent     UserAgentString `yaml:"user_agent"`                                               // Custom User-Agent; accepts both user_agent (new) and fake_user_agent (deprecated)
+	Proxy         *ProxyConfig    `yaml:"proxy,omitempty" json:"proxy,omitempty"`                   // Optional scraper-specific proxy override
+	DownloadProxy *ProxyConfig    `yaml:"download_proxy,omitempty" json:"download_proxy,omitempty"` // Optional scraper-specific download proxy override
 }
 
 // ValidateConfig implements ConfigValidator for DLGetchuConfig.
@@ -567,14 +600,13 @@ func (c *DLGetchuConfig) ValidateConfig(sc *ScraperConfig) error {
 
 // CaribbeancomConfig holds Caribbeancom scraper configuration
 type CaribbeancomConfig struct {
-	Enabled          bool         `yaml:"enabled" json:"enabled"`
-	Language         string       `yaml:"language" json:"language"`                                 // Language code: ja, en (default: ja)
-	RequestDelay     int          `yaml:"request_delay" json:"request_delay"`                       // Delay between requests in milliseconds (0 = no delay)
-	BaseURL          string       `yaml:"base_url" json:"base_url"`                                 // Base URL for Caribbeancom
-	UseFakeUserAgent bool         `yaml:"use_fake_user_agent" json:"use_fake_user_agent"`           // Use browser-like User-Agent header for this scraper
-	FakeUserAgent    string       `yaml:"fake_user_agent" json:"fake_user_agent"`                   // Optional custom fake User-Agent (defaults to built-in browser UA)
-	Proxy            *ProxyConfig `yaml:"proxy,omitempty" json:"proxy,omitempty"`                   // Optional scraper-specific proxy override
-	DownloadProxy    *ProxyConfig `yaml:"download_proxy,omitempty" json:"download_proxy,omitempty"` // Optional scraper-specific download proxy override
+	Enabled       bool            `yaml:"enabled" json:"enabled"`
+	Language      string          `yaml:"language" json:"language"`                                 // Language code: ja, en (default: ja)
+	RequestDelay  int             `yaml:"request_delay" json:"request_delay"`                       // Delay between requests in milliseconds (0 = no delay)
+	BaseURL       string          `yaml:"base_url" json:"base_url"`                                 // Base URL for Caribbeancom
+	UserAgent     UserAgentString `yaml:"user_agent"`                                               // Custom User-Agent; accepts both user_agent (new) and fake_user_agent (deprecated)
+	Proxy         *ProxyConfig    `yaml:"proxy,omitempty" json:"proxy,omitempty"`                   // Optional scraper-specific proxy override
+	DownloadProxy *ProxyConfig    `yaml:"download_proxy,omitempty" json:"download_proxy,omitempty"` // Optional scraper-specific download proxy override
 }
 
 // ValidateConfig implements ConfigValidator for CaribbeancomConfig.
@@ -587,13 +619,12 @@ func (c *CaribbeancomConfig) ValidateConfig(sc *ScraperConfig) error {
 
 // FC2Config holds FC2 scraper configuration
 type FC2Config struct {
-	Enabled          bool         `yaml:"enabled" json:"enabled"`
-	RequestDelay     int          `yaml:"request_delay" json:"request_delay"`                       // Delay between requests in milliseconds (0 = no delay)
-	BaseURL          string       `yaml:"base_url" json:"base_url"`                                 // Base URL for FC2
-	UseFakeUserAgent bool         `yaml:"use_fake_user_agent" json:"use_fake_user_agent"`           // Use browser-like User-Agent header for this scraper
-	FakeUserAgent    string       `yaml:"fake_user_agent" json:"fake_user_agent"`                   // Optional custom fake User-Agent (defaults to built-in browser UA)
-	Proxy            *ProxyConfig `yaml:"proxy,omitempty" json:"proxy,omitempty"`                   // Optional scraper-specific proxy override
-	DownloadProxy    *ProxyConfig `yaml:"download_proxy,omitempty" json:"download_proxy,omitempty"` // Optional scraper-specific download proxy override
+	Enabled       bool            `yaml:"enabled" json:"enabled"`
+	RequestDelay  int             `yaml:"request_delay" json:"request_delay"`                       // Delay between requests in milliseconds (0 = no delay)
+	BaseURL       string          `yaml:"base_url" json:"base_url"`                                 // Base URL for FC2
+	UserAgent     UserAgentString `yaml:"user_agent"`                                               // Custom User-Agent; accepts both user_agent (new) and fake_user_agent (deprecated)
+	Proxy         *ProxyConfig    `yaml:"proxy,omitempty" json:"proxy,omitempty"`                   // Optional scraper-specific proxy override
+	DownloadProxy *ProxyConfig    `yaml:"download_proxy,omitempty" json:"download_proxy,omitempty"` // Optional scraper-specific download proxy override
 }
 
 // ValidateConfig implements ConfigValidator for FC2Config.
@@ -1368,21 +1399,12 @@ func validateNoLegacyProxyDirectFields(path string, proxyCfg *ProxyConfig) error
 }
 
 // ResolveScraperUserAgent resolves the effective User-Agent for a scraper.
-// When useFakeUserAgent is true, fakeUserAgent takes precedence and falls
-// back to DefaultFakeUserAgent when empty.
-func ResolveScraperUserAgent(globalUserAgent string, useFakeUserAgent bool, fakeUserAgent string) string {
-	if useFakeUserAgent {
-		if ua := strings.TrimSpace(fakeUserAgent); ua != "" {
-			return ua
-		}
-		return DefaultFakeUserAgent
-	}
-
-	if ua := strings.TrimSpace(globalUserAgent); ua != "" {
+// If the scraper-specific userAgent is non-empty, it is used; otherwise DefaultFakeUserAgent is returned.
+func ResolveScraperUserAgent(globalUserAgent string, userAgent string) string {
+	if ua := strings.TrimSpace(userAgent); ua != "" {
 		return ua
 	}
-
-	return DefaultUserAgent
+	return DefaultFakeUserAgent
 }
 
 // ResolveScraperProxy returns the effective proxy config for a scraper.

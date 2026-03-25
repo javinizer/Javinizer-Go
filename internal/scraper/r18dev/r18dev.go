@@ -43,15 +43,14 @@ type Scraper struct {
 func New(cfg *config.Config) *Scraper {
 	// Create scraper config for HTTP client ownership (HTTP-01)
 	scraperCfg := &config.ScraperConfig{
-		Enabled:          cfg.Scrapers.R18Dev.Enabled,
-		Timeout:          30, // default
-		RateLimit:        cfg.Scrapers.R18Dev.RequestDelay,
-		RetryCount:       cfg.Scrapers.R18Dev.MaxRetries,
-		UseFakeUserAgent: cfg.Scrapers.R18Dev.UseFakeUserAgent,
-		UserAgent:        cfg.Scrapers.R18Dev.FakeUserAgent,
-		Proxy:            cfg.Scrapers.R18Dev.Proxy,
-		DownloadProxy:    cfg.Scrapers.R18Dev.DownloadProxy,
-		FlareSolverr:     cfg.Scrapers.Proxy.FlareSolverr, // inherit global if not overridden
+		Enabled:       cfg.Scrapers.R18Dev.Enabled,
+		Timeout:       30, // default
+		RateLimit:     cfg.Scrapers.R18Dev.RequestDelay,
+		RetryCount:    cfg.Scrapers.R18Dev.MaxRetries,
+		UserAgent:     cfg.Scrapers.R18Dev.UserAgent.Value,
+		Proxy:         cfg.Scrapers.R18Dev.Proxy,
+		DownloadProxy: cfg.Scrapers.R18Dev.DownloadProxy,
+		FlareSolverr:  cfg.Scrapers.Proxy.FlareSolverr, // inherit global if not overridden
 	}
 
 	// Create HTTP client via per-scraper NewHTTPClient (HTTP-01)
@@ -122,17 +121,16 @@ func (s *Scraper) IsEnabled() bool {
 // Config returns the scraper's configuration
 func (s *Scraper) Config() *config.ScraperConfig {
 	return &config.ScraperConfig{
-		Enabled:          s.cfg.Enabled,
-		Language:         s.language,
-		Timeout:          30,
-		RateLimit:        int(s.requestDelay.Milliseconds()),
-		RetryCount:       s.maxRetries,
-		UseFakeUserAgent: s.cfg.UseFakeUserAgent,
-		UserAgent:        s.cfg.FakeUserAgent,
-		Proxy:            s.cfg.Proxy,
-		DownloadProxy:    s.cfg.DownloadProxy,
-		FlareSolverr:     s.cfg.Proxy.FlareSolverr, // FlareSolverr from R18Dev's proxy config
-		Extra:            make(map[string]any),
+		Enabled:       s.cfg.Enabled,
+		Language:      s.language,
+		Timeout:       30,
+		RateLimit:     int(s.requestDelay.Milliseconds()),
+		RetryCount:    s.maxRetries,
+		UserAgent:     s.cfg.UserAgent.Value,
+		Proxy:         s.cfg.Proxy,
+		DownloadProxy: s.cfg.DownloadProxy,
+		FlareSolverr:  s.cfg.Proxy.FlareSolverr, // FlareSolverr from R18Dev's proxy config
+		Extra:         make(map[string]any),
 	}
 }
 
