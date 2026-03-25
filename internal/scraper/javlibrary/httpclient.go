@@ -30,33 +30,35 @@ func NewHTTPClient(cfg *config.ScraperConfig, globalProxy *config.ProxyConfig, u
 		retryCount = 3
 	}
 
+	// When cfg.FlareSolverr.Enabled is true, the ScraperConfig has been set up
+	// with FlareSolverr.Enabled=true (via useFlareSolverr bool in javlibrary.go).
+	// In this case, proxy must be enabled so buildFlareSolverrRequestProxy sets
+	// fs.requestProxy for HTTP CONNECT tunneling to the FlareSolverr proxy server.
+	var client *resty.Client
 	var fs *httpclient.FlareSolverr
 	var err error
 
-	// Check for FlareSolverr - javlibrary is the ONLY scraper that uses it
-	// The bool parameter (useFlareSolverr) comes from scraperCfg.UseFlareSolverr
-	if useFlareSolverr {
+	if cfg.FlareSolverr.Enabled {
 		proxyWithFlareSolverr := &config.ProxyConfig{
-			Enabled:  proxyCfg.Enabled,
-			URL:      proxyCfg.URL,
-			Username: proxyCfg.Username,
-			Password: proxyCfg.Password,
-			FlareSolverr: config.FlareSolverrConfig{
-				Enabled: true,
-			},
+			Enabled:      true, // Must be true so buildFlareSolverrRequestProxy sets fs.requestProxy
+			URL:          proxyCfg.URL,
+			Username:     proxyCfg.Username,
+			Password:     proxyCfg.Password,
+			FlareSolverr: cfg.FlareSolverr,
 		}
-		_, fs, err = httpclient.NewRestyClientWithFlareSolverr(
+		client, fs, err = httpclient.NewRestyClientWithFlareSolverr(
 			proxyWithFlareSolverr,
 			timeout,
 			retryCount,
 		)
 		if err != nil {
 			logging.Errorf("JavLibrary: Failed to create FlareSolverr: %v", err)
+			// Fall through to create client without FlareSolverr
+			client, err = httpclient.NewRestyClient(proxyCfg, timeout, retryCount)
 		}
+	} else {
+		client, err = httpclient.NewRestyClient(proxyCfg, timeout, retryCount)
 	}
-
-	// Create client (with or without FlareSolverr)
-	client, err := httpclient.NewRestyClient(proxyCfg, timeout, retryCount)
 	if err != nil {
 		return nil, nil, err
 	}
