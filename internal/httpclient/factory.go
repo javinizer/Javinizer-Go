@@ -274,17 +274,22 @@ func (fs *FlareSolverr) getOrCreatePersistentSessionLocked() (string, error) {
 // resetPersistentSessionLocked clears the persistent session and destroys it.
 // Caller must hold persistentSessionMu.
 func (fs *FlareSolverr) resetPersistentSessionLocked(sessionID string) {
+	if sessionID == "" {
+		return
+	}
+
+	// Clear local persistent session ID
 	if fs.persistentSessionID == sessionID {
 		fs.persistentSessionID = ""
 	}
 
-	if sessionID == "" {
-		return
-	}
-	// DestroySession makes HTTP call; we don't re-acquire lock since we hold it
+	// Destroy session via HTTP (lock is held by caller, but DestroySession doesn't acquire it)
 	if err := fs.DestroySession(sessionID); err != nil {
 		logging.Debugf("FlareSolverr: session destroy during reset failed for %s: %v", sessionID, err)
 	}
+
+	// Remove from local cache
+	fs.sessions.Delete(sessionID)
 }
 
 func (fs *FlareSolverr) resolveURLRequest(targetURL, sessionID string) (string, []http.Cookie, error) {
@@ -369,18 +374,12 @@ func (fs *FlareSolverr) CreateSession() (string, error) {
 	return resp.Session, nil
 }
 
-// DestroySession destroys a FlareSolverr session
+// DestroySession destroys a FlareSolverr session via HTTP and removes it from local cache.
 func (fs *FlareSolverr) DestroySession(sessionID string) error {
 	req := FlareSolverrRequest{
 		Cmd:     "sessions.destroy",
 		Session: sessionID,
 	}
-
-	fs.persistentSessionMu.Lock()
-	if fs.persistentSessionID == sessionID {
-		fs.persistentSessionID = ""
-	}
-	fs.persistentSessionMu.Unlock()
 
 	var resp FlareSolverrResponse
 	_, err := fs.client.R().

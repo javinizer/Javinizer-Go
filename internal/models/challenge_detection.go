@@ -10,8 +10,13 @@ func IsCloudflareChallengePage(body string) bool {
 		return false
 	}
 
+	// High confidence markers for actual Cloudflare challenge pages.
+	// Note: /cdn-cgi/challenge-platform/scripts/jsd/ is used by legitimate pages,
+	// so we check for the challenge orchestration endpoint specifically.
 	highConfidence := []string{
-		"/cdn-cgi/challenge-platform",
+		"/cdn-cgi/challenge-platform/h/b/orchestrate/chl_page/v1",
+		"/cdn-cgi/challenge-platform/h/b/orchestrate/chl_hr/v1",
+		"/cdn-cgi/challenge-platform/h/b/orchestrate/chl_page",
 		"cf-browser-verification",
 		"cf_chl_",
 		"cf-challenge",

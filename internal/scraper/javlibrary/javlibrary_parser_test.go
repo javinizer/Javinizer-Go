@@ -169,3 +169,201 @@ func TestHelpers(t *testing.T) {
 		t.Fatal("expected JavLibrary host to be recognized")
 	}
 }
+
+func TestExtractDescription(t *testing.T) {
+	cfg := createTestConfig(
+		config.JavLibraryConfig{
+			Enabled:  true,
+			Language: "en",
+			BaseURL:  "https://www.javlibrary.com",
+		},
+		config.ProxyConfig{},
+	)
+	s := New(cfg)
+
+	// Test meta description tag (primary method)
+	html := `<html><head><meta name="description" content="This is a great movie with excellent quality!"></head><body><div id="video_review"><div class="text">This is a great movie with excellent quality!</div></div></body></html>`
+	if got := s.extractDescription(html); got != "This is a great movie with excellent quality!" {
+		t.Fatalf("extractDescription = %q, want 'This is a great movie...'", got)
+	}
+
+	// Test fallback to video_review div text (when no meta tag)
+	// JavLibrary uses table structure in video_review
+	html = `<html><head></head><body><div id="video_review"><table><tr><td class="text">Sample review text here</td></tr></table></div></body></html>`
+	if got := s.extractDescription(html); got != "Sample review text here" {
+		t.Fatalf("extractDescription fallback = %q", got)
+	}
+
+	// Empty test - no meta description, no review text
+	html = `<html><head></head><body><div>no review</div></body></html>`
+	if got := s.extractDescription(html); got != "" {
+		t.Fatalf("extractDescription empty = %q, want empty", got)
+	}
+}
+
+func TestExtractSeries(t *testing.T) {
+	cfg := createTestConfig(
+		config.JavLibraryConfig{
+			Enabled:  true,
+			Language: "en",
+			BaseURL:  "https://www.javlibrary.com",
+		},
+		config.ProxyConfig{},
+	)
+	s := New(cfg)
+
+	html := `<div id="video_series"><a href="/series/test">Test Series Name</a></div>`
+	if got := s.extractSeries(html); got != "Test Series Name" {
+		t.Fatalf("extractSeries = %q", got)
+	}
+
+	// Fallback test
+	html = `<div>Series: <a href="/series/abc">ABC Series</a></div>`
+	if got := s.extractSeries(html); got != "ABC Series" {
+		t.Fatalf("extractSeries fallback = %q", got)
+	}
+
+	// Empty test
+	html = `<div>no series</div>`
+	if got := s.extractSeries(html); got != "" {
+		t.Fatalf("extractSeries empty = %q, want empty", got)
+	}
+}
+
+func TestExtractRating(t *testing.T) {
+	cfg := createTestConfig(
+		config.JavLibraryConfig{
+			Enabled:  true,
+			Language: "en",
+			BaseURL:  "https://www.javlibrary.com",
+		},
+		config.ProxyConfig{},
+	)
+	s := New(cfg)
+
+	// Test standard rating format
+	html := `<div id="video_rating"><span class="num">4.5</span> / 5.0</div>`
+	if got := s.extractRating(html); got == nil || got.Score != 4.5 {
+		t.Fatalf("extractRating = %v, want 4.5", got)
+	}
+
+	// Test fallback format (4.5 out of 5)
+	html = `<div>Rating: 4.0 out of 5</div>`
+	if got := s.extractRating(html); got == nil || got.Score != 4.0 {
+		t.Fatalf("extractRating fallback = %v, want 4.0", got)
+	}
+
+	// No rating test
+	html = `<div>no rating</div>`
+	if got := s.extractRating(html); got != nil {
+		t.Fatalf("extractRating empty = %v, want nil", got)
+	}
+}
+
+func TestExtractScreenshotURLs(t *testing.T) {
+	cfg := createTestConfig(
+		config.JavLibraryConfig{
+			Enabled:  true,
+			Language: "en",
+			BaseURL:  "https://www.javlibrary.com",
+		},
+		config.ProxyConfig{},
+	)
+	s := New(cfg)
+
+	html := `<img src="https://example.com/pic01.jpg"><img src="https://example.com/pic02.jpg">`
+	got := s.extractScreenshotURLs(html)
+	if len(got) != 2 {
+		t.Fatalf("extractScreenshotURLs count = %d, want 2", len(got))
+	}
+
+	// Test with sample movie images
+	html = `<img src="https://example.com/sample_movie.jpg">`
+	got = s.extractScreenshotURLs(html)
+	if len(got) != 1 || got[0] != "https://example.com/sample_movie.jpg" {
+		t.Fatalf("extractScreenshotURLs sample = %v", got)
+	}
+
+	// Empty test
+	html = `<div>no images</div>`
+	got = s.extractScreenshotURLs(html)
+	if len(got) != 0 {
+		t.Fatalf("extractScreenshotURLs empty = %v, want empty", got)
+	}
+}
+
+func TestExtractTrailerURL(t *testing.T) {
+	cfg := createTestConfig(
+		config.JavLibraryConfig{
+			Enabled:  true,
+			Language: "en",
+			BaseURL:  "https://www.javlibrary.com",
+		},
+		config.ProxyConfig{},
+	)
+	s := New(cfg)
+
+	// Test mp4 URL
+	html := `<a href="https://example.com/sample_movie.mp4">sample</a>`
+	if got := s.extractTrailerURL(html); got != "https://example.com/sample_movie.mp4" {
+		t.Fatalf("extractTrailerURL = %q", got)
+	}
+
+	// Empty test
+	html = `<div>no trailer</div>`
+	if got := s.extractTrailerURL(html); got != "" {
+		t.Fatalf("extractTrailerURL empty = %q, want empty", got)
+	}
+}
+
+func TestParseDetailPage_FullData(t *testing.T) {
+	cfg := createTestConfig(
+		config.JavLibraryConfig{
+			Enabled:  true,
+			Language: "en",
+			BaseURL:  "https://www.javlibrary.com",
+		},
+		config.ProxyConfig{},
+	)
+	s := New(cfg)
+
+	html := `<html><head><title>IPX-123 Full Data Test - JAVLibrary</title></head><body>
+<div id="video_info"></div>
+<img id="video_jacket_img" src="https://images.example.com/ipx123pl.jpg">
+<div id="video_date"><td class="text">2026-02-16</td></div>
+<div id="video_length"><span class="text">125</span> min</div>
+<div id="video_director"><a href="/director/test">Director Test</a></div>
+<div id="video_maker"><a href="/maker/test">Maker Test</a></div>
+<div id="video_label"><a href="/label/test">Label Test</a></div>
+<div id="video_series"><a href="/series/test">Series Test</a></div>
+<div id="video_review"><table><tr><td class="text">This is a great movie review!</td></tr></table></div>
+<div id="video_rating"><span class="num">4.5</span> / 5.0</div>
+<span class="genre"><a href="/genres/drama">Drama</a></span>
+<span class="star"><a href="/star/jane">Jane Doe</a></span>
+<img src="https://images.example.com/sample1.jpg">
+<img src="https://images.example.com/sample2.jpg">
+<a href="https://example.com/trailer.mp4">trailer</a>
+</body></html>`
+
+	result, err := s.parseDetailPage(html, "IPX-123", "https://www.javlibrary.com/en/?v=test")
+	if err != nil {
+		t.Fatalf("parseDetailPage returned error: %v", err)
+	}
+
+	// Verify new fields
+	if result.Description != "This is a great movie review!" {
+		t.Fatalf("Description = %q, want 'This is a great movie review!'", result.Description)
+	}
+	if result.Series != "Series Test" {
+		t.Fatalf("Series = %q", result.Series)
+	}
+	if result.Rating == nil || result.Rating.Score != 4.5 {
+		t.Fatalf("Rating = %v, want 4.5", result.Rating)
+	}
+	if len(result.ScreenshotURL) != 2 {
+		t.Fatalf("ScreenshotURL count = %d, want 2", len(result.ScreenshotURL))
+	}
+	if result.TrailerURL != "https://example.com/trailer.mp4" {
+		t.Fatalf("TrailerURL = %q", result.TrailerURL)
+	}
+}

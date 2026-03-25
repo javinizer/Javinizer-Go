@@ -283,22 +283,49 @@ func (s *Scraper) parseDetailPage(html string, id string, sourceURL string) (*mo
 	// Title: from <title> tag, strip " - JAVLibrary" suffix and ID prefix
 	result.Title = s.extractTitle(html, id)
 
-	// Cover image: video_jacket_img
-	result.CoverURL = s.extractCoverURL(html)
-
-	// Poster: derive from cover URL (replace "pl.jpg" with "ps.jpg")
-	if result.CoverURL != "" {
-		result.PosterURL = strings.Replace(result.CoverURL, "pl.jpg", "ps.jpg", 1)
-	}
-
 	// Structured fields from video_info div
 	result.ReleaseDate = s.extractReleaseDate(html)
 	result.Runtime = s.extractRuntime(html)
 	result.Director = s.extractField(html, "video_director")
 	result.Maker = s.extractField(html, "video_maker")
 	result.Label = s.extractField(html, "video_label")
+	result.Series = s.extractSeries(html)
 	result.Genres = s.extractGenres(html)
 	result.Actresses = s.extractActresses(html)
+
+	// Description from video_review div
+	result.Description = s.extractDescription(html)
+
+	// Rating from video_rating div
+	result.Rating = s.extractRating(html)
+
+	// Media URLs
+	result.CoverURL = s.extractCoverURL(html)
+	result.ScreenshotURL = s.extractScreenshotURLs(html)
+	result.TrailerURL = s.extractTrailerURL(html)
+
+	// Filter out cover URL from screenshots if present
+	if result.CoverURL != "" && len(result.ScreenshotURL) > 0 {
+		filtered := make([]string, 0, len(result.ScreenshotURL))
+		for _, ss := range result.ScreenshotURL {
+			// Skip if screenshot URL exactly matches cover URL
+			if ss == result.CoverURL {
+				continue
+			}
+			// Skip if screenshot URL is the same as cover with different extension
+			// (e.g., cover has pl.jpg and screenshot has ps.jpg of same ID)
+			if strings.Contains(result.CoverURL, "pl.jpg") && strings.Contains(ss, strings.Replace(result.CoverURL, "pl.jpg", "", 1)) {
+				continue
+			}
+			filtered = append(filtered, ss)
+		}
+		result.ScreenshotURL = filtered
+	}
+
+	// Poster: derive from cover URL (replace "pl.jpg" with "ps.jpg")
+	if result.CoverURL != "" {
+		result.PosterURL = strings.Replace(result.CoverURL, "pl.jpg", "ps.jpg", 1)
+	}
 
 	return result, nil
 }
@@ -457,6 +484,260 @@ func (s *Scraper) extractActresses(html string) []models.ActressInfo {
 		}
 	}
 	return actresses
+}
+
+// extractDescription extracts the movie description from the page.
+// JavLibrary typically doesn't include movie descriptions on detail pages.
+// We check the meta description tag first, then fall back to any review text.
+func (s *Scraper) extractDescription(html string) string {
+	// First check meta description tag
+	re := regexp.MustCompile(`(?i)<meta[^>]*name=["']description["'][^>]*content=["']([^"']+)["']`)
+	matches := re.FindStringSubmatch(html)
+	if len(matches) > 1 {
+		return strings.TrimSpace(matches[1])
+	}
+	// Fallback 1: look for text in video_review div
+	re = regexp.MustCompile(`id="video_review"[^>]*>[\s\S]*?class="text"[^>]*>([\s\S]*?)</td>`)
+	matches = re.FindStringSubmatch(html)
+	if len(matches) > 1 {
+		desc := strings.TrimSpace(matches[1])
+		// Filter out if it's just rating stars without actual review text
+		if len(desc) >= 20 && !strings.Contains(desc, "star-rating-control") {
+			return desc
+		}
+	}
+	// Fallback 2: look for any text content that looks like a description
+	// (more than 50 chars and not just a rating)
+	re = regexp.MustCompile(`id="video_review"[^>]*>([\s\S]*?)</div>`)
+	matches = re.FindStringSubmatch(html)
+	if len(matches) > 1 {
+		// Extract just the text content, stripping HTML tags
+		text := strings.TrimSpace(matches[1])
+		text = regexp.MustCompile(`<[^>]+>`).ReplaceAllString(text, " ")
+		text = regexp.MustCompile(`\s+`).ReplaceAllString(text, " ")
+		if len(text) > 50 && !strings.Contains(text, "star-rating-control") {
+			return text
+		}
+	}
+	return ""
+}
+
+// extractSeries extracts the series name from the video_series div
+func (s *Scraper) extractSeries(html string) string {
+	// Series is in: <div id="video_series"><a href="...">SeriesName</a></div>
+	re := regexp.MustCompile(`id="video_series"[^>]*>[\s\S]*?<a[^>]*>([^<]+)</a>`)
+	matches := re.FindStringSubmatch(html)
+	if len(matches) > 1 {
+		return strings.TrimSpace(matches[1])
+	}
+	// Fallback: any text near "Series:"
+	re = regexp.MustCompile(`Series:[\s\S]*?<a[^>]*>([^<]+)</a>`)
+	matches = re.FindStringSubmatch(html)
+	if len(matches) > 1 {
+		return strings.TrimSpace(matches[1])
+	}
+	return ""
+}
+
+// extractRating extracts the movie rating (score) from the video_rating div
+func (s *Scraper) extractRating(html string) *models.Rating {
+	// Rating is in: <div id="video_rating"><span class="num">4.5</span> / 5.0</div>
+	re := regexp.MustCompile(`id="video_rating"[^>]*>[\s\S]*?<span[^>]*class="num"[^>]*>([\d.]+)</span>`)
+	matches := re.FindStringSubmatch(html)
+	if len(matches) > 1 {
+		if score, err := strconv.ParseFloat(matches[1], 64); err == nil {
+			return &models.Rating{Score: score}
+		}
+	}
+	// Fallback: any score pattern like "4.5 / 5.0" or "4.5 out of 5.0"
+	re = regexp.MustCompile(`([\d.]+)\s*(?:/|out\s+of|of)\s*([\d.]+)`)
+	matches = re.FindStringSubmatch(html)
+	if len(matches) > 2 {
+		if score, err := strconv.ParseFloat(matches[1], 64); err == nil {
+			if maxScore, parseErr := strconv.ParseFloat(matches[2], 64); parseErr == nil && maxScore > 0 {
+				// Normalize to 5-star scale
+				score = score * 5 / maxScore
+			}
+			return &models.Rating{Score: score}
+		}
+	}
+	return nil
+}
+
+// extractScreenshotURLs extracts screenshot/image gallery URLs from the page
+func (s *Scraper) extractScreenshotURLs(html string) []string {
+	var screenshotURLs []string
+	seen := make(map[string]bool)
+
+	// Helper to add URL if not seen and not a placeholder
+	addURL := func(url string) {
+		if url == "" || seen[url] {
+			return
+		}
+		// Filter out redirect URLs
+		if strings.Contains(url, "redirect.php") || strings.Contains(url, "redirect%") {
+			return
+		}
+		// Filter out placeholder/loading images
+		if strings.Contains(url, "loading") || strings.Contains(url, "blank") ||
+			strings.Contains(url, "placeholder") || strings.Contains(url, "icon") ||
+			strings.Contains(url, "head2.jpg") { // Non-screenshot URLs on JavLibrary
+			return
+		}
+		// Filter out thumbnail versions - prefer full-size images
+		// The jp-XX.jpg pattern appears to be thumbnails while XX.jpg are full images
+		// e.g., 118abp880-1.jpg is full, 118abp880jp-1.jpg is thumbnail
+		if strings.Contains(url, "jp-") || strings.HasSuffix(url, "jp.jpg") {
+			return
+		}
+		seen[url] = true
+		screenshotURLs = append(screenshotURLs, url)
+	}
+
+	// Look for data-src attributes (lazy loading) - must check before src
+	re := regexp.MustCompile(`data-src="([^"]+\.jpg[^"]*)"`)
+	matches := re.FindAllStringSubmatch(html, -1)
+	for _, m := range matches {
+		if len(m) > 1 {
+			addURL(m[1])
+		}
+	}
+
+	// Look for sample movie images - pattern: src="URL" with "sample" in URL
+	re = regexp.MustCompile(`src="([^"]*sample[^"]*\.jpg[^"]*)"`)
+	matches = re.FindAllStringSubmatch(html, -1)
+	for _, m := range matches {
+		if len(m) > 1 {
+			addURL(m[1])
+		}
+	}
+
+	// Also look for jp-1.jpg, jp-2.jpg, etc. patterns (JavLibrary/DMM screenshot pattern)
+	// Pattern: ID + jp + number + .jpg (e.g., abp880jp-1.jpg, 118abp880jp-1.jpg)
+	re = regexp.MustCompile(`src="([^"]*jp-\d+\.jpg[^"]*)"`)
+	matches = re.FindAllStringSubmatch(html, -1)
+	for _, m := range matches {
+		if len(m) > 1 {
+			addURL(m[1])
+		}
+	}
+
+	// Also look for pic01, pic02, etc. patterns
+	re = regexp.MustCompile(`src="([^"]*pic\d+\.jpg[^"]*)"`)
+	matches = re.FindAllStringSubmatch(html, -1)
+	for _, m := range matches {
+		if len(m) > 1 {
+			addURL(m[1])
+		}
+	}
+
+	// Look for c.impact.jp URLs (JavLibrary's image CDN) with digit-digit.jpg pattern
+	// e.g., /abc123/01.jpg, /abak-001/01.jpg
+	re = regexp.MustCompile(`src="([^"]*c\.impact\.jp[^"]*\/(\d+)\.jpg[^"]*)"`)
+	matches = re.FindAllStringSubmatch(html, -1)
+	for _, m := range matches {
+		if len(m) > 1 {
+			addURL(m[1])
+		}
+	}
+
+	// Also try broader pattern for c.impact.jp with any digits before .jpg
+	re = regexp.MustCompile(`src="([^"]*impact\.jp[^"]*\d{2,}\.jpg[^"]*)"`)
+	matches = re.FindAllStringSubmatch(html, -1)
+	for _, m := range matches {
+		if len(m) > 1 {
+			addURL(m[1])
+		}
+	}
+
+	// Look for any src attribute containing .jpg that looks like a screenshot
+	// (broader pattern to catch new formats)
+	re = regexp.MustCompile(`src="([^"]*\.jpg[^"]*)"`)
+	matches = re.FindAllStringSubmatch(html, -1)
+	for _, m := range matches {
+		if len(m) > 1 {
+			addURL(m[1])
+		}
+	}
+
+	// Look for href links to images in gallery divs (gallery links to full-size images)
+	re = regexp.MustCompile(`id="video_gallery"[^>]*>[\s\S]*?href="([^"]*\.jpg[^"]*)"`)
+	matches = re.FindAllStringSubmatch(html, -1)
+	for _, m := range matches {
+		if len(m) > 1 {
+			addURL(m[1])
+		}
+	}
+
+	// Fallback: look for any href links to jpg files in the page body
+	// that look like screenshots (contain sample, jp-, pic, or impact)
+	re = regexp.MustCompile(`href="([^"]*sample[^"]*\.jpg[^"]*)"`)
+	matches = re.FindAllStringSubmatch(html, -1)
+	for _, m := range matches {
+		if len(m) > 1 {
+			addURL(m[1])
+		}
+	}
+
+	re = regexp.MustCompile(`href="([^"]*jp-\d+\.jpg[^"]*)"`)
+	matches = re.FindAllStringSubmatch(html, -1)
+	for _, m := range matches {
+		if len(m) > 1 {
+			addURL(m[1])
+		}
+	}
+
+	re = regexp.MustCompile(`href="([^"]*impact\.jp[^"]*\.jpg[^"]*)"`)
+	matches = re.FindAllStringSubmatch(html, -1)
+	for _, m := range matches {
+		if len(m) > 1 {
+			addURL(m[1])
+		}
+	}
+
+	// Broader fallback: any href to .jpg anywhere in page
+	re = regexp.MustCompile(`href="([^"]*\.jpg[^"]*)"`)
+	matches = re.FindAllStringSubmatch(html, -1)
+	for _, m := range matches {
+		if len(m) > 1 {
+			addURL(m[1])
+		}
+	}
+
+	return screenshotURLs
+}
+
+// extractTrailerURL extracts the trailer/sample video URL
+func (s *Scraper) extractTrailerURL(html string) string {
+	// Look for video source tags with sample/trailer context
+	re := regexp.MustCompile(`src="([^"]*sample[^"]*\.mp4[^"]*)"`)
+	matches := re.FindStringSubmatch(html)
+	if len(matches) > 1 {
+		return matches[1]
+	}
+
+	// Look for video tag with sample context
+	re = regexp.MustCompile(`<video[^>]*src="([^"]+)"[^>]*>[^<]*sample`)
+	matches = re.FindStringSubmatch(html)
+	if len(matches) > 1 {
+		return matches[1]
+	}
+
+	// Look for a href with mp4 in sample_movie or similar
+	re = regexp.MustCompile(`href="([^"]*sample_movie[^"]*\.mp4[^"]*)"`)
+	matches = re.FindStringSubmatch(html)
+	if len(matches) > 1 {
+		return matches[1]
+	}
+
+	// Fallback: any mp4 URL in a sample context
+	re = regexp.MustCompile(`href="([^"]*\.mp4[^"]*)"`)
+	matches = re.FindStringSubmatch(html)
+	if len(matches) > 1 {
+		return matches[1]
+	}
+
+	return ""
 }
 
 // extractMovieURLFromHTML extracts the movie detail link from search results
