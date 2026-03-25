@@ -14,9 +14,11 @@ import (
 	"github.com/PuerkitoBio/goquery"
 	"github.com/go-resty/resty/v2"
 	"github.com/javinizer/javinizer-go/internal/config"
+	"github.com/javinizer/javinizer-go/internal/database"
 	"github.com/javinizer/javinizer-go/internal/httpclient"
 	"github.com/javinizer/javinizer-go/internal/logging"
 	"github.com/javinizer/javinizer-go/internal/models"
+	"github.com/javinizer/javinizer-go/internal/scraper"
 )
 
 const (
@@ -884,4 +886,10 @@ func sanitizeCookieValue(v string) string {
 	v = strings.ReplaceAll(v, "\r", "")
 	v = strings.ReplaceAll(v, "\n", "")
 	return v
+}
+
+func init() {
+	scraper.RegisterScraper("javbus", func(cfg *config.Config, db *database.DB) (models.Scraper, error) {
+		return New(cfg), nil
+	})
 }

@@ -14,9 +14,11 @@ import (
 	"github.com/PuerkitoBio/goquery"
 	"github.com/go-resty/resty/v2"
 	"github.com/javinizer/javinizer-go/internal/config"
+	"github.com/javinizer/javinizer-go/internal/database"
 	"github.com/javinizer/javinizer-go/internal/httpclient"
 	"github.com/javinizer/javinizer-go/internal/logging"
 	"github.com/javinizer/javinizer-go/internal/models"
+	"github.com/javinizer/javinizer-go/internal/scraper"
 )
 
 const defaultBaseURL = "https://www.tokyo-hot.com"
@@ -626,4 +628,10 @@ func isHTTPURL(v string) bool {
 		return false
 	}
 	return (u.Scheme == "http" || u.Scheme == "https") && u.Host != ""
+}
+
+func init() {
+	scraper.RegisterScraper("tokyohot", func(cfg *config.Config, db *database.DB) (models.Scraper, error) {
+		return New(cfg), nil
+	})
 }

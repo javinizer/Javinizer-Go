@@ -13,9 +13,11 @@ import (
 	"github.com/PuerkitoBio/goquery"
 	"github.com/go-resty/resty/v2"
 	"github.com/javinizer/javinizer-go/internal/config"
+	"github.com/javinizer/javinizer-go/internal/database"
 	"github.com/javinizer/javinizer-go/internal/httpclient"
 	"github.com/javinizer/javinizer-go/internal/logging"
 	"github.com/javinizer/javinizer-go/internal/models"
+	"github.com/javinizer/javinizer-go/internal/scraper"
 )
 
 const defaultBaseURL = "https://adult.contents.fc2.com"
@@ -608,4 +610,10 @@ func (s *Scraper) waitForRateLimit() {
 
 func (s *Scraper) updateLastRequestTime() {
 	s.lastRequestTime.Store(time.Now())
+}
+
+func init() {
+	scraper.RegisterScraper("fc2", func(cfg *config.Config, db *database.DB) (models.Scraper, error) {
+		return New(cfg), nil
+	})
 }

@@ -16,6 +16,7 @@ import (
 	"github.com/javinizer/javinizer-go/internal/imageutil"
 	"github.com/javinizer/javinizer-go/internal/logging"
 	"github.com/javinizer/javinizer-go/internal/models"
+	"github.com/javinizer/javinizer-go/internal/scraper"
 )
 
 const (
@@ -1857,4 +1858,11 @@ func hiraganaToRomaji(hiragana string) string {
 	}
 
 	return result
+}
+
+func init() {
+	scraper.RegisterScraper("dmm", func(cfg *config.Config, db *database.DB) (models.Scraper, error) {
+		contentIDRepo := database.NewContentIDMappingRepository(db)
+		return New(cfg, contentIDRepo), nil
+	})
 }
